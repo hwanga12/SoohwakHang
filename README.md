@@ -12,7 +12,7 @@ Git hook을 사용합니다.
   커밋 메시지 입력: "로그인 기능 추가"
   → 결과: "S14P-42 로그인 기능 추가"
 
-## 최초 1회 실행
+## 최초 1회 실행  
 
 ```bash
 sh tools/git-hooks/install.sh
