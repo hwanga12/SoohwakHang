@@ -12,7 +12,7 @@
 | **OS** | Ubuntu 24.04 (WSL2 또는 네이티브) |
 | **Framework** | ROS 2 Jazzy |
 | **Simulator** | Gazebo Harmonic |
-| **Language** | Python 3.12 / C++ 17 (이건 달라도 괜찮나?) |
+| **Language** | Python 3.12 / C++ 17 |
 | **자율주행 프레임워크** | Nav 2 |
 | **이미지 인식** | YOLOv8 |
 
