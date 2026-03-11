@@ -67,3 +67,35 @@ LLM도 그때 그때 다르게 대답하니까, 하나만 선택하기 더더욱
 # 26. 03. 09.
 주제가 좀 더 들었을 때 '그럴듯 하게 들리는' 주제이면 좋겠는데
 컨셉을 잡기 어렵다.
+
+
+# 26. 03. 10.
+## TIL (Today I Learned) - Gazebo 및 WSL 트러블슈팅
+
+이번 세션에서 해결한 문제들과 새롭게 알게 된 사실들을 정리한 문서입니다.
+
+### 1. WSL 시스템 접근 및 환경 변수 경고
+- **현상:** PowerShell 시스템(네트워크 경로 `\\wsl$...`)에서 `wsl`을 실행했을 때 경로 해석 에러(`Failed to translate`)와 ROS `setup.bash` 중복 소싱 경고(`ROS_DISTRO was set to...`) 발생.
+- **배운 점:**
+  - 윈도우 네트워크 경로 자체를 wsl 내부 Linux 환경의 경로로 직역하지 못해 발생한 단순 경고임. 홈 디렉토리(`~`)로 정상 접속되므로 작업 자체에는 지장이 없음.
+  - `.bashrc` 등에 ROS 환경 변수 적용 스크립트가 여러 번 실행되었거나 꼬여 있어도 심각한 에러는 아니며, 필요시 확인 후 수정하면 됨.
+
+### 2. Gazebo (Classic) vs Ignition Gazebo (Gazebo Sim) 명령어
+- **현상:** `gz sim` 명령어와 `gazebo` 명령어 간 혼동. `gazebo shapes.sdf` 실행 시 `command not found` 오류 발생.
+- **배운 점:**
+  - 옛날 버전인 **Gazebo Classic** (ROS 1 버전에 자주 포함되던 버전)은 `gazebo [파일명]`으로 켬.
+  - 현재 시스템에 설치된 새로운 버전 **Ignition Gazebo (Gazebo Sim)** 는 `gz sim [파일명]`으로 켬.
+  - ROS 노드들과 종합적으로 띄울 때는 `roscore` 구동 후 `roslaunch` 명령어를 주로 사용함.
+
+### 3. Gazebo 모델 불러오기 (캐시/경로 우선순위 이슈)
+- **현상:** 팀원의 Git 최신 브랜치를 가져와 `gz sim smartfarm.sdf`를 열었는데, 팀원이 만든 모델 대신 내가 예전에 만들었던 로컬 구 버전 모델이 불러와지는 문제.
+- **배운 점:**
+  - Gazebo는 3D 모델을 불러올 때 현재 프로젝트 폴더보다 **사용자 홈 캐시(`~/.gz/models` 혹은 `~/.ignition/models`) 내 숨김 폴더에 저장된 모델을 우선적으로 참조**하는 특성이 있음.
+  - 해결책: 환경 변수 `GZ_SIM_RESOURCE_PATH`를 설정하여 현재 프로젝트의 `models` 폴더 경로를 Gazebo가 최우선으로 살펴보도록 명시해야 함.
+
+### 4. 터미널 내 상대 경로와 현재 위치(pwd)의 중요성
+- **현상:** `GZ_SIM_RESOURCE_PATH=$(pwd)/models...` 를 입력하고 실행했는데 여전히 `Unable to find or download file` 에러 발생.
+- **배운 점:**
+  - 사용자가 이미 `worlds` 폴더 안에 들어간 상태에서 `$(pwd)`를 호출했으므로 잘못된 경로(`worlds/models`)가 설정됨.
+  - 같은 이유로 `worlds` 폴더 내에서 `worlds/smartfarm.sdf` 파일을 부르려 하니 `worlds/worlds/smartfarm.sdf`를 찾는 꼴이 되어 파일을 찾을 수 없었음.
+  - CLI(터미널) 명령어 입력 시 **현재 어느 폴더에 위치해 있는지**를 정확히 인지하고, 상대 경로를 기준점에 맞게 호출하는 것이 매우 중요함. (예: 최상위 `gazebo_workspace` 폴더로 나온 후 실행)
