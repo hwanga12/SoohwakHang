@@ -99,3 +99,38 @@ LLM도 그때 그때 다르게 대답하니까, 하나만 선택하기 더더욱
   - 사용자가 이미 `worlds` 폴더 안에 들어간 상태에서 `$(pwd)`를 호출했으므로 잘못된 경로(`worlds/models`)가 설정됨.
   - 같은 이유로 `worlds` 폴더 내에서 `worlds/smartfarm.sdf` 파일을 부르려 하니 `worlds/worlds/smartfarm.sdf`를 찾는 꼴이 되어 파일을 찾을 수 없었음.
   - CLI(터미널) 명령어 입력 시 **현재 어느 폴더에 위치해 있는지**를 정확히 인지하고, 상대 경로를 기준점에 맞게 호출하는 것이 매우 중요함. (예: 최상위 `gazebo_workspace` 폴더로 나온 후 실행)
+
+
+# 26. 03. 12.
+## 3D 모델(wall-e.glb)을 Agribot 로봇 패키지에 통합
+어제 다운로드 했던 3D 모델 중 `wall-e.glb`를 ROS 2 패키지에 넣고 Gazebo 시뮬레이터 상의 로봇 외형으로 띄우는 작업을 수행했다.
+
+1. **모델 파일 배치**: `wall-e.glb` 파일을 `agribot_description` 패키지 내부의 `models/agribot/meshes/` 경로로 복사했다.
+2. **URDF (Xacro) 정의**: 로봇의 구조를 기재하는 `agribot.urdf.xacro` 파일을 새로 생성했다. 해당 파일 안에서 `base_link`의 외형(visual) 및 충돌 영역(collision) 속성에 메쉬 파일 경로(`package://agribot_description/models/agribot/meshes/wall-e.glb`)를 연결해 주었다.
+3. **Launch 파일 수정**: Gazebo 환경을 띄우는 `spawn_agribot.launch.py` 파일에 `robot_state_publisher` 노드를 추가해 방금 만든 xacro 파일 정보를 퍼블리시 하도록 했고, Gazebo Harmonic의 `ros_gz_sim create`을 이용해 이 정보를 바탕으로 엔티티를 스폰하도록 수정했다.
+4. **동작 확인**: 작성한 패키지를 `colcon build`로 빌드 완료했으며, 이제 런치 파일을 실행하면 Gazebo 시뮬레이션 환경에 정상적으로 Wall-E 모델 기반의 로봇이 띄워진다.
+
+## Gazebo Harmonic 모델 경로(Resource Path) 트러블슈팅 및 배경 추가
+ROS 2 패키지 내부에 저장된 3D 모델(URDF 포함)을 런치 파일로 실행할 때, Gazebo Harmonic 엔진이 `package://` 또는 `model://` 경로를 찾지 못하는 이슈가 발생했다. GUI로 단순 배치하는 것과 달리, 정식 ROS 패키지로서 환경을 관리하기 위해 아래와 같이 조치했다.
+
+1. **절대/상대 경로 혼동의 원인 파악**: Gazebo Harmonic은 `GZ_SIM_RESOURCE_PATH` 환경 변수가 명시적으로 지정되지 않으면, 패키지 내부(`install/.../share/...`)의 커스텀 모델 폴더를 자동으로 스캔하지 못해 에러(`Unable to find file with URI`)를 뿜는다.
+2. **Launch 파일에 환경 변수 주입**: `spawn_agribot.launch.py` 내부에 `AppendEnvironmentVariable` 기능을 사용하여 컴파일된 현재 패키지의 설치 폴더(및 `models` 폴더)를 가제보 리소스 경로로 동적 지정했다. 이로써 어떤 컴퓨터, 어느 팀원이 클론받아도 즉시 모델을 불러올 수 있게 재현성을 확보했다.
+3. **비닐하우스 배경(Greenhouse) 정식 편입**: GUI에서 드래그 앤 드롭으로 맵을 꾸미는 것은 로컬 컴퓨터(캐시)에 의존하게 되어 협업시 깨질 위험이 크다. 따라서 다운로드한 비닐하우스 모델(`greenhouse.glb`)을 `agribot_description/models/greenhouse/` 내부로 옮기고 전용 `model.config`, `model.sdf`를 작성해주었다. 완성된 모델을 Gazebo 월드 파일(`farm_world.sdf`)의 `<include>` 태그로 선언하여 시뮬레이션을 켤 때 자동으로 맵 전체가 스폰되도록 설계했다.
+
+## Colcon Build 시 리소스 누락 이슈 (setup.py)
+코드상으로 경로를 아무리 잘 맞춰도, 정작 `install/` 폴더에 파일이 없으면 가제보가 불러올 수 없다. `colcon build` 과정에서 발생하는 리소스 누락 문제를 해결했다.
+
+1. **상황 발생**: `model://` 경로 설정을 마쳤음에도 여전히 `Error Code 14 (could not be resolved)` 발생. 확인 결과, `install/` 폴더 내 패키지 경로에 `meshes/` 폴더와 `.glb` 파일이 아예 복사되지 않은 상태였다.
+2. **원인 분석**: ROS 2 Python 패키지의 `setup.py` 내 `data_files` 항목이 파일 단위로 명시되어야 하는데, `models/greenhouse/` 폴더 하위의 `meshes/` 폴더를 복사하라는 규칙이 누락되어 있었다.
+3. **해결 방법**: `setup.py`의 `data_files` 리스트에 `meshes` 하위의 모든 파일(`*.*`)을 포함하도록 한 줄을 추가했다. 이제 빌드 시 3D 모델 데이터가 정식으로 `share/` 경로에 포함되어 가제보가 정상적으로 리소스를 찾아 로드할 수 있게 되었다.
+
+## 자율주행 수확 로봇 구현을 위한 모델링 전략 (토마토/딸기)
+미래에 로봇팔을 이용한 정교한 수확 시뮬레이션을 구현하기 위해 필요한 모델링 확보 전략을 정리했다.
+
+1. **모델 확보 전략**:
+    - **통짜 모델 (Plant + Fruit)**: 배경용 식물은 줄기와 열매가 합쳐진 완성된 모델(`tomato plant` 등)을 사용한다. 이는 `<static>true</static>`으로 설정하여 환경의 일부로 배치한다.
+    - **개별 열매 모델 (Individual Fruit)**: 로봇팔이 실제로 집어 옮길 수 있는 객체는 낱알 1개짜리 모델로 별도 확보한다. 이는 `<static>false</static>`인 물리 객체로 배치한다.
+2. **시뮬레이션 구현 팁**:
+    - 식물 줄기 모델과 낱알 모델을 SDF 월드 파일 안에서 좌표를 맞춰 겹쳐 배치하면, 마치 줄기에 열매가 달린 것처럼 시각적으로 연출할 수 있다. 
+    - 로봇팔의 Gripper가 낱알을 잡는 순간 줄기에서 분리되어 트레이로 이동하는 동적 시뮬레이션이 가능하다. 
+3. **추천 리소스 사이트**: Sketchfab, TurboSquid, Free3D 등에서 `.glb` 포맷 위주로 검색한다. (텍스처 내장 이점)
