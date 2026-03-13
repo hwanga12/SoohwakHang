@@ -61,3 +61,7 @@ rosbag2_*/
 *.log
 core
 core.*
+AGENTS.md
+todo.md
+docs/ai/worklog.md
+docs/ai/portfolio_notes.md
