@@ -134,3 +134,51 @@ ROS 2 패키지 내부에 저장된 3D 모델(URDF 포함)을 런치 파일로 �
     - 식물 줄기 모델과 낱알 모델을 SDF 월드 파일 안에서 좌표를 맞춰 겹쳐 배치하면, 마치 줄기에 열매가 달린 것처럼 시각적으로 연출할 수 있다. 
     - 로봇팔의 Gripper가 낱알을 잡는 순간 줄기에서 분리되어 트레이로 이동하는 동적 시뮬레이션이 가능하다. 
 3. **추천 리소스 사이트**: Sketchfab, TurboSquid, Free3D 등에서 `.glb` 포맷 위주로 검색한다. (텍스처 내장 이점)
+
+
+# 26. 03. 13.
+## 프로젝트 전체 기획 수립
+AgriBot 스마트 농장 자율주행 로봇의 전체 시스템을 기획했다. 코드베이스를 분석한 결과, 로봇 모델에 센서가 전혀 없었고 대부분의 패키지가 빈 골격이었다. 4계층 아키텍처(인프라 → 시뮬레이션 → 지능 제어 → 서비스)를 설계하고, 7주 단위 개발 로드맵을 수립했다.
+
+- 핵심 깨달음: 로봇(ROS 2)이 감지한 정보를 사용자에게 전달하려면 **반드시 백엔드 서버가 필요**하다. ROS 2 ↔ MQTT 브로커 ↔ FastAPI 서버 ↔ React 대시보드라는 데이터 흐름이 필요하다.
+
+## SDF 파일에 센서 추가하는 법
+Gazebo Harmonic에서 로봇에 센서를 추가하려면 SDF 파일 안에 `<link>` + `<sensor>` 조합으로 정의한다.
+
+1. **RGB-D 카메라**: `<sensor type="rgbd_camera">`로 정의. `<topic>` 태그로 Gazebo 토픽 이름을 지정한다. `<image>` 안에 해상도(width/height)와 FOV를 설정.
+2. **2D LiDAR**: `<sensor type="gpu_lidar">`로 정의. `<horizontal>`에 samples(360), min/max angle(-π~π)으로 360° 스캔. `<range>`에 최소/최대 감지 거리 설정.
+3. **IMU**: `<sensor type="imu">`로 정의. 가속도계 + 자이로스코프 데이터를 제공. 별도로 `gz-sim-imu-system` 플러그인을 모델에 추가해야 동작한다.
+4. 센서를 추가할 때 **inertia(관성)** 값을 반드시 설정해야 한다. 없으면 물리 시뮬레이션이 불안정해진다.
+
+## Differential Drive 구동 방식
+로봇 청소기처럼 양쪽 바퀴 속도를 다르게 해서 방향을 바꾸는 구동 방식이다.
+
+1. `gz-sim-diff-drive-system` 플러그인을 모델 SDF에 추가한다.
+2. `<left_joint>`, `<right_joint>`에 각각 바퀴 조인트 이름을 지정한다.
+3. `<wheel_separation>`(바퀴 간격)과 `<wheel_radius>`(바퀴 반지름)을 실제 모델 크기에 맞게 설정한다.
+4. `<topic>cmd_vel</topic>`으로 설정하면, `/cmd_vel` 토픽에 `Twist` 메시지를 보내서 로봇을 조종할 수 있다.
+5. 캐스터 휠은 `<joint type="ball">`로 자유 회전 가능하게 하고, 마찰을 0으로 설정(mu=0)하면 자연스럽게 끌려다닌다.
+
+## ros_gz_bridge로 Gazebo ↔ ROS 2 연결
+Gazebo와 ROS 2는 별개의 통신 체계를 사용하기 때문에 **브릿지**가 필요하다.
+
+1. `ros_gz_bridge`의 `parameter_bridge` 노드를 launch 파일에 추가한다.
+2. 인자 형식: `/토픽명@ROS타입[GZ타입` (GZ→ROS) 또는 `]` (ROS→GZ)
+   - 예: `/agribot/camera/image@sensor_msgs/msg/Image[gz.msgs.Image`
+3. 센서 데이터는 **GZ→ROS** 방향으로, 제어 명령(cmd_vel)은 **ROS→GZ** 방향으로 설정한다.
+4. `gz topic -l`로 실제 Gazebo 토픽 이름을 확인하고, 브릿지 매핑이 일치하는지 반드시 확인해야 한다.
+
+## ODE Trimesh 충돌 경고
+`ODE Message 2: Trimesh-trimesh contach hash table bucket overflow`라는 메시지가 반복 출력되었다.
+
+1. **원인**: GLB 메시를 collision geometry로 그대로 사용하면, ODE 물리 엔진이 삼각형 메시 간 충돌을 계산하느라 해시 테이블이 넘친다.
+2. **영향**: 시뮬레이션 속도가 느려지지만 (Real Time Factor < 1.0), 로봇 동작 자체에는 영향 없다.
+3. **해결법**: visual은 GLB 메시를 유지하되, collision만 간단한 box/cylinder로 교체하면 성능이 대폭 개선된다. (현재는 visual 유지를 위해 그대로 사용 중)
+
+## teleop_twist_keyboard 사용법
+`ros2 run teleop_twist_keyboard teleop_twist_keyboard`로 키보드 조종이 가능하다.
+
+- 키를 한 번 누르면 그 속도로 **계속 움직인다** (꾹 누르지 않아도 됨)
+- `i`=전진, `j`=좌회전, `l`=우회전, `k`=**정지**
+- `q`/`z`=속도 증가/감소
+- 반드시 **Gazebo Play 버튼(▶)**을 눌러야 물리 시뮬레이션이 시작된다.
