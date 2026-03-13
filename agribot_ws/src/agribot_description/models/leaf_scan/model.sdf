@@ -1,0 +1,25 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="leaf_scan">
+    <static>true</static>
+    <link name="link">
+      <pose>0 0 0 1.5708 0 0</pose>
+      <collision name="collision">
+        <geometry>
+          <mesh>
+            <uri>meshes/leaf_scan.glb</uri>
+            <scale>1.05 1.05 1.05</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <mesh>
+            <uri>meshes/leaf_scan.glb</uri>
+            <scale>1.05 1.05 1.05</scale>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+  </model>
+</sdf>
