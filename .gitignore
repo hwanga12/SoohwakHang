@@ -21,6 +21,9 @@ venv/
 # ─── C++ / C ───
 *.o
 *.obj
+!agribot_ws/src/agribot_description/models/agribot/meshes/agribot_gazebo.obj
+!agribot_ws/src/agribot_description/models/tomato/meshes/tomato_gazebo.obj
+agribot_ws/src/agribot_description/models/agribot/meshes/meshes_texture.jpg
 *.out
 *.app
 *.gch
