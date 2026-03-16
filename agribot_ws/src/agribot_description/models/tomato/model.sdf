@@ -19,7 +19,7 @@
         <geometry>
           <mesh>
             <uri>meshes/tomato.glb</uri>
-            <scale>1.05 1.05 1.05</scale>
+            <scale>0.75 0.75 0.75</scale>
           </mesh>
         </geometry>
       </collision>
@@ -27,7 +27,7 @@
         <geometry>
           <mesh>
             <uri>meshes/tomato_gazebo.obj</uri>
-            <scale>1.05 1.05 1.05</scale>
+            <scale>0.75 0.75 0.75</scale>
           </mesh>
         </geometry>
       </visual>
