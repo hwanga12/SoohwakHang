@@ -43,6 +43,7 @@
 
     <!-- Ground Plane (Farm Soil) -->
     <model name="ground_plane">
+      <pose>0 0 0 0 0 0</pose>
       <static>true</static>
       <link name="link">
         <collision name="collision">
@@ -72,34 +73,124 @@
     <!-- Greenhouse Structure -->
     <include>
       <uri>model://greenhouse</uri>
-      <pose>0 0 0 0 0 0</pose>
+      <pose>0 0 0.75 0 0 0</pose>
     </include>
 
     <!-- AgriBot Robot -->
     <include>
       <uri>model://agribot</uri>
-      <pose>0 0 0.2 0 0 0</pose>
+      <pose>0 0 2.3208 0 0 0</pose>
     </include>
 
     <!-- Tomato Plants -->
     <include>
       <name>tomato_plant_1</name>
       <uri>model://tomato_plant</uri>
-      <pose>3 3 0 0 0 0</pose>
+      <pose>-14.909500 8.246550 0.75 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_plant_2</name>
+      <uri>model://tomato_plant</uri>
+      <pose>24.113802 38.034698 -0.633620 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_plant_3</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-18.374901 183.241791 0.75 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_plant_4</name>
+      <uri>model://tomato_plant</uri>
+      <pose>18.267942 123.593002 0.75 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_plant_5</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-19.565804 113.801003 0.75 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_plant_6</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-24.939400 36.284130 0.75 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_plant_7</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-23.448051 49.087700 0.75 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_plant_8</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-17.341883 223.744995 0.75 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_plant_9</name>
+      <uri>model://tomato_plant</uri>
+      <pose>18.882439 165.570007 0.75 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_plant_10</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-19.184401 173.440430 0.75 0 0 0</pose>
     </include>
 
     <!-- Unhealthy Leaf (Condition Check) -->
     <include>
       <name>unhealthy_leaf_1</name>
       <uri>model://leaf_scan</uri>
-      <pose>3 2.5 0.5 0 0 0</pose>
+      <pose>3 2.5 1.25 0 0 0</pose>
     </include>
 
     <!-- Harvestable Tomato Fruit -->
     <include>
       <name>tomato_fruit_1</name>
       <uri>model://tomato</uri>
-      <pose>3.1 3.1 0.8 0 0 0</pose>
+      <pose>-18.022100 184.173050 7.397340 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_fruit_2</name>
+      <uri>model://tomato</uri>
+      <pose>17.251000 124.147000 5.947100 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_fruit_3</name>
+      <uri>model://tomato</uri>
+      <pose>-24.916800 35.514200 5.097000 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_fruit_4</name>
+      <uri>model://tomato</uri>
+      <pose>18.517401 166.456497 8.845720 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_fruit_5</name>
+      <uri>model://tomato</uri>
+      <pose>-18.741899 172.841766 6.857740 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_fruit_6</name>
+      <uri>model://tomato</uri>
+      <pose>-16.222799 223.334122 7.894010 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_fruit_7</name>
+      <uri>model://tomato</uri>
+      <pose>-20.290298 114.668999 5.374050 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_fruit_8</name>
+      <uri>model://tomato</uri>
+      <pose>23.098801 37.560902 3.802257 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_fruit_9</name>
+      <uri>model://tomato</uri>
+      <pose>-14.645500 7.605003 6.223570 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_fruit_10</name>
+      <uri>model://tomato</uri>
+      <pose>-23.171499 48.428997 4.593790 0 0 0</pose>
     </include>
 
   </world>

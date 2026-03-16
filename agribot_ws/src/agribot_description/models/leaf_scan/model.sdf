@@ -8,7 +8,7 @@
         <geometry>
           <mesh>
             <uri>meshes/leaf_scan.glb</uri>
-            <scale>1.05 1.05 1.05</scale>
+            <scale>10.05 10.05 10.05</scale>
           </mesh>
         </geometry>
       </collision>
@@ -16,7 +16,7 @@
         <geometry>
           <mesh>
             <uri>meshes/leaf_scan.glb</uri>
-            <scale>1.05 1.05 1.05</scale>
+            <scale>10.05 10.05 10.05</scale>
           </mesh>
         </geometry>
       </visual>
