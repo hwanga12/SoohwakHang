@@ -1,7 +1,6 @@
-# *🌱* AgriBot (좋은  — 스마트 농장 자율주행 채소 관리 로봇
+# 🌱 AgriBot — 스마트 농장 자율주행 채소 관리 로봇
 
 > Gazebo Harmonic과 ROS 2 Jazzy를 활용하여 비닐하우스/농장 환경을 자율주행하며 토마토·딸기 등의 채소를 관리하고, IoT 기기와 통신하는 로봇 시뮬레이션
-> 
 
 ---
 
@@ -51,8 +50,7 @@ sh tools/git-hooks/install.sh
 ```
 
 > **참고:** 이 훅은 브랜치명에서 Jira 이슈 키(예: `S14P-42`)를 추출하여 커밋 메시지 앞에 자동으로 붙여줍니다.
-예시: 브랜치 `feature/S14P-42-login` → 커밋 `"로그인 기능 추가"` → 결과: `"S14P-42 로그인 기능 추가"`
-> 
+> 예시: 브랜치 `feature/S14P-42-login` → 커밋 `"로그인 기능 추가"` → 결과: `"S14P-42 로그인 기능 추가"`
 
 ### 4. ROS 2 의존성 자동 설치
 
@@ -66,7 +64,7 @@ rosdep install --from-paths src --ignore-src -r -y
 
 ### 5. 워크스페이스 빌드
 
-- `-symlink-install` 옵션을 사용하면 Python 코드 수정 시 매번 빌드하지 않아도 반영됩니다.
+`--symlink-install` 옵션을 사용하면 Python 코드 수정 시 매번 빌드하지 않아도 반영됩니다.
 
 ```bash
 colcon build --symlink-install
@@ -105,11 +103,10 @@ ros2 launch agribot_bringup simulation.launch.py
 ```
 S14P21A602/                        ← Git 루트 (GitLab 레포)
 ├── README.md                      ← 빠른 시작 가이드
+├── 수확해조_프로젝트_계획_implementation_plan.md
 ├── .gitignore
 ├── tools/                         ← Git hooks 등 유틸
 │   └── git-hooks/
-├── docs/                          ← 프로젝트 문서 (설계서, 발표자료)
-│
 └── agribot_ws/                    ← ROS 2 Colcon 워크스페이스
     └── src/                       ← ⭐ 모든 코드가 여기에!
         ├── agribot_description/   # 🤖 로봇 모델, 월드, URDF, 런치
@@ -179,7 +176,7 @@ agribot_description/
 - 런치 파일 (`launch/`)
 - 설정 파일 (`config/*.yaml`)
 - 로봇/환경 모델 (`models/`, `urdf/`, `worlds/`)
-- 문서 (`docs/`)
+- 문서 (`README.md`, `*.md`)
 - `.gitignore`, `README.md`
 
 ### ❌ 절대 올리면 안 되는 것 (Commit 금지)
@@ -201,55 +198,54 @@ agribot_description/
 | 외부 공유 (구글 드라이브) | ⭐ | “링크 어디였지?” 혼란 발생 확률 높음 |
 
 > **💡 결론:** `.glb` 파일 총합이 100MB 이하이면 직접 커밋, 500MB 이상이면 Git LFS를 고려하세요.
-만약 무거운 배경(World) 모델이 있다면, 메인 로봇 모델은 직접 커밋 + 무거운 배경은 외부 저장소 + 다운로드 스크립트(`download_models.sh`)를 만드는 하이브리드 방식도 좋습니다.
-> 
+> 만약 무거운 배경(World) 모델이 있다면, 메인 로봇 모델은 직접 커밋 + 무거운 배경은 외부 저장소 + 다운로드 스크립트(`download_models.sh`)를 만드는 하이브리드 방식도 좋습니다.
 
-# GIT LFS 하는 법 !
+## Git LFS 빠른 가이드
 
 ## 1. Git LFS 설치 및 초기화
 
 먼저 내 컴퓨터에 LFS가 설치되어 있어야 합니다. (팀원들도 한 번씩은 해야 합니다.)
 
-Bash
-
-`# LFS 설치 (Ubuntu 기준)
+```bash
+# LFS 설치 (Ubuntu 기준)
 sudo apt install git-lfs
 
 # Git LFS 활성화 (계정당 한 번만 수행)
-git lfs install`
+git lfs install
+```
 
 ## 2. 관리할 에셋 확장자 지정
 
 어떤 파일들을 LFS로 관리할지 프로젝트 폴더에서 정해줘야 합니다. 보통 Gazebo에서 쓰는 대용량 파일들을 등록합니다.
 
-Bash
-
-`# .stl, .dae, .png 같은 파일들을 LFS 관리 대상으로 등록
+```bash
+# .stl, .dae, .png 같은 파일들을 LFS 관리 대상으로 등록
 git lfs track "*.stl"
 git lfs track "*.dae"
 git lfs track "*.png"
 git lfs track "*.jpg"
 
 # 설정 저장 (매우 중요: .gitattributes 파일이 생성됩니다)
-git add .gitattributes`
+git add .gitattributes
+```
 
 ## 3. 평소처럼 사용하기
 
 설정이 끝났다면 평소 Git 사용법과 똑같습니다.
 
-Bash
-
-`git add src/my_robot_description/meshes/huge_model.dae
+```bash
+git add src/my_robot_description/meshes/huge_model.dae
 git commit -m "Add robot mesh assets with LFS"
-git push origin main`
+git push origin main
+```
 
 ## 4. 팀원이 코드를 받을 때
 
 팀원이 `git clone`을 하면 LFS 파일들도 자동으로 다운로드됩니다. 만약 파일이 깨져 보이거나 포인터(텍스트)만 보인다면 아래 명령어를 입력하면 됩니다.
 
-Bash
-
-`git lfs pull`
+```bash
+git lfs pull
+```
 
 ---
 
@@ -260,7 +256,7 @@ Bash
 
 ### .gitignore (전체)
 
-```
+```gitignore
 # ─── ROS 2 빌드 산출물 (가장 중요) ───
 build/
 install/
@@ -325,3 +321,104 @@ rosbag2_*/
 core
 core.*
 ```
+
+---
+
+## 🌿 Git 브랜치 전략
+
+6명이 병렬로 작업하므로, 브랜치 전략은 단순하고 재현 가능해야 합니다.
+
+| 브랜치 | 역할 | 규칙 |
+|---|---|---|
+| `main` | 발표/제출용 안정 브랜치 | 직접 push 금지, `develop`에서 검증 후 MR |
+| `develop` | 통합 개발 브랜치 | 모든 기능 브랜치의 기본 분기점 |
+| `feature/<JIRA>-<slug>` | 기능 개발 | 예: `feature/S14P-201-nav2-tuning` |
+| `bugfix/<JIRA>-<slug>` | 버그 수정 | 예: `bugfix/S14P-503-alert-save-fix` |
+| `docs/<JIRA>-<slug>` | 문서 수정 | 예: `docs/S14P-603-readme-sync` |
+
+권장 작업 흐름:
+
+```bash
+git checkout develop
+git pull origin develop
+git checkout -b feature/S14P-201-nav2-tuning
+
+# 작업 후
+git add .
+git commit -m "feat: Nav2 AMCL 파라미터 추가"
+git push origin feature/S14P-201-nav2-tuning
+```
+
+Merge Request 규칙:
+
+- Jira 티켓 1개당 브랜치 1개를 사용합니다.
+- MR 제목은 이슈 키로 시작합니다.
+- 실행 방법, 테스트 방법, 스크린샷 또는 로그를 MR 설명에 남깁니다.
+- 팀원 1명 이상 리뷰 후 `develop`에 병합합니다.
+
+---
+
+## 👥 6인 협업 분담 예시
+
+| 담당자 | 주 역할 | 담당 패키지 |
+|---|---|---|
+| 팀원 A | 시뮬레이션/월드/통합 실행 환경 | `agribot_description`, `agribot_bringup` |
+| 팀원 B | 자율주행/Nav2/SLAM | `agribot_navigation` |
+| 팀원 C | 인지/데이터셋/추론 | `agribot_perception` |
+| 팀원 D | 미션 매니저/수확/행동 제어 | `agribot_control` |
+| 팀원 E | MQTT/백엔드/API | `agribot_iot`, `backend` |
+| 팀원 F | 프론트엔드/QA/문서화 | `frontend`, 통합 검증 |
+
+상세 티켓 분배와 일정은 `수확해조_프로젝트_계획_implementation_plan.md`를 기준으로 관리하는 것을 권장합니다.
+
+---
+
+## 🔧 자주 쓰는 명령어
+
+### 빌드 & 실행
+
+```bash
+cd ~/S14P21A602/agribot_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install
+source install/setup.bash
+
+ros2 launch agribot_bringup simulation.launch.py
+```
+
+### 패키지별 빌드
+
+```bash
+cd ~/S14P21A602/agribot_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select agribot_navigation
+source install/setup.bash
+```
+
+### ROS 2 디버깅
+
+```bash
+ros2 topic list
+ros2 topic echo /agribot/lidar/scan
+ros2 topic echo /agribot/camera/image
+ros2 node list
+rqt_graph
+```
+
+### Git 작업
+
+```bash
+git checkout develop
+git pull origin develop
+git checkout -b feature/S14P-101-sim-bridge-align
+
+git add .
+git commit -m "feat: 센서 브리지 정합성 점검"
+git push origin feature/S14P-101-sim-bridge-align
+```
+
+---
+
+## 📄 라이선스
+
+Apache-2.0
