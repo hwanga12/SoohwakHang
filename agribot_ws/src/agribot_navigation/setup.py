@@ -32,7 +32,9 @@ setup(
         'console_scripts': [
             'generate_static_map = agribot_navigation.generate_static_map:main',
             'validate_patrol_waypoints = agribot_navigation.patrol_config:main',
+            'plan_harvest_route = agribot_navigation.harvest_routing:main',
             'patrol_node = agribot_navigation.patrol_node:main',
+            'harvest_route_node = agribot_navigation.harvest_route_node:main',
         ],
     },
 )
