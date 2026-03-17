@@ -33,6 +33,11 @@ def generate_launch_description():
         'config',
         'nav2_params.yaml',
     )
+    default_patrol_waypoints = os.path.join(
+        pkg_agribot_navigation,
+        'config',
+        'patrol_waypoints.yaml',
+    )
     default_rviz_config = os.path.join(
         pkg_agribot_navigation,
         'rviz',
@@ -88,6 +93,21 @@ def generate_launch_description():
         'log_level',
         default_value='info',
         description='Log level for Nav2 nodes.',
+    )
+    use_patrol_arg = DeclareLaunchArgument(
+        'use_patrol',
+        default_value='true',
+        description='Launch the patrol control node alongside Nav2.',
+    )
+    patrol_waypoints_arg = DeclareLaunchArgument(
+        'patrol_waypoints_file',
+        default_value=default_patrol_waypoints,
+        description='Path to patrol waypoint metadata used by patrol_node.',
+    )
+    patrol_autostart_arg = DeclareLaunchArgument(
+        'patrol_autostart',
+        default_value='false',
+        description='Start the patrol automatically after the stack launches.',
     )
 
     localization = IncludeLaunchDescription(
@@ -209,6 +229,19 @@ def generate_launch_description():
         output='screen',
     )
 
+    patrol_node = Node(
+        package='agribot_navigation',
+        executable='patrol_node',
+        name='patrol_node',
+        output='screen',
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'patrol_waypoints_file': LaunchConfiguration('patrol_waypoints_file'),
+            'auto_start': LaunchConfiguration('patrol_autostart'),
+        }],
+        condition=IfCondition(LaunchConfiguration('use_patrol')),
+    )
+
     return LaunchDescription([
         use_sim_time_arg,
         world_arg,
@@ -220,6 +253,9 @@ def generate_launch_description():
         autostart_arg,
         use_respawn_arg,
         log_level_arg,
+        use_patrol_arg,
+        patrol_waypoints_arg,
+        patrol_autostart_arg,
         localization,
         controller_server,
         planner_server,
@@ -228,5 +264,6 @@ def generate_launch_description():
         bt_navigator,
         waypoint_follower,
         lifecycle_manager,
+        patrol_node,
         rviz,
     ])

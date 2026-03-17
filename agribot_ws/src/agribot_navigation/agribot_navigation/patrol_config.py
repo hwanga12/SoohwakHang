@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ament_index_python.packages import get_package_share_directory
 import yaml
 
 
@@ -64,9 +65,14 @@ class PatrolPlan:
     frame_id: str
     zone_id: str
     home_pose_id: str
+    recommended_observation_dwell_sec: float
     waypoints: dict[str, Waypoint]
     routes: dict[str, PatrolRoute]
     default_patrol_sequence: tuple[str, ...]
+
+
+def get_default_patrol_waypoints_path() -> Path:
+    return Path(get_package_share_directory('agribot_navigation')) / 'config' / 'patrol_waypoints.yaml'
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -130,6 +136,9 @@ def _validate_references(plan: PatrolPlan) -> None:
     if plan.home_pose_id not in plan.waypoints:
         raise ValueError(f'home_pose_id does not match any waypoint: {plan.home_pose_id}')
 
+    if plan.recommended_observation_dwell_sec < 0.0:
+        raise ValueError('recommended_observation_dwell_sec must be non-negative.')
+
     if not plan.default_patrol_sequence:
         raise ValueError('default_patrol_sequence must contain at least one waypoint id.')
 
@@ -157,11 +166,18 @@ def _validate_references(plan: PatrolPlan) -> None:
 
 def load_patrol_plan(path: Path) -> PatrolPlan:
     payload = _load_yaml(path)
+    robot_constraints = payload.get('robot_constraints', {})
+    if robot_constraints is None:
+        robot_constraints = {}
+
     plan = PatrolPlan(
         schema_version=int(payload['schema_version']),
         frame_id=str(payload['frame_id']),
         zone_id=str(payload['zone_id']),
         home_pose_id=str(payload['home_pose_id']),
+        recommended_observation_dwell_sec=float(
+            robot_constraints.get('recommended_observation_dwell_sec', 0.0)
+        ),
         waypoints=_load_waypoints(list(payload.get('waypoints', []))),
         routes=_load_routes(list(payload.get('routes', []))),
         default_patrol_sequence=tuple(
@@ -173,14 +189,13 @@ def load_patrol_plan(path: Path) -> PatrolPlan:
 
 
 def parse_args() -> argparse.Namespace:
-    package_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(
         description='Validate and summarize agribot patrol waypoint metadata.',
     )
     parser.add_argument(
         '--patrol-waypoints',
         type=Path,
-        default=package_root / 'config' / 'patrol_waypoints.yaml',
+        default=get_default_patrol_waypoints_path(),
         help='Path to patrol_waypoints.yaml.',
     )
     return parser.parse_args()
@@ -198,7 +213,8 @@ def main() -> int:
     print(
         f'- {len(plan.waypoints)} waypoints, '
         f'{len(plan.routes)} routes, '
-        f'{len(plan.default_patrol_sequence)} sequence entries'
+        f'{len(plan.default_patrol_sequence)} sequence entries, '
+        f'{plan.recommended_observation_dwell_sec:.1f}s inspect dwell'
     )
     for route in plan.routes.values():
         print(
