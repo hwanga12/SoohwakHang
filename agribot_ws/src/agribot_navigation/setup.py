@@ -31,6 +31,7 @@ setup(
     entry_points={
         'console_scripts': [
             'generate_static_map = agribot_navigation.generate_static_map:main',
+            'validate_patrol_waypoints = agribot_navigation.patrol_config:main',
         ],
     },
 )
