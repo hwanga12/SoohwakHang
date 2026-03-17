@@ -4,14 +4,6 @@
     <static>true</static>
     <link name="link">
       <pose>0 0 0 1.5708 0 0</pose>
-      <collision name="collision">
-        <geometry>
-          <mesh>
-            <uri>meshes/leaf_scan.glb</uri>
-            <scale>10.05 10.05 10.05</scale>
-          </mesh>
-        </geometry>
-      </collision>
       <visual name="visual">
         <geometry>
           <mesh>

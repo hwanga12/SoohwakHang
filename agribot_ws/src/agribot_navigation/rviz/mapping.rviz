@@ -7,6 +7,8 @@ Panels:
         - /Global Options1
         - /Map1
         - /LaserScan1
+        - /Global Plan1
+        - /Local Plan1
         - /TF1
       Splitter Ratio: 0.55
     Tree Height: 420
@@ -100,6 +102,62 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 255; 0; 0
+      Enabled: true
+      Head Diameter: 0.02
+      Head Length: 0.02
+      Length: 0.3
+      Line Style: Lines
+      Line Width: 0.03
+      Name: Global Plan
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.03
+      Shaft Diameter: 0.01
+      Shaft Length: 0.02
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /plan
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 0; 12; 255
+      Enabled: true
+      Head Diameter: 0.02
+      Head Length: 0.02
+      Length: 0.3
+      Line Style: Lines
+      Line Width: 0.03
+      Name: Local Plan
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.03
+      Shaft Diameter: 0.01
+      Shaft Length: 0.02
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_plan
+      Value: true
     - Class: rviz_default_plugins/TF
       Enabled: true
       Filter (blacklist): ""
@@ -180,6 +238,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /clicked_point
+    - Class: nav2_rviz_plugins/GoalTool
   Value: true
   Views:
     Current:

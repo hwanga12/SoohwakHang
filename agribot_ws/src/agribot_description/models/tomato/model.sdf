@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <sdf version="1.9">
   <model name="tomato">
-    <static>false</static>
+    <static>true</static>
     <link name="link">
       <pose>0 0 0 1.5708 0 0</pose>
       <inertial>
@@ -15,14 +15,6 @@
           <iyz>0</iyz>
         </inertia>
       </inertial>
-      <collision name="collision">
-        <geometry>
-          <mesh>
-            <uri>meshes/tomato.glb</uri>
-            <scale>0.75 0.75 0.75</scale>
-          </mesh>
-        </geometry>
-      </collision>
       <visual name="visual">
         <geometry>
           <mesh>

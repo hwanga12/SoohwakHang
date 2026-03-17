@@ -70,6 +70,84 @@
       </link>
     </model>
 
+    <!--
+      Keep the detailed greenhouse / crop visuals, but use simple collision
+      proxies so physics and LiDAR do not trace against heavy triangle meshes.
+    -->
+    <model name="greenhouse_collision_proxy">
+      <static>true</static>
+      <link name="link">
+        <collision name="left_wall">
+          <pose>-29.6 112.5 2.0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.8 235.0 4.0</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name="right_wall">
+          <pose>29.6 112.5 2.0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.8 235.0 4.0</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name="rear_wall">
+          <pose>0 229.6 2.0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>60.0 0.8 4.0</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name="front_wall_left">
+          <pose>-17.0 -4.6 2.0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>26.0 0.8 4.0</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name="front_wall_right">
+          <pose>17.0 -4.6 2.0 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>26.0 0.8 4.0</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+
+    <model name="crop_bed_left_collision_proxy">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <pose>-19.92445 115.9957725 0.9 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>15.0299 223.498445 1.8</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+
+    <model name="crop_bed_right_collision_proxy">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <pose>21.190872 101.8023525 0.9 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>10.84586 135.535309 1.8</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+
     <!-- Greenhouse Structure -->
     <include>
       <uri>model://greenhouse</uri>
