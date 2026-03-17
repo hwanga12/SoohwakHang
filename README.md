@@ -159,7 +159,7 @@ agribot_description/
 
 | 타입 | 파일명 | 설명 |
 | --- | --- | --- |
-| msg | `CropStatus.msg` | 작물 이름, 건강도, 성장 단계, 물 필요 여부, 수확 가능 여부, 위치 |
+| msg | `CropStatus.msg` | `crop_id`, `zone_id`, `plant_id`, `tomato_id`, 작물 이름, 상태값, 위치 |
 | msg | `IoTCommand.msg` | IoT 기기 ID, 명령 유형, 목표 값, 단위 |
 | msg | `EnvironmentData.msg` | 온도, 습도, 토양 수분, 조도, CO2 농도, 구역 ID |
 | srv | `SetHumidity.srv` | 구역별 목표 습도 설정 요청 → 성공 여부/현재 습도 응답 |

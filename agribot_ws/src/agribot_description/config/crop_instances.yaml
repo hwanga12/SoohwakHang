@@ -1,0 +1,281 @@
+# Single source of truth for canonical plant / tomato IDs in the simulation.
+# External systems should use these canonical IDs instead of raw Gazebo model names.
+
+schema_version: 1
+frame_id: map
+world_file: agribot_description/worlds/farm_world.sdf
+default_zone_id: greenhouse_01
+
+id_policy:
+  zone_prefixes:
+    greenhouse_01: gh01
+  plant_id_pattern: "<zone_prefix>_plant_<nn>"
+  tomato_id_pattern: "<plant_id>_tomato_<nn>"
+  crop_status_contract:
+    plant_status_crop_id: plant_id
+    tomato_status_crop_id: tomato_id
+    plant_status_tomato_id: ""
+
+plants:
+  - plant_id: gh01_plant_01
+    crop_id: gh01_plant_01
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: plant
+    display_name: Tomato Plant 01
+    world_model_name: tomato_plant_1
+    pose:
+      x: -14.909500
+      y: 8.246550
+      z: 0.75
+      yaw: 0.0
+  - plant_id: gh01_plant_02
+    crop_id: gh01_plant_02
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: plant
+    display_name: Tomato Plant 02
+    world_model_name: tomato_plant_2
+    pose:
+      x: 24.113802
+      y: 38.034698
+      z: -0.633620
+      yaw: 0.0
+  - plant_id: gh01_plant_03
+    crop_id: gh01_plant_03
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: plant
+    display_name: Tomato Plant 03
+    world_model_name: tomato_plant_3
+    pose:
+      x: -18.374901
+      y: 183.241791
+      z: 0.75
+      yaw: 0.0
+  - plant_id: gh01_plant_04
+    crop_id: gh01_plant_04
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: plant
+    display_name: Tomato Plant 04
+    world_model_name: tomato_plant_4
+    pose:
+      x: 18.267942
+      y: 123.593002
+      z: 0.75
+      yaw: 0.0
+  - plant_id: gh01_plant_05
+    crop_id: gh01_plant_05
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: plant
+    display_name: Tomato Plant 05
+    world_model_name: tomato_plant_5
+    pose:
+      x: -19.565804
+      y: 113.801003
+      z: 0.75
+      yaw: 0.0
+  - plant_id: gh01_plant_06
+    crop_id: gh01_plant_06
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: plant
+    display_name: Tomato Plant 06
+    world_model_name: tomato_plant_6
+    pose:
+      x: -24.939400
+      y: 36.284130
+      z: 0.75
+      yaw: 0.0
+  - plant_id: gh01_plant_07
+    crop_id: gh01_plant_07
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: plant
+    display_name: Tomato Plant 07
+    world_model_name: tomato_plant_7
+    pose:
+      x: -23.448051
+      y: 49.087700
+      z: 0.75
+      yaw: 0.0
+  - plant_id: gh01_plant_08
+    crop_id: gh01_plant_08
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: plant
+    display_name: Tomato Plant 08
+    world_model_name: tomato_plant_8
+    pose:
+      x: -17.341883
+      y: 223.744995
+      z: 0.75
+      yaw: 0.0
+  - plant_id: gh01_plant_09
+    crop_id: gh01_plant_09
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: plant
+    display_name: Tomato Plant 09
+    world_model_name: tomato_plant_9
+    pose:
+      x: 18.882439
+      y: 165.570007
+      z: 0.75
+      yaw: 0.0
+  - plant_id: gh01_plant_10
+    crop_id: gh01_plant_10
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: plant
+    display_name: Tomato Plant 10
+    world_model_name: tomato_plant_10
+    pose:
+      x: -19.184401
+      y: 173.440430
+      z: 0.75
+      yaw: 0.0
+
+tomatoes:
+  - tomato_id: gh01_plant_01_tomato_01
+    crop_id: gh01_plant_01_tomato_01
+    parent_plant_id: gh01_plant_01
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: tomato_fruit
+    display_name: Tomato Fruit 01-01
+    world_model_name: tomato_fruit_9
+    pose:
+      x: -14.645500
+      y: 7.605003
+      z: 6.223570
+      yaw: 0.0
+    ready_to_harvest: true
+  - tomato_id: gh01_plant_02_tomato_01
+    crop_id: gh01_plant_02_tomato_01
+    parent_plant_id: gh01_plant_02
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: tomato_fruit
+    display_name: Tomato Fruit 02-01
+    world_model_name: tomato_fruit_8
+    pose:
+      x: 23.098801
+      y: 37.560902
+      z: 3.802257
+      yaw: 0.0
+    ready_to_harvest: true
+  - tomato_id: gh01_plant_03_tomato_01
+    crop_id: gh01_plant_03_tomato_01
+    parent_plant_id: gh01_plant_03
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: tomato_fruit
+    display_name: Tomato Fruit 03-01
+    world_model_name: tomato_fruit_1
+    pose:
+      x: -18.022100
+      y: 184.173050
+      z: 7.397340
+      yaw: 0.0
+    ready_to_harvest: true
+  - tomato_id: gh01_plant_04_tomato_01
+    crop_id: gh01_plant_04_tomato_01
+    parent_plant_id: gh01_plant_04
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: tomato_fruit
+    display_name: Tomato Fruit 04-01
+    world_model_name: tomato_fruit_2
+    pose:
+      x: 17.251000
+      y: 124.147000
+      z: 5.947100
+      yaw: 0.0
+    ready_to_harvest: true
+  - tomato_id: gh01_plant_05_tomato_01
+    crop_id: gh01_plant_05_tomato_01
+    parent_plant_id: gh01_plant_05
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: tomato_fruit
+    display_name: Tomato Fruit 05-01
+    world_model_name: tomato_fruit_7
+    pose:
+      x: -20.290298
+      y: 114.668999
+      z: 5.374050
+      yaw: 0.0
+    ready_to_harvest: true
+  - tomato_id: gh01_plant_06_tomato_01
+    crop_id: gh01_plant_06_tomato_01
+    parent_plant_id: gh01_plant_06
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: tomato_fruit
+    display_name: Tomato Fruit 06-01
+    world_model_name: tomato_fruit_3
+    pose:
+      x: -24.916800
+      y: 35.514200
+      z: 5.097000
+      yaw: 0.0
+    ready_to_harvest: true
+  - tomato_id: gh01_plant_07_tomato_01
+    crop_id: gh01_plant_07_tomato_01
+    parent_plant_id: gh01_plant_07
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: tomato_fruit
+    display_name: Tomato Fruit 07-01
+    world_model_name: tomato_fruit_10
+    pose:
+      x: -23.171499
+      y: 48.428997
+      z: 4.593790
+      yaw: 0.0
+    ready_to_harvest: true
+  - tomato_id: gh01_plant_08_tomato_01
+    crop_id: gh01_plant_08_tomato_01
+    parent_plant_id: gh01_plant_08
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: tomato_fruit
+    display_name: Tomato Fruit 08-01
+    world_model_name: tomato_fruit_6
+    pose:
+      x: -16.222799
+      y: 223.334122
+      z: 7.894010
+      yaw: 0.0
+    ready_to_harvest: true
+  - tomato_id: gh01_plant_09_tomato_01
+    crop_id: gh01_plant_09_tomato_01
+    parent_plant_id: gh01_plant_09
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: tomato_fruit
+    display_name: Tomato Fruit 09-01
+    world_model_name: tomato_fruit_4
+    pose:
+      x: 18.517401
+      y: 166.456497
+      z: 8.845720
+      yaw: 0.0
+    ready_to_harvest: true
+  - tomato_id: gh01_plant_10_tomato_01
+    crop_id: gh01_plant_10_tomato_01
+    parent_plant_id: gh01_plant_10
+    zone_id: greenhouse_01
+    crop_name: tomato
+    crop_type: tomato_fruit
+    display_name: Tomato Fruit 10-01
+    world_model_name: tomato_fruit_5
+    pose:
+      x: -18.741899
+      y: 172.841766
+      z: 6.857740
+      yaw: 0.0
+    ready_to_harvest: true
