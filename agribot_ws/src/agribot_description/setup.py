@@ -57,6 +57,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'odom_tf_broadcaster = agribot_description.odom_tf_broadcaster:main',
         ],
     },
 )

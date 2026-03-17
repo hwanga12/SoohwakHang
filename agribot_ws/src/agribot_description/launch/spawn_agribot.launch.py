@@ -11,6 +11,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -38,6 +39,14 @@ def generate_launch_description():
             pkg_agribot_description, 'worlds', 'farm_world.sdf'
         ),
         description='Path to the Gazebo world file'
+    )
+    publish_map_to_odom_tf_arg = DeclareLaunchArgument(
+        'publish_map_to_odom_tf',
+        default_value='true',
+        description=(
+            'Publish a temporary static map -> odom transform. '
+            'Disable this when SLAM or localization provides map -> odom.'
+        ),
     )
 
     # Gazebo Harmonic simulation
@@ -111,13 +120,97 @@ def generate_launch_description():
         output='screen',
     )
 
+    # Gazebo publishes odometry on /odom, but RViz and tf2 also need the same
+    # relation on /tf so the robot body and sensors form one frame tree.
+    odom_tf_broadcaster = Node(
+        package='agribot_description',
+        executable='odom_tf_broadcaster',
+        name='odom_tf_broadcaster',
+        output='screen',
+    )
+
+    map_to_odom_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='map_to_odom_tf',
+        arguments=[
+            '--x', '0',
+            '--y', '0',
+            '--z', '0',
+            '--roll', '0',
+            '--pitch', '0',
+            '--yaw', '0',
+            '--frame-id', 'map',
+            '--child-frame-id', 'odom',
+        ],
+        condition=IfCondition(LaunchConfiguration('publish_map_to_odom_tf')),
+        output='screen',
+    )
+
+    base_to_camera_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='base_link_to_camera_link_tf',
+        arguments=[
+            '--x', '0.2',
+            '--y', '0',
+            '--z', '0.1',
+            '--roll', '0',
+            '--pitch', '0',
+            '--yaw', '0',
+            '--frame-id', 'base_link',
+            '--child-frame-id', 'camera_link',
+        ],
+        output='screen',
+    )
+
+    base_to_lidar_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='base_link_to_lidar_link_tf',
+        arguments=[
+            '--x', '0',
+            '--y', '0',
+            '--z', '0.15',
+            '--roll', '0',
+            '--pitch', '0',
+            '--yaw', '0',
+            '--frame-id', 'base_link',
+            '--child-frame-id', 'lidar_link',
+        ],
+        output='screen',
+    )
+
+    base_to_imu_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='base_link_to_imu_link_tf',
+        arguments=[
+            '--x', '0',
+            '--y', '0',
+            '--z', '0.05',
+            '--roll', '0',
+            '--pitch', '0',
+            '--yaw', '0',
+            '--frame-id', 'base_link',
+            '--child-frame-id', 'imu_link',
+        ],
+        output='screen',
+    )
+
     return LaunchDescription([
         gz_resource_path,
         world_arg,
+        publish_map_to_odom_tf_arg,
         gz_sim,
         state_bridge,
         camera_info_bridge,
         lidar_bridge,
         camera_image_bridge,
         camera_depth_bridge,
+        odom_tf_broadcaster,
+        map_to_odom_tf,
+        base_to_camera_tf,
+        base_to_lidar_tf,
+        base_to_imu_tf,
     ])
