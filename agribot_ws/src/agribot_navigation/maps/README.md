@@ -32,6 +32,15 @@ After RViz opens for navigation:
 - use `2D Goal Pose` to request a goal in the greenhouse aisle
 - confirm `/plan` and `/local_plan` update while the robot follows the route
 
+Validate the committed patrol coordinate file for `S14P-205`:
+
+```bash
+ros2 run agribot_navigation validate_patrol_waypoints
+```
+
+The default row-level patrol metadata lives at
+`agribot_navigation/config/patrol_waypoints.yaml`.
+
 If you regenerate the map from a live SLAM session later, save it with:
 
 ```bash
