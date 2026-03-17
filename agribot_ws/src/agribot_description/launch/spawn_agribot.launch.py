@@ -74,11 +74,19 @@ def generate_launch_description():
             '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
             # IMU — GZ → ROS
             '/agribot/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
-            # Command Velocity — ROS → GZ (for teleop and Nav2)
-            '/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist',
+            # Command velocity goes through a watchdog so stale teleop / Nav2
+            # commands are turned into an explicit zero-twist stop.
+            '/cmd_vel_safe@geometry_msgs/msg/Twist]gz.msgs.Twist',
             # Odometry — GZ → ROS
             '/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry',
         ],
+        output='screen',
+    )
+
+    cmd_vel_watchdog = Node(
+        package='agribot_description',
+        executable='cmd_vel_watchdog',
+        name='cmd_vel_watchdog',
         output='screen',
     )
 
@@ -203,6 +211,7 @@ def generate_launch_description():
         world_arg,
         publish_map_to_odom_tf_arg,
         gz_sim,
+        cmd_vel_watchdog,
         state_bridge,
         camera_info_bridge,
         lidar_bridge,
