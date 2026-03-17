@@ -38,6 +38,11 @@ def generate_launch_description():
         'config',
         'patrol_waypoints.yaml',
     )
+    default_crop_instances = os.path.join(
+        pkg_agribot_description,
+        'config',
+        'crop_instances.yaml',
+    )
     default_rviz_config = os.path.join(
         pkg_agribot_navigation,
         'rviz',
@@ -108,6 +113,21 @@ def generate_launch_description():
         'patrol_autostart',
         default_value='false',
         description='Start the patrol automatically after the stack launches.',
+    )
+    use_harvest_route_arg = DeclareLaunchArgument(
+        'use_harvest_route',
+        default_value='true',
+        description='Launch the harvest approach/return coordinator node.',
+    )
+    crop_instances_arg = DeclareLaunchArgument(
+        'crop_instances_file',
+        default_value=default_crop_instances,
+        description='Path to crop_instances.yaml used for harvest target metadata.',
+    )
+    harvest_return_mode_arg = DeclareLaunchArgument(
+        'harvest_return_mode',
+        default_value='',
+        description='Optional override for harvest return mode: empty, resume_patrol, or home.',
     )
 
     localization = IncludeLaunchDescription(
@@ -242,6 +262,20 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('use_patrol')),
     )
 
+    harvest_route_node = Node(
+        package='agribot_navigation',
+        executable='harvest_route_node',
+        name='harvest_route_node',
+        output='screen',
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'patrol_waypoints_file': LaunchConfiguration('patrol_waypoints_file'),
+            'crop_instances_file': LaunchConfiguration('crop_instances_file'),
+            'return_mode_override': LaunchConfiguration('harvest_return_mode'),
+        }],
+        condition=IfCondition(LaunchConfiguration('use_harvest_route')),
+    )
+
     return LaunchDescription([
         use_sim_time_arg,
         world_arg,
@@ -256,6 +290,9 @@ def generate_launch_description():
         use_patrol_arg,
         patrol_waypoints_arg,
         patrol_autostart_arg,
+        use_harvest_route_arg,
+        crop_instances_arg,
+        harvest_return_mode_arg,
         localization,
         controller_server,
         planner_server,
@@ -265,5 +302,6 @@ def generate_launch_description():
         waypoint_follower,
         lifecycle_manager,
         patrol_node,
+        harvest_route_node,
         rviz,
     ])
