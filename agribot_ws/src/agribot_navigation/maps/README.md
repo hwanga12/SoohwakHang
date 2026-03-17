@@ -31,6 +31,7 @@ After RViz opens for navigation:
 - use `2D Pose Estimate` once to initialize AMCL
 - use `2D Goal Pose` to request a goal in the greenhouse aisle
 - confirm `/plan` and `/local_plan` update while the robot follows the route
+- keep the idle `patrol_node` running so patrol services are available
 
 Validate the committed patrol coordinate file for `S14P-205`:
 
@@ -40,6 +41,20 @@ ros2 run agribot_navigation validate_patrol_waypoints
 
 The default row-level patrol metadata lives at
 `agribot_navigation/config/patrol_waypoints.yaml`.
+
+Start, stop, and resume the `S14P-206` patrol sequence with:
+
+```bash
+ros2 service call /patrol/start std_srvs/srv/Trigger "{}"
+ros2 service call /patrol/stop std_srvs/srv/Trigger "{}"
+ros2 service call /patrol/resume std_srvs/srv/Trigger "{}"
+```
+
+Watch the patrol state machine over the published status topic:
+
+```bash
+ros2 topic echo /patrol/status
+```
 
 If you regenerate the map from a live SLAM session later, save it with:
 

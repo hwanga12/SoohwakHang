@@ -32,6 +32,7 @@ setup(
         'console_scripts': [
             'generate_static_map = agribot_navigation.generate_static_map:main',
             'validate_patrol_waypoints = agribot_navigation.patrol_config:main',
+            'patrol_node = agribot_navigation.patrol_node:main',
         ],
     },
 )
