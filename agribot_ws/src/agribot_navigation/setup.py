@@ -30,6 +30,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'generate_static_map = agribot_navigation.generate_static_map:main',
         ],
     },
 )
