@@ -12,6 +12,14 @@ Preview the saved map in RViz without Gazebo:
 ros2 launch agribot_navigation map_preview.launch.py
 ```
 
+Run Gazebo with the saved map and AMCL localization:
+
+```bash
+ros2 launch agribot_navigation localization.launch.py
+```
+
+After RViz opens, use the `2D Pose Estimate` tool to publish `/initialpose`.
+
 If you regenerate the map from a live SLAM session later, save it with:
 
 ```bash
