@@ -46,7 +46,9 @@ def generate_launch_description():
             os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
         launch_arguments={
-            'gz_args': LaunchConfiguration('world'),
+            # Start the simulation immediately so bridged sensor topics publish
+            # without requiring a manual "play" click in the Gazebo GUI.
+            'gz_args': ['-r ', LaunchConfiguration('world')],
         }.items(),
     )
 
@@ -54,19 +56,13 @@ def generate_launch_description():
     # Bridges Gazebo topics ↔ ROS 2 topics
     # Format: /gz_topic@ros_type[gz_type  (GZ→ROS)
     # Format: /gz_topic@ros_type]gz_type  (ROS→GZ)
-    bridge = Node(
+    state_bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
-        name='ros_gz_bridge',
+        name='ros_gz_state_bridge',
         arguments=[
-            # Camera (RGB Image) — GZ → ROS
-            '/agribot/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
-            # Camera (Depth Image) — GZ → ROS
-            '/agribot/camera/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
-            # Camera Info — GZ → ROS
-            '/agribot/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
-            # LiDAR Scan — GZ → ROS
-            '/agribot/lidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
+            # Clock — GZ → ROS
+            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
             # IMU — GZ → ROS
             '/agribot/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
             # Command Velocity — ROS → GZ (for teleop and Nav2)
@@ -77,9 +73,51 @@ def generate_launch_description():
         output='screen',
     )
 
+    camera_info_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        name='ros_gz_camera_info_bridge',
+        arguments=[
+            '/agribot/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+        ],
+        output='screen',
+    )
+
+    lidar_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        name='ros_gz_lidar_bridge',
+        arguments=[
+            '/agribot/lidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
+        ],
+        output='screen',
+    )
+
+    # Dedicated image_bridge is more reliable than a monolithic parameter_bridge
+    # for large RGB / depth image payloads in this simulation.
+    camera_image_bridge = Node(
+        package='ros_gz_image',
+        executable='image_bridge',
+        name='ros_gz_camera_image_bridge',
+        arguments=['/agribot/camera/image'],
+        output='screen',
+    )
+
+    camera_depth_bridge = Node(
+        package='ros_gz_image',
+        executable='image_bridge',
+        name='ros_gz_camera_depth_bridge',
+        arguments=['/agribot/camera/depth_image'],
+        output='screen',
+    )
+
     return LaunchDescription([
         gz_resource_path,
         world_arg,
         gz_sim,
-        bridge,
+        state_bridge,
+        camera_info_bridge,
+        lidar_bridge,
+        camera_image_bridge,
+        camera_depth_bridge,
     ])
