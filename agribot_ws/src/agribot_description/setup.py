@@ -57,6 +57,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'cmd_vel_watchdog = agribot_description.cmd_vel_watchdog:main',
             'odom_tf_broadcaster = agribot_description.odom_tf_broadcaster:main',
         ],
     },
