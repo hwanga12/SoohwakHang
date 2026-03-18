@@ -38,7 +38,7 @@
 
       <!-- 3D model visual (rotated to stand upright) -->
       <visual name="visual">
-        <pose>0 0 1.7 1.5708 0 0</pose>
+        <pose>0 0 1.5 1.5708 0 0</pose>
         <geometry>
           <mesh>
             <uri>meshes/cute_robot_-_hand-paint_fixed.glb</uri>
