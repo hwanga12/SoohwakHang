@@ -126,6 +126,14 @@ def generate_launch_description():
         }],
     )
 
+    startup_map_tf_broadcaster = Node(
+        package='agribot_navigation',
+        executable='startup_map_tf_broadcaster',
+        name='startup_map_tf_broadcaster',
+        output='screen',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
+    )
+
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -146,6 +154,7 @@ def generate_launch_description():
         rviz_config_arg,
         autostart_arg,
         simulation,
+        startup_map_tf_broadcaster,
         map_server,
         amcl,
         lifecycle_manager,

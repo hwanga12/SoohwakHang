@@ -8,6 +8,7 @@ Usage:
 """
 
 import os
+import uuid
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
@@ -21,6 +22,7 @@ def generate_launch_description():
     # Package paths
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
+    gz_partition = f"agribot_{os.getenv('USER', 'ssafy')}_{uuid.uuid4().hex[:8]}"
 
     gpu_env_actions = []
     if os.path.exists('/usr/bin/nvidia-smi'):
@@ -38,6 +40,10 @@ def generate_launch_description():
             ':',
             os.getenv('GZ_SIM_RESOURCE_PATH', '')
         ]
+    )
+    gz_partition_env = SetEnvironmentVariable(
+        name='GZ_PARTITION',
+        value=gz_partition,
     )
 
     # Launch arguments
@@ -217,6 +223,7 @@ def generate_launch_description():
     return LaunchDescription([
         *gpu_env_actions,
         gz_resource_path,
+        gz_partition_env,
         world_arg,
         publish_map_to_odom_tf_arg,
         gz_sim,
