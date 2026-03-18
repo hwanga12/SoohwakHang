@@ -186,27 +186,6 @@ Visualization Manager:
         {}
       Update Interval: 0
       Value: true
-    - Class: rviz_default_plugins/Pose
-      Alpha: 1
-      Arrow Length: 0.5
-      Axes Length: 0.25
-      Axes Radius: 0.03
-      Color: 255; 25; 0
-      Enabled: true
-      Head Length: 0.1
-      Head Radius: 0.05
-      Name: Robot Pose
-      Radius: 0.03
-      Shaft Length: 0.3
-      Shaft Radius: 0.02
-      Shape: Arrow
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /initialpose
-      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -243,26 +222,20 @@ Visualization Manager:
   Views:
     Current:
       Angle: 0
-      Class: rviz_default_plugins/Orbit
-      Distance: 70
+      Class: rviz_default_plugins/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.06
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
-      Focal Point:
-        X: 0
-        Y: 112.5
-        Z: 0
-      Focal Shape Fixed Size: true
-      Focal Shape Size: 0.05
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.01
-      Pitch: 1.1
-      Target Frame: map
-      Value: Orbit (rviz)
-      Yaw: 1.57
+      Scale: 100
+      Target Frame: <Fixed Frame>
+      Value: TopDownOrtho (rviz_default_plugins)
+      X: 0
+      Y: 112.5
 Window Geometry:
   Displays:
     collapsed: false

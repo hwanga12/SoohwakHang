@@ -28,6 +28,7 @@
 
       <!-- Simple box collision for physics -->
       <collision name="chassis_collision">
+        <pose>0 0 0.2 0 0 0</pose>
         <geometry>
           <box>
             <size>0.4 0.3 0.15</size>
@@ -37,7 +38,7 @@
 
       <!-- 3D model visual (rotated to stand upright) -->
       <visual name="visual">
-        <pose>0 0 0 1.5708 0 0</pose>
+        <pose>0 0 1.5 1.5708 0 0</pose>
         <geometry>
           <mesh>
             <uri>meshes/cute_robot_-_hand-paint_fixed.glb</uri>
@@ -49,7 +50,7 @@
 
     <!-- ==================== LEFT WHEEL ==================== -->
     <link name="left_wheel">
-      <pose relative_to="base_link">-0.1 0.175 -0.14 -1.5708 0 0</pose>
+      <pose relative_to="base_link">-0.1 0.175 0.06 -1.5708 0 0</pose>
       <inertial>
         <mass>0.5</mass>
         <inertia>
@@ -93,7 +94,7 @@
 
     <!-- ==================== RIGHT WHEEL ==================== -->
     <link name="right_wheel">
-      <pose relative_to="base_link">-0.1 -0.175 -0.14 -1.5708 0 0</pose>
+      <pose relative_to="base_link">-0.1 -0.175 0.06 -1.5708 0 0</pose>
       <inertial>
         <mass>0.5</mass>
         <inertia>
@@ -137,7 +138,7 @@
 
     <!-- ==================== CASTER WHEEL (Front) ==================== -->
     <link name="caster">
-      <pose relative_to="base_link">0.15 0 -0.17 0 0 0</pose>
+      <pose relative_to="base_link">0.15 0 0.03 0 0 0</pose>
       <inertial>
         <mass>0.2</mass>
         <inertia>
@@ -179,7 +180,7 @@
 
     <!-- ==================== CAMERA LINK (RGB-D) ==================== -->
     <link name="camera_link">
-      <pose relative_to="base_link">0.2 0 0.1 0 0 0</pose>
+      <pose relative_to="base_link">0.2 0 0.3 0 0 0</pose>
       <inertial>
         <mass>0.1</mass>
         <inertia>
@@ -224,7 +225,7 @@
 
     <!-- ==================== LIDAR LINK (2D) ==================== -->
     <link name="lidar_link">
-      <pose relative_to="base_link">0 0 0.15 0 0 0</pose>
+      <pose relative_to="base_link">0 0 0.35 0 0 0</pose>
       <inertial>
         <mass>0.2</mass>
         <inertia>
@@ -273,7 +274,7 @@
 
     <!-- ==================== IMU LINK ==================== -->
     <link name="imu_link">
-      <pose relative_to="base_link">0 0 0.05 0 0 0</pose>
+      <pose relative_to="base_link">0 0 0.25 0 0 0</pose>
       <inertial>
         <mass>0.05</mass>
         <inertia>

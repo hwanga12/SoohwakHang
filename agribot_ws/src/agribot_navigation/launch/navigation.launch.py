@@ -2,7 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable, SetLaunchConfiguration
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -12,6 +12,13 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_agribot_navigation = get_package_share_directory('agribot_navigation')
+    gpu_env_actions = []
+    if os.path.exists('/usr/bin/nvidia-smi'):
+        gpu_env_actions = [
+            SetEnvironmentVariable('DRI_PRIME', '1'),
+            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
+            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
+        ]
 
     default_world = os.path.join(
         pkg_agribot_description,
@@ -129,6 +136,14 @@ def generate_launch_description():
         default_value='',
         description='Optional override for harvest return mode: empty, resume_patrol, or home.',
     )
+    navigation_use_rviz_alias = SetLaunchConfiguration(
+        'navigation_use_rviz',
+        LaunchConfiguration('use_rviz'),
+    )
+    navigation_rviz_config_alias = SetLaunchConfiguration(
+        'navigation_rviz_config_file',
+        LaunchConfiguration('rviz_config_file'),
+    )
 
     localization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -243,9 +258,9 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         name='navigation_rviz',
-        arguments=['-d', LaunchConfiguration('rviz_config_file')],
+        arguments=['-d', LaunchConfiguration('navigation_rviz_config_file')],
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
-        condition=IfCondition(LaunchConfiguration('use_rviz')),
+        condition=IfCondition(LaunchConfiguration('navigation_use_rviz')),
         output='screen',
     )
 
@@ -277,6 +292,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        *gpu_env_actions,
         use_sim_time_arg,
         world_arg,
         map_arg,
@@ -293,6 +309,8 @@ def generate_launch_description():
         use_harvest_route_arg,
         crop_instances_arg,
         harvest_return_mode_arg,
+        navigation_use_rviz_alias,
+        navigation_rviz_config_alias,
         localization,
         controller_server,
         planner_server,
