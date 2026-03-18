@@ -36,20 +36,20 @@ class StartupMapTfBroadcaster(Node):
         transform.transform.rotation.w = 1.0
         self._broadcaster.sendTransform(transform)
 
-    def _handle_initial_pose(self, _: PoseWithCovarianceStamped) -> None:
+    def _handle_initial_pose(self, msg: PoseWithCovarianceStamped) -> None:
         if not self._initial_pose_received:
             self._initial_pose_received = True
             self.get_logger().info(
-                'Received /initialpose, waiting for AMCL to take over map -> odom.'
+                f'Received /initialpose ({msg.header.frame_id}), waiting for AMCL...'
             )
 
-    def _handle_amcl_pose(self, _: PoseWithCovarianceStamped) -> None:
+    def _handle_amcl_pose(self, msg: PoseWithCovarianceStamped) -> None:
         self.get_logger().info(
-            'Received /amcl_pose, stopping temporary map -> odom broadcaster.'
+            f'Received /amcl_pose ({msg.header.frame_id}), stopping temp broadcaster.'
         )
         self._timer.cancel()
-        self.destroy_subscription(self._initial_pose_subscription)
-        self.destroy_subscription(self._amcl_pose_subscription)
+        # In ROS 2, it is safer to just stop the timer than to destroy subs mid-spin
+        # in some versions, but let's at least ensure we don't crash.
 
 
 def main(args=None) -> None:

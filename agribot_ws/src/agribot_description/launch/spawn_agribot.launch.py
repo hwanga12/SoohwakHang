@@ -176,7 +176,7 @@ def generate_launch_description():
         arguments=[
             '--x', '0.2',
             '--y', '0',
-            '--z', '0.1',
+            '--z', '0.3',
             '--roll', '0',
             '--pitch', '0',
             '--yaw', '0',
@@ -193,7 +193,7 @@ def generate_launch_description():
         arguments=[
             '--x', '0',
             '--y', '0',
-            '--z', '0.15',
+            '--z', '0.35',
             '--roll', '0',
             '--pitch', '0',
             '--yaw', '0',
@@ -210,7 +210,7 @@ def generate_launch_description():
         arguments=[
             '--x', '0',
             '--y', '0',
-            '--z', '0.05',
+            '--z', '0.25',
             '--roll', '0',
             '--pitch', '0',
             '--yaw', '0',
