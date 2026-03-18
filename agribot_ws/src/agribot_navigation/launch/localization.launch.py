@@ -70,20 +70,7 @@ def generate_launch_description():
         description='Automatically configure and activate map_server and amcl.',
     )
 
-    simulation = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(
-                pkg_agribot_description,
-                'launch',
-                'spawn_agribot.launch.py',
-            )
-        ),
-        launch_arguments={
-            'world': LaunchConfiguration('world'),
-            # AMCL must own the map -> odom transform during localization.
-            'publish_map_to_odom_tf': 'false',
-        }.items(),
-    )
+
 
     map_server = Node(
         package='nav2_map_server',
@@ -137,7 +124,6 @@ def generate_launch_description():
         use_rviz_arg,
         rviz_config_arg,
         autostart_arg,
-        simulation,
         map_server,
         amcl,
         lifecycle_manager,
