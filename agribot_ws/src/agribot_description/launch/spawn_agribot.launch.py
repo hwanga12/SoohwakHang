@@ -8,6 +8,7 @@ Usage:
 """
 
 import os
+import uuid
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
@@ -31,6 +32,15 @@ def generate_launch_description():
     # Package paths
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
+    gz_partition = LaunchConfiguration('gz_partition', default='agribot_sim')
+
+    gpu_env_actions = []
+    if os.path.exists('/usr/bin/nvidia-smi'):
+        gpu_env_actions = [
+            SetEnvironmentVariable('DRI_PRIME', '1'),
+            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
+            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
+        ]
 
     # Set Gazebo resource path to find models
     gz_resource_path = SetEnvironmentVariable(
@@ -40,6 +50,10 @@ def generate_launch_description():
             ':',
             os.getenv('GZ_SIM_RESOURCE_PATH', '')
         ]
+    )
+    gz_partition_env = SetEnvironmentVariable(
+        name='GZ_PARTITION',
+        value=gz_partition,
     )
 
     # Launch arguments
@@ -177,7 +191,7 @@ def generate_launch_description():
         arguments=[
             '--x', '0.2',
             '--y', '0',
-            '--z', '0.1',
+            '--z', '0.3',
             '--roll', '0',
             '--pitch', '0',
             '--yaw', '0',
@@ -194,7 +208,7 @@ def generate_launch_description():
         arguments=[
             '--x', '0',
             '--y', '0',
-            '--z', '0.15',
+            '--z', '0.35',
             '--roll', '0',
             '--pitch', '0',
             '--yaw', '0',
@@ -211,7 +225,7 @@ def generate_launch_description():
         arguments=[
             '--x', '0',
             '--y', '0',
-            '--z', '0.05',
+            '--z', '0.25',
             '--roll', '0',
             '--pitch', '0',
             '--yaw', '0',
@@ -239,7 +253,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        *gpu_env_actions,
         gz_resource_path,
+        gz_partition_env,
         world_arg,
         publish_map_to_odom_tf_arg,
         gz_sim,

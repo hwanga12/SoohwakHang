@@ -2,7 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -12,6 +12,13 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_agribot_navigation = get_package_share_directory('agribot_navigation')
+    gpu_env_actions = []
+    if os.path.exists('/usr/bin/nvidia-smi'):
+        gpu_env_actions = [
+            SetEnvironmentVariable('DRI_PRIME', '1'),
+            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
+            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
+        ]
 
     default_world = os.path.join(
         pkg_agribot_description,
@@ -70,8 +77,6 @@ def generate_launch_description():
         description='Automatically configure and activate map_server and amcl.',
     )
 
-
-
     map_server = Node(
         package='nav2_map_server',
         executable='map_server',
@@ -94,6 +99,17 @@ def generate_launch_description():
         ],
     )
 
+    gz_partition_arg = DeclareLaunchArgument(
+        'gz_partition',
+        default_value='agribot_sim',
+        description='Gazebo partition name.'
+    )
+
+    gz_partition_env = SetEnvironmentVariable(
+        name='GZ_PARTITION',
+        value=LaunchConfiguration('gz_partition'),
+    )
+
     lifecycle_manager = Node(
         package='nav2_lifecycle_manager',
         executable='lifecycle_manager',
@@ -104,6 +120,14 @@ def generate_launch_description():
             'node_names': ['map_server', 'amcl'],
             'use_sim_time': LaunchConfiguration('use_sim_time'),
         }],
+    )
+
+    startup_map_tf_broadcaster = Node(
+        package='agribot_navigation',
+        executable='startup_map_tf_broadcaster',
+        name='startup_map_tf_broadcaster',
+        output='screen',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
     )
 
     rviz = Node(
@@ -117,6 +141,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        *gpu_env_actions,
+        gz_partition_arg,
+        gz_partition_env,
         use_sim_time_arg,
         world_arg,
         map_arg,
@@ -124,6 +151,7 @@ def generate_launch_description():
         use_rviz_arg,
         rviz_config_arg,
         autostart_arg,
+        startup_map_tf_broadcaster,
         map_server,
         amcl,
         lifecycle_manager,

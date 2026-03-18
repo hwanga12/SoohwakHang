@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ament_index_python.packages import get_package_share_directory
 import yaml
 
 
@@ -59,14 +60,55 @@ class PatrolRoute:
 
 
 @dataclass(frozen=True)
+class SourceBounds:
+    left_bed_edge_x: float
+    right_bed_edge_x: float
+    front_connector_y: float
+    rear_connector_y: float
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> 'SourceBounds':
+        required_fields = {
+            'left_bed_edge_x',
+            'right_bed_edge_x',
+            'front_connector_y',
+            'rear_connector_y',
+        }
+        missing = required_fields.difference(payload)
+        if missing:
+            raise ValueError(f'coordinate_rationale.source_bounds is missing keys: {sorted(missing)}')
+        return cls(
+            left_bed_edge_x=float(payload['left_bed_edge_x']),
+            right_bed_edge_x=float(payload['right_bed_edge_x']),
+            front_connector_y=float(payload['front_connector_y']),
+            rear_connector_y=float(payload['rear_connector_y']),
+        )
+
+
+@dataclass(frozen=True)
+class HarvestRoutingConfig:
+    approach_margin_from_bed_edge_m: float
+    max_lateral_offset_from_inspect_m: float
+    default_return_mode: str
+    fallback_return_mode: str
+
+
+@dataclass(frozen=True)
 class PatrolPlan:
     schema_version: int
     frame_id: str
     zone_id: str
     home_pose_id: str
+    recommended_observation_dwell_sec: float
+    source_bounds: SourceBounds
+    harvest_routing: HarvestRoutingConfig
     waypoints: dict[str, Waypoint]
     routes: dict[str, PatrolRoute]
     default_patrol_sequence: tuple[str, ...]
+
+
+def get_default_patrol_waypoints_path() -> Path:
+    return Path(get_package_share_directory('agribot_navigation')) / 'config' / 'patrol_waypoints.yaml'
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -126,12 +168,53 @@ def _load_routes(items: list[dict[str, Any]]) -> dict[str, PatrolRoute]:
     return routes
 
 
+def _load_harvest_routing(payload: dict[str, Any]) -> HarvestRoutingConfig:
+    return_modes = payload.get('return_modes', {})
+    if return_modes is None:
+        return_modes = {}
+
+    return HarvestRoutingConfig(
+        approach_margin_from_bed_edge_m=float(payload.get('approach_margin_from_bed_edge_m', 0.45)),
+        max_lateral_offset_from_inspect_m=float(
+            payload.get('max_lateral_offset_from_inspect_m', 2.50)
+        ),
+        default_return_mode=str(return_modes.get('default', 'resume_patrol')),
+        fallback_return_mode=str(return_modes.get('fallback', 'home')),
+    )
+
+
 def _validate_references(plan: PatrolPlan) -> None:
     if plan.home_pose_id not in plan.waypoints:
         raise ValueError(f'home_pose_id does not match any waypoint: {plan.home_pose_id}')
 
+    if plan.recommended_observation_dwell_sec < 0.0:
+        raise ValueError('recommended_observation_dwell_sec must be non-negative.')
+
     if not plan.default_patrol_sequence:
         raise ValueError('default_patrol_sequence must contain at least one waypoint id.')
+
+    if plan.source_bounds.left_bed_edge_x >= plan.source_bounds.right_bed_edge_x:
+        raise ValueError('source_bounds must keep left_bed_edge_x smaller than right_bed_edge_x.')
+
+    if plan.source_bounds.front_connector_y >= plan.source_bounds.rear_connector_y:
+        raise ValueError('source_bounds front_connector_y must be smaller than rear_connector_y.')
+
+    if plan.harvest_routing.approach_margin_from_bed_edge_m <= 0.0:
+        raise ValueError('harvest_routing.approach_margin_from_bed_edge_m must be positive.')
+
+    if plan.harvest_routing.max_lateral_offset_from_inspect_m <= 0.0:
+        raise ValueError('harvest_routing.max_lateral_offset_from_inspect_m must be positive.')
+
+    allowed_return_modes = {'resume_patrol', 'home'}
+    for mode_name, mode_value in (
+        ('default_return_mode', plan.harvest_routing.default_return_mode),
+        ('fallback_return_mode', plan.harvest_routing.fallback_return_mode),
+    ):
+        if mode_value not in allowed_return_modes:
+            raise ValueError(
+                f'harvest_routing.{mode_name} must be one of '
+                f'{sorted(allowed_return_modes)}, got {mode_value!r}.'
+            )
 
     for waypoint_id in plan.default_patrol_sequence:
         if waypoint_id not in plan.waypoints:
@@ -157,11 +240,35 @@ def _validate_references(plan: PatrolPlan) -> None:
 
 def load_patrol_plan(path: Path) -> PatrolPlan:
     payload = _load_yaml(path)
+    coordinate_rationale = payload.get('coordinate_rationale', {})
+    if not isinstance(coordinate_rationale, dict):
+        raise ValueError('coordinate_rationale must be a mapping.')
+    source_bounds_payload = coordinate_rationale.get('source_bounds', {})
+    if not isinstance(source_bounds_payload, dict):
+        raise ValueError('coordinate_rationale.source_bounds must be a mapping.')
+
+    robot_constraints = payload.get('robot_constraints', {})
+    if robot_constraints is None:
+        robot_constraints = {}
+    elif not isinstance(robot_constraints, dict):
+        raise ValueError('robot_constraints must be a mapping.')
+
+    harvest_routing = payload.get('harvest_routing', {})
+    if harvest_routing is None:
+        harvest_routing = {}
+    elif not isinstance(harvest_routing, dict):
+        raise ValueError('harvest_routing must be a mapping.')
+
     plan = PatrolPlan(
         schema_version=int(payload['schema_version']),
         frame_id=str(payload['frame_id']),
         zone_id=str(payload['zone_id']),
         home_pose_id=str(payload['home_pose_id']),
+        recommended_observation_dwell_sec=float(
+            robot_constraints.get('recommended_observation_dwell_sec', 0.0)
+        ),
+        source_bounds=SourceBounds.from_dict(source_bounds_payload),
+        harvest_routing=_load_harvest_routing(harvest_routing),
         waypoints=_load_waypoints(list(payload.get('waypoints', []))),
         routes=_load_routes(list(payload.get('routes', []))),
         default_patrol_sequence=tuple(
@@ -173,14 +280,13 @@ def load_patrol_plan(path: Path) -> PatrolPlan:
 
 
 def parse_args() -> argparse.Namespace:
-    package_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(
         description='Validate and summarize agribot patrol waypoint metadata.',
     )
     parser.add_argument(
         '--patrol-waypoints',
         type=Path,
-        default=package_root / 'config' / 'patrol_waypoints.yaml',
+        default=get_default_patrol_waypoints_path(),
         help='Path to patrol_waypoints.yaml.',
     )
     return parser.parse_args()
@@ -198,7 +304,9 @@ def main() -> int:
     print(
         f'- {len(plan.waypoints)} waypoints, '
         f'{len(plan.routes)} routes, '
-        f'{len(plan.default_patrol_sequence)} sequence entries'
+        f'{len(plan.default_patrol_sequence)} sequence entries, '
+        f'{plan.recommended_observation_dwell_sec:.1f}s inspect dwell, '
+        f'harvest return={plan.harvest_routing.default_return_mode}'
     )
     for route in plan.routes.values():
         print(

@@ -25,7 +25,17 @@ robot_constraints:
   recommended_observation_dwell_sec: 3.0
   notes:
     - Keep the robot in the center aisle during patrol.
-    - Harvest approach poses belong in a later ticket and should branch from inspect poses.
+    - Harvest approach poses should stay inside the aisle-side crop-bed edge margin.
+
+harvest_routing:
+  approach_margin_from_bed_edge_m: 0.45
+  max_lateral_offset_from_inspect_m: 2.50
+  return_modes:
+    default: resume_patrol
+    fallback: home
+  notes:
+    - Harvest approach poses are projected from the observed tomato toward the crop-bed edge while staying inside the navigation aisle.
+    - If patrol resume is not possible, fall back to the configured home pose.
 
 waypoints:
   - waypoint_id: greenhouse_01_home

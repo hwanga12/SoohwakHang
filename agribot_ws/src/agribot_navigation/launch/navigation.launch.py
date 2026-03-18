@@ -2,7 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable, SetLaunchConfiguration
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -12,6 +12,13 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_agribot_navigation = get_package_share_directory('agribot_navigation')
+    gpu_env_actions = []
+    if os.path.exists('/usr/bin/nvidia-smi'):
+        gpu_env_actions = [
+            SetEnvironmentVariable('DRI_PRIME', '1'),
+            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
+            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
+        ]
 
     default_world = os.path.join(
         pkg_agribot_description,
@@ -32,6 +39,16 @@ def generate_launch_description():
         pkg_agribot_navigation,
         'config',
         'nav2_params.yaml',
+    )
+    default_patrol_waypoints = os.path.join(
+        pkg_agribot_navigation,
+        'config',
+        'patrol_waypoints.yaml',
+    )
+    default_crop_instances = os.path.join(
+        pkg_agribot_description,
+        'config',
+        'crop_instances.yaml',
     )
     default_rviz_config = os.path.join(
         pkg_agribot_navigation,
@@ -89,6 +106,44 @@ def generate_launch_description():
         default_value='info',
         description='Log level for Nav2 nodes.',
     )
+    use_patrol_arg = DeclareLaunchArgument(
+        'use_patrol',
+        default_value='true',
+        description='Launch the patrol control node alongside Nav2.',
+    )
+    patrol_waypoints_arg = DeclareLaunchArgument(
+        'patrol_waypoints_file',
+        default_value=default_patrol_waypoints,
+        description='Path to patrol waypoint metadata used by patrol_node.',
+    )
+    patrol_autostart_arg = DeclareLaunchArgument(
+        'patrol_autostart',
+        default_value='false',
+        description='Start the patrol automatically after the stack launches.',
+    )
+    use_harvest_route_arg = DeclareLaunchArgument(
+        'use_harvest_route',
+        default_value='true',
+        description='Launch the harvest approach/return coordinator node.',
+    )
+    crop_instances_arg = DeclareLaunchArgument(
+        'crop_instances_file',
+        default_value=default_crop_instances,
+        description='Path to crop_instances.yaml used for harvest target metadata.',
+    )
+    harvest_return_mode_arg = DeclareLaunchArgument(
+        'harvest_return_mode',
+        default_value='',
+        description='Optional override for harvest return mode: empty, resume_patrol, or home.',
+    )
+    navigation_use_rviz_alias = SetLaunchConfiguration(
+        'navigation_use_rviz',
+        LaunchConfiguration('use_rviz'),
+    )
+    navigation_rviz_config_alias = SetLaunchConfiguration(
+        'navigation_rviz_config_file',
+        LaunchConfiguration('rviz_config_file'),
+    )
 
     localization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -106,6 +161,7 @@ def generate_launch_description():
             'use_rviz': 'false',
             'rviz_config_file': LaunchConfiguration('rviz_config_file'),
             'autostart': LaunchConfiguration('autostart'),
+            'gz_partition': LaunchConfiguration('gz_partition', default='agribot_sim'),
         }.items(),
     )
 
@@ -203,13 +259,41 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         name='navigation_rviz',
-        arguments=['-d', LaunchConfiguration('rviz_config_file')],
+        arguments=['-d', LaunchConfiguration('navigation_rviz_config_file')],
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
-        condition=IfCondition(LaunchConfiguration('use_rviz')),
+        condition=IfCondition(LaunchConfiguration('navigation_use_rviz')),
         output='screen',
     )
 
+    patrol_node = Node(
+        package='agribot_navigation',
+        executable='patrol_node',
+        name='patrol_node',
+        output='screen',
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'patrol_waypoints_file': LaunchConfiguration('patrol_waypoints_file'),
+            'auto_start': LaunchConfiguration('patrol_autostart'),
+        }],
+        condition=IfCondition(LaunchConfiguration('use_patrol')),
+    )
+
+    harvest_route_node = Node(
+        package='agribot_navigation',
+        executable='harvest_route_node',
+        name='harvest_route_node',
+        output='screen',
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'patrol_waypoints_file': LaunchConfiguration('patrol_waypoints_file'),
+            'crop_instances_file': LaunchConfiguration('crop_instances_file'),
+            'return_mode_override': LaunchConfiguration('harvest_return_mode'),
+        }],
+        condition=IfCondition(LaunchConfiguration('use_harvest_route')),
+    )
+
     return LaunchDescription([
+        *gpu_env_actions,
         use_sim_time_arg,
         world_arg,
         map_arg,
@@ -220,6 +304,14 @@ def generate_launch_description():
         autostart_arg,
         use_respawn_arg,
         log_level_arg,
+        use_patrol_arg,
+        patrol_waypoints_arg,
+        patrol_autostart_arg,
+        use_harvest_route_arg,
+        crop_instances_arg,
+        harvest_return_mode_arg,
+        navigation_use_rviz_alias,
+        navigation_rviz_config_alias,
         localization,
         controller_server,
         planner_server,
@@ -228,5 +320,7 @@ def generate_launch_description():
         bt_navigator,
         waypoint_follower,
         lifecycle_manager,
+        patrol_node,
+        harvest_route_node,
         rviz,
     ])

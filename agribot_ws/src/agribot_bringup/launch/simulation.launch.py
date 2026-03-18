@@ -11,7 +11,7 @@ Usage:
 """
 
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
@@ -19,6 +19,19 @@ import os
 
 
 def generate_launch_description():
+    gz_partition = 'agribot_sim'
+    
+    # Environment variables
+    env_vars = [
+        SetEnvironmentVariable('GZ_PARTITION', gz_partition),
+        # Ensure agribot_interfaces python bindings are found
+        SetEnvironmentVariable(
+            'PYTHONPATH', 
+            os.path.join(os.getcwd(), 'install/agribot_interfaces/lib/python3.12/site-packages') + 
+            ':' + os.environ.get('PYTHONPATH', '')
+        ),
+    ]
+
     # Include the robot spawn launch file
     spawn_agribot = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -45,6 +58,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        *env_vars,
         spawn_agribot,
         navigation,
         # TODO: Add perception launch
