@@ -2,7 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -12,6 +12,13 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_agribot_navigation = get_package_share_directory('agribot_navigation')
+    gpu_env_actions = []
+    if os.path.exists('/usr/bin/nvidia-smi'):
+        gpu_env_actions = [
+            SetEnvironmentVariable('DRI_PRIME', '1'),
+            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
+            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
+        ]
     pkg_slam_toolbox = get_package_share_directory('slam_toolbox')
 
     default_world = os.path.join(
@@ -107,6 +114,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        *gpu_env_actions,
         use_sim_time_arg,
         world_arg,
         slam_params_arg,

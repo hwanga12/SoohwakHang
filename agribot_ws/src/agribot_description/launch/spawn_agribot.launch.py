@@ -22,6 +22,14 @@ def generate_launch_description():
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
 
+    gpu_env_actions = []
+    if os.path.exists('/usr/bin/nvidia-smi'):
+        gpu_env_actions = [
+            SetEnvironmentVariable('DRI_PRIME', '1'),
+            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
+            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
+        ]
+
     # Set Gazebo resource path to find models
     gz_resource_path = SetEnvironmentVariable(
         name='GZ_SIM_RESOURCE_PATH',
@@ -207,6 +215,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        *gpu_env_actions,
         gz_resource_path,
         world_arg,
         publish_map_to_odom_tf_arg,
