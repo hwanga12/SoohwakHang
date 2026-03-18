@@ -161,6 +161,7 @@ def generate_launch_description():
             'use_rviz': 'false',
             'rviz_config_file': LaunchConfiguration('rviz_config_file'),
             'autostart': LaunchConfiguration('autostart'),
+            'gz_partition': LaunchConfiguration('gz_partition', default='agribot_sim'),
         }.items(),
     )
 

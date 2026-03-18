@@ -77,21 +77,6 @@ def generate_launch_description():
         description='Automatically configure and activate map_server and amcl.',
     )
 
-    simulation = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(
-                pkg_agribot_description,
-                'launch',
-                'spawn_agribot.launch.py',
-            )
-        ),
-        launch_arguments={
-            'world': LaunchConfiguration('world'),
-            # AMCL must own the map -> odom transform during localization.
-            'publish_map_to_odom_tf': 'false',
-        }.items(),
-    )
-
     map_server = Node(
         package='nav2_map_server',
         executable='map_server',
@@ -112,6 +97,17 @@ def generate_launch_description():
             LaunchConfiguration('params_file'),
             {'use_sim_time': LaunchConfiguration('use_sim_time')},
         ],
+    )
+
+    gz_partition_arg = DeclareLaunchArgument(
+        'gz_partition',
+        default_value='agribot_sim',
+        description='Gazebo partition name.'
+    )
+
+    gz_partition_env = SetEnvironmentVariable(
+        name='GZ_PARTITION',
+        value=LaunchConfiguration('gz_partition'),
     )
 
     lifecycle_manager = Node(
@@ -146,6 +142,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         *gpu_env_actions,
+        gz_partition_arg,
+        gz_partition_env,
         use_sim_time_arg,
         world_arg,
         map_arg,
@@ -153,7 +151,6 @@ def generate_launch_description():
         use_rviz_arg,
         rviz_config_arg,
         autostart_arg,
-        simulation,
         startup_map_tf_broadcaster,
         map_server,
         amcl,

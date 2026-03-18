@@ -18,11 +18,21 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def load_file(package_name, file_path):
+    package_path = get_package_share_directory(package_name)
+    absolute_file_path = os.path.join(package_path, file_path)
+    try:
+        with open(absolute_file_path, 'r') as file:
+            return file.read()
+    except EnvironmentError:
+        return None
+
+
 def generate_launch_description():
     # Package paths
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
-    gz_partition = f"agribot_{os.getenv('USER', 'ssafy')}_{uuid.uuid4().hex[:8]}"
+    gz_partition = LaunchConfiguration('gz_partition', default='agribot_sim')
 
     gpu_env_actions = []
     if os.path.exists('/usr/bin/nvidia-smi'):
@@ -93,6 +103,11 @@ def generate_launch_description():
             '/cmd_vel_safe@geometry_msgs/msg/Twist]gz.msgs.Twist',
             # Odometry — GZ → ROS
             '/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry',
+            # Joint States — GZ → ROS
+            '/world/farm_world/model/agribot/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
+        ],
+        remappings=[
+            ('/world/farm_world/model/agribot/joint_state', '/joint_states'),
         ],
         output='screen',
     )
@@ -220,6 +235,23 @@ def generate_launch_description():
         output='screen',
     )
 
+    # Robot State Publisher
+    # RViz needs the URDF (on /robot_description topic) to display the robot body.
+    urdf_file = os.path.join(pkg_agribot_description, 'urdf', 'agribot.urdf')
+    with open(urdf_file, 'r') as infp:
+        robot_description_content = infp.read()
+
+    robot_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        name='robot_state_publisher',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'robot_description': robot_description_content,
+        }]
+    )
+
     return LaunchDescription([
         *gpu_env_actions,
         gz_resource_path,
@@ -227,6 +259,7 @@ def generate_launch_description():
         world_arg,
         publish_map_to_odom_tf_arg,
         gz_sim,
+        robot_state_publisher,
         cmd_vel_watchdog,
         state_bridge,
         camera_info_bridge,
