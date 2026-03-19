@@ -3,7 +3,7 @@
 # instead of sending Nav2 to every individual plant.
 
 schema_version: 1
-frame_id: map
+frame_id: odom
 zone_id: greenhouse_01
 world_file: agribot_description/worlds/farm_world.sdf
 map_file: agribot_navigation/maps/greenhouse_map.yaml

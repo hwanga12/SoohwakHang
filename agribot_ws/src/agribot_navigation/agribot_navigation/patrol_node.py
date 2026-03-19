@@ -40,10 +40,14 @@ class PatrolNode(Node):
         self.declare_parameter('inspect_dwell_sec', 0.0)
         self.declare_parameter('nav_server_wait_sec', 5.0)
         self.declare_parameter('auto_start', False)
+        self.declare_parameter('goal_reject_retry_sec', 0.0)
+        self.declare_parameter('goal_reject_retry_limit', 0)
 
         self._plan = self._load_plan()
         self._waypoint_ids = self._plan.default_patrol_sequence
         self._nav_server_wait_sec = float(self.get_parameter('nav_server_wait_sec').value)
+        self._goal_reject_retry_sec = float(self.get_parameter('goal_reject_retry_sec').value)
+        self._goal_reject_retry_limit = int(self.get_parameter('goal_reject_retry_limit').value)
         self._observe_on_inspect_waypoints = bool(
             self.get_parameter('observe_on_inspect_waypoints').value
         )
@@ -74,10 +78,12 @@ class PatrolNode(Node):
         self._goal_result_future = None
         self._cancel_future = None
         self._dwell_timer: Timer | None = None
+        self._goal_retry_timer: Timer | None = None
         self._auto_start_timer: Timer | None = None
         self._stop_requested = False
         self._current_waypoint_index: int | None = None
         self._next_waypoint_index = 0
+        self._goal_reject_retry_count = 0
         self._last_distance_remaining_m: float | None = None
         self._last_error_message = ''
 
@@ -194,6 +200,7 @@ class PatrolNode(Node):
     def _start_patrol(self, *, reset_progress: bool) -> bool:
         if reset_progress:
             self._next_waypoint_index = 0
+            self._goal_reject_retry_count = 0
             self._last_error_message = ''
 
         if self._next_waypoint_index >= len(self._waypoint_ids):
@@ -208,6 +215,7 @@ class PatrolNode(Node):
             return False
 
         self._cancel_dwell_timer()
+        self._cancel_goal_retry_timer()
         self._stop_requested = False
         self._last_distance_remaining_m = None
         self._send_goal_for_index(self._next_waypoint_index)
@@ -246,12 +254,15 @@ class PatrolNode(Node):
                 self._stop_requested = False
                 self._set_state('stopped', 'Patrol stop completed before goal acceptance.')
                 return
+            if self._schedule_goal_reject_retry(waypoint_index):
+                return
             self._set_error(
                 f'NavigateToPose rejected waypoint {self._describe_waypoint(waypoint_index)}.'
             )
             return
 
         self._active_goal_handle = goal_handle
+        self._goal_reject_retry_count = 0
         self._goal_result_future = goal_handle.get_result_async()
         self._goal_result_future.add_done_callback(
             lambda result_future, idx=waypoint_index: self._handle_navigation_result(
@@ -368,6 +379,43 @@ class PatrolNode(Node):
         self.destroy_timer(self._dwell_timer)
         self._dwell_timer = None
 
+    def _schedule_goal_reject_retry(self, waypoint_index: int) -> bool:
+        if self._goal_reject_retry_sec <= 0.0:
+            return False
+        if self._goal_reject_retry_count >= self._goal_reject_retry_limit:
+            return False
+
+        self._goal_reject_retry_count += 1
+        self._cancel_goal_retry_timer()
+        retry_message = (
+            'NavigateToPose rejected '
+            f'{self._describe_waypoint(waypoint_index)}; retrying in '
+            f'{self._goal_reject_retry_sec:.1f}s '
+            f'({self._goal_reject_retry_count}/{self._goal_reject_retry_limit}).'
+        )
+        self._state = 'starting'
+        self._state_message = retry_message
+        self.get_logger().warning(retry_message)
+        self._publish_status()
+        self._goal_retry_timer = self.create_timer(
+            self._goal_reject_retry_sec,
+            lambda idx=waypoint_index: self._retry_goal_after_rejection(idx),
+        )
+        return True
+
+    def _retry_goal_after_rejection(self, waypoint_index: int) -> None:
+        self._cancel_goal_retry_timer()
+        if self._state == 'error':
+            return
+        self._send_goal_for_index(waypoint_index)
+
+    def _cancel_goal_retry_timer(self) -> None:
+        if self._goal_retry_timer is None:
+            return
+        self._goal_retry_timer.cancel()
+        self.destroy_timer(self._goal_retry_timer)
+        self._goal_retry_timer = None
+
     def _should_observe(self, waypoint: Waypoint) -> bool:
         return (
             self._observe_on_inspect_waypoints
@@ -437,6 +485,7 @@ class PatrolNode(Node):
 
     def destroy_node(self) -> bool:
         self._cancel_dwell_timer()
+        self._cancel_goal_retry_timer()
         self._navigate_client.destroy()
         return super().destroy_node()
 

@@ -34,14 +34,6 @@ def generate_launch_description():
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
     gz_partition = LaunchConfiguration('gz_partition', default='agribot_sim')
 
-    gpu_env_actions = []
-    if os.path.exists('/usr/bin/nvidia-smi'):
-        gpu_env_actions = [
-            SetEnvironmentVariable('DRI_PRIME', '1'),
-            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
-            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
-        ]
-
     # Set Gazebo resource path to find models
     gz_resource_path = SetEnvironmentVariable(
         name='GZ_SIM_RESOURCE_PATH',
@@ -134,7 +126,7 @@ def generate_launch_description():
         executable='parameter_bridge',
         name='ros_gz_lidar_bridge',
         arguments=[
-            '/agribot/lidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
+            '/agribot/lidar@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
         ],
         output='screen',
     )
@@ -253,7 +245,6 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        *gpu_env_actions,
         gz_resource_path,
         gz_partition_env,
         world_arg,

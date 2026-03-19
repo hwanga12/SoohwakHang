@@ -10,7 +10,7 @@ slam_toolbox:
     odom_frame: odom
     map_frame: map
     base_frame: base_link
-    scan_topic: /agribot/lidar/scan
+    scan_topic: /agribot/lidar
     use_map_saver: true
     mode: mapping
 
