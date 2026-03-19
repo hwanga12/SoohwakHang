@@ -39,6 +39,11 @@ def generate_launch_description():
         'config',
         'nav2_mapping_params.yaml',
     )
+    default_frontier_params = os.path.join(
+        pkg_agribot_navigation,
+        'config',
+        'frontier_explorer.yaml',
+    )
     default_patrol_waypoints = os.path.join(
         pkg_agribot_navigation,
         'config',
@@ -63,7 +68,12 @@ def generate_launch_description():
     boundary_map_arg = DeclareLaunchArgument(
         'boundary_map',
         default_value=default_boundary_map,
-        description='Constraint map used to keep exploration inside the greenhouse.',
+        description='Optional constraint map used to keep exploration inside a known area.',
+    )
+    use_boundary_map_arg = DeclareLaunchArgument(
+        'use_boundary_map',
+        default_value='false',
+        description='Enable the optional exploration boundary map.',
     )
     slam_params_arg = DeclareLaunchArgument(
         'slam_params_file',
@@ -74,6 +84,11 @@ def generate_launch_description():
         'nav2_params_file',
         default_value=default_nav2_params,
         description='Nav2 parameter file used for autonomous mapping.',
+    )
+    frontier_params_arg = DeclareLaunchArgument(
+        'frontier_params_file',
+        default_value=default_frontier_params,
+        description='Frontier explorer parameter file for generic autonomous mapping.',
     )
     patrol_waypoints_arg = DeclareLaunchArgument(
         'patrol_waypoints_file',
@@ -105,9 +120,29 @@ def generate_launch_description():
         default_value='info',
         description='Log level for Nav2 nodes.',
     )
+    use_frontier_explorer_arg = DeclareLaunchArgument(
+        'use_frontier_explorer',
+        default_value='true',
+        description='Launch the generic frontier explorer for map completion.',
+    )
+    frontier_autostart_arg = DeclareLaunchArgument(
+        'frontier_autostart',
+        default_value='true',
+        description='Start the frontier explorer automatically.',
+    )
+    frontier_start_delay_arg = DeclareLaunchArgument(
+        'frontier_start_delay_sec',
+        default_value='5.0',
+        description='Delay before the frontier explorer starts after Nav2 activation.',
+    )
+    use_patrol_arg = DeclareLaunchArgument(
+        'use_patrol',
+        default_value='false',
+        description='Launch the greenhouse-specific waypoint patrol mapper.',
+    )
     patrol_autostart_arg = DeclareLaunchArgument(
         'patrol_autostart',
-        default_value='true',
+        default_value='false',
         description='Start the mapping patrol automatically.',
     )
     patrol_start_delay_arg = DeclareLaunchArgument(
@@ -189,6 +224,7 @@ def generate_launch_description():
             ('/map', '/exploration_boundary_map'),
             ('/map_metadata', '/exploration_boundary_map_metadata'),
         ],
+        condition=IfCondition(LaunchConfiguration('use_boundary_map')),
     )
     delayed_exploration_boundary_map_server = TimerAction(
         period=LaunchConfiguration('stack_start_delay_sec'),
@@ -205,6 +241,7 @@ def generate_launch_description():
             'node_names': ['exploration_boundary_map_server'],
             'use_sim_time': LaunchConfiguration('use_sim_time'),
         }],
+        condition=IfCondition(LaunchConfiguration('use_boundary_map')),
     )
     delayed_exploration_boundary_lifecycle_manager = TimerAction(
         period=LaunchConfiguration('boundary_lifecycle_delay_sec'),
@@ -316,6 +353,28 @@ def generate_launch_description():
         actions=[navigation_lifecycle_manager],
     )
 
+    frontier_explorer = Node(
+        package='agribot_navigation',
+        executable='frontier_explorer',
+        name='mapping_frontier_explorer',
+        output='screen',
+        parameters=[
+            LaunchConfiguration('frontier_params_file'),
+            {
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
+                'auto_start': LaunchConfiguration('frontier_autostart'),
+                'use_boundary_map': LaunchConfiguration('use_boundary_map'),
+                'boundary_map_topic': '/exploration_boundary_map',
+            },
+        ],
+        condition=IfCondition(LaunchConfiguration('use_frontier_explorer')),
+    )
+
+    delayed_frontier_explorer = TimerAction(
+        period=LaunchConfiguration('frontier_start_delay_sec'),
+        actions=[frontier_explorer],
+    )
+
     mapping_patrol_node = Node(
         package='agribot_navigation',
         executable='patrol_node',
@@ -334,6 +393,7 @@ def generate_launch_description():
             'stop_service': 'mapping_patrol/stop',
             'resume_service': 'mapping_patrol/resume',
         }],
+        condition=IfCondition(LaunchConfiguration('use_patrol')),
     )
 
     delayed_mapping_patrol = TimerAction(
@@ -355,14 +415,20 @@ def generate_launch_description():
         use_sim_time_arg,
         world_arg,
         boundary_map_arg,
+        use_boundary_map_arg,
         slam_params_arg,
         nav2_params_arg,
+        frontier_params_arg,
         patrol_waypoints_arg,
         use_rviz_arg,
         rviz_config_arg,
         autostart_arg,
         use_respawn_arg,
         log_level_arg,
+        use_frontier_explorer_arg,
+        frontier_autostart_arg,
+        frontier_start_delay_arg,
+        use_patrol_arg,
         patrol_autostart_arg,
         patrol_start_delay_arg,
         nav_start_delay_arg,
@@ -376,6 +442,7 @@ def generate_launch_description():
         delayed_exploration_boundary_lifecycle_manager,
         delayed_navigation_nodes,
         delayed_navigation_lifecycle_manager,
+        delayed_frontier_explorer,
         delayed_mapping_patrol,
         rviz,
     ])

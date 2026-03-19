@@ -1,0 +1,22 @@
+/**:
+  ros__parameters:
+    map_topic: /map
+    boundary_map_topic: /exploration_boundary_map
+    use_boundary_map: false
+    goal_frame: map
+    robot_base_frame: base_link
+    navigate_to_pose_action: navigate_to_pose
+    status_topic: mapping_explorer/status
+    start_service: mapping_explorer/start
+    stop_service: mapping_explorer/stop
+    resume_service: mapping_explorer/resume
+    auto_start: true
+    planning_period_sec: 2.0
+    minimum_frontier_cluster_size: 12
+    minimum_goal_distance_m: 1.5
+    cluster_size_weight: 2.5
+    maximum_distance_score_m: 8.0
+    blacklist_radius_m: 1.5
+    progress_timeout_sec: 20.0
+    progress_required_distance_m: 0.5
+    no_frontier_confirmations: 4

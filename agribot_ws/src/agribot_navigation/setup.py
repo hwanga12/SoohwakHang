@@ -35,6 +35,7 @@ setup(
             'plan_harvest_route = agribot_navigation.harvest_routing:main',
             'startup_map_tf_broadcaster = agribot_navigation.startup_map_tf_broadcaster:main',
             'patrol_node = agribot_navigation.patrol_node:main',
+            'frontier_explorer = agribot_navigation.frontier_explorer:main',
             'harvest_route_node = agribot_navigation.harvest_route_node:main',
         ],
     },
