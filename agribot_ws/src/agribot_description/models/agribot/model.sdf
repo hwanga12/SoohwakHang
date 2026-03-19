@@ -363,8 +363,8 @@
       <wheel_radius>0.06</wheel_radius>
       <!-- Keep the geometry-aligned wheel values above, but soften the
            controller response so teleop straight runs do not overshoot. -->
-      <max_linear_velocity>0.40</max_linear_velocity>
-      <min_linear_velocity>-0.40</min_linear_velocity>
+      <max_linear_velocity>0.30</max_linear_velocity>
+      <min_linear_velocity>-0.30</min_linear_velocity>
       <max_linear_acceleration>0.60</max_linear_acceleration>
       <min_linear_acceleration>-0.60</min_linear_acceleration>
       <max_linear_jerk>1.50</max_linear_jerk>

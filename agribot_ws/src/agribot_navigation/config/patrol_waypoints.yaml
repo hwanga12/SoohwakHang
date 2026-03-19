@@ -21,7 +21,7 @@ coordinate_rationale:
     rear_connector_y: 220.0
 
 robot_constraints:
-  recommended_travel_speed_mps: 0.20
+  recommended_travel_speed_mps: 0.30
   recommended_observation_dwell_sec: 3.0
   notes:
     - Keep the robot in the center aisle during patrol.
