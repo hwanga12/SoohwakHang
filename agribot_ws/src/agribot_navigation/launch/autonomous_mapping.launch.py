@@ -99,7 +99,7 @@ def generate_launch_description():
     )
     use_boundary_map_arg = DeclareLaunchArgument(
         'use_boundary_map',
-        default_value='false',
+        default_value='true',
         description='Enable the optional exploration boundary map.',
     )
     slam_params_arg = DeclareLaunchArgument(

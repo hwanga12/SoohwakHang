@@ -270,6 +270,30 @@ def boundary_allows(boundary_map: OccupancyGrid | None, world_x: float, world_y:
     return is_free(value)
 
 
+def boundary_ray_clearance(
+    boundary_map: OccupancyGrid | None,
+    *,
+    robot_pose: RobotPose | None,
+    relative_angle: float,
+    max_distance: float,
+    step_distance: float = 0.05,
+) -> float:
+    if boundary_map is None or robot_pose is None:
+        return max_distance
+    if max_distance <= 0.0:
+        return 0.0
+
+    distance = 0.0
+    heading = robot_pose.yaw + relative_angle
+    while distance <= max_distance:
+        sample_x = robot_pose.x + math.cos(heading) * distance
+        sample_y = robot_pose.y + math.sin(heading) * distance
+        if not boundary_allows(boundary_map, sample_x, sample_y):
+            return max(0.0, distance - step_distance)
+        distance += step_distance
+    return max_distance
+
+
 def count_free_support(
     data: list[int] | tuple[int, ...],
     width: int,
@@ -389,6 +413,8 @@ def choose_open_heading(
     sample_count: int = 72,
     forward_bias_weight: float = 1.2,
     clearance_percentile: float = 0.20,
+    boundary_map: OccupancyGrid | None = None,
+    robot_pose: RobotPose | None = None,
 ) -> tuple[float | None, float, float]:
     ranges = scan_ranges(scan_msg)
     if not ranges:
@@ -405,6 +431,15 @@ def choose_open_heading(
             center_angle=angle,
             window_angle=heading_window,
             clearance_percentile=clearance_percentile,
+        )
+        clearance = min(
+            clearance,
+            boundary_ray_clearance(
+                boundary_map,
+                robot_pose=robot_pose,
+                relative_angle=angle,
+                max_distance=clearance,
+            ),
         )
         heading_error = abs(normalize_angle(angle - preferred_heading))
         score = clearance + forward_bias_weight * math.cos(heading_error)
@@ -1194,18 +1229,48 @@ class FrontierExplorerNode(Node):
             window_angle=self._heading_window,
             clearance_percentile=self._heading_clearance_percentile,
         )
+        if self._use_boundary_map:
+            front_clearance = min(
+                front_clearance,
+                boundary_ray_clearance(
+                    self._boundary_map,
+                    robot_pose=robot_pose,
+                    relative_angle=0.0,
+                    max_distance=front_clearance,
+                ),
+            )
         left_clearance = sector_clearance(
             scan,
             center_angle=math.pi / 2.0,
             window_angle=0.22,
             clearance_percentile=0.35,
         )
+        if self._use_boundary_map:
+            left_clearance = min(
+                left_clearance,
+                boundary_ray_clearance(
+                    self._boundary_map,
+                    robot_pose=robot_pose,
+                    relative_angle=math.pi / 2.0,
+                    max_distance=left_clearance,
+                ),
+            )
         right_clearance = sector_clearance(
             scan,
             center_angle=-math.pi / 2.0,
             window_angle=0.22,
             clearance_percentile=0.35,
         )
+        if self._use_boundary_map:
+            right_clearance = min(
+                right_clearance,
+                boundary_ray_clearance(
+                    self._boundary_map,
+                    robot_pose=robot_pose,
+                    relative_angle=-math.pi / 2.0,
+                    max_distance=right_clearance,
+                ),
+            )
 
         if front_clearance >= self._bootstrap_front_clearance_m and self._bootstrap_passes < self._bootstrap_max_passes:
             self._bootstrap_passes += 1
@@ -1298,6 +1363,34 @@ class FrontierExplorerNode(Node):
             window_angle=0.18,
             clearance_percentile=0.30,
         )
+        if self._use_boundary_map:
+            front_clearance = min(
+                front_clearance,
+                boundary_ray_clearance(
+                    self._boundary_map,
+                    robot_pose=robot_pose,
+                    relative_angle=0.0,
+                    max_distance=front_clearance,
+                ),
+            )
+            side_clearance = min(
+                side_clearance,
+                boundary_ray_clearance(
+                    self._boundary_map,
+                    robot_pose=robot_pose,
+                    relative_angle=side_center,
+                    max_distance=side_clearance,
+                ),
+            )
+            diagonal_clearance = min(
+                diagonal_clearance,
+                boundary_ray_clearance(
+                    self._boundary_map,
+                    robot_pose=robot_pose,
+                    relative_angle=diagonal_center,
+                    max_distance=diagonal_clearance,
+                ),
+            )
 
         if self._boundary_last_pose is not None:
             delta = math.hypot(
@@ -1592,6 +1685,11 @@ class FrontierExplorerNode(Node):
     def _queue_recovery(self, reason: str) -> None:
         scan = self._fresh_scan()
         self._stop_boundary_follow()
+        boundary_robot_pose = (
+            self._lookup_robot_pose(frame_id=self._bootstrap_pose_frame)
+            if self._use_boundary_map
+            else None
+        )
 
         front_clearance = (
             sector_clearance(
@@ -1603,6 +1701,16 @@ class FrontierExplorerNode(Node):
             if scan is not None
             else 0.0
         )
+        if scan is not None and self._use_boundary_map:
+            front_clearance = min(
+                front_clearance,
+                boundary_ray_clearance(
+                    self._boundary_map,
+                    robot_pose=boundary_robot_pose,
+                    relative_angle=0.0,
+                    max_distance=front_clearance,
+                ),
+            )
         best_heading, best_clearance, _ = (
             choose_open_heading(
                 scan,
@@ -1610,6 +1718,8 @@ class FrontierExplorerNode(Node):
                 heading_window=self._heading_window,
                 forward_bias_weight=self._heading_forward_bias_weight,
                 clearance_percentile=self._heading_clearance_percentile,
+                boundary_map=self._boundary_map if self._use_boundary_map else None,
+                robot_pose=boundary_robot_pose,
             )
             if scan is not None
             else (None, 0.0, float('-inf'))

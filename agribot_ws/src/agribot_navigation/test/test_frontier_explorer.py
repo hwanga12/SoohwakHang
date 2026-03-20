@@ -4,6 +4,7 @@ from sensor_msgs.msg import LaserScan
 
 from agribot_navigation.frontier_explorer import (
     RobotPose,
+    boundary_ray_clearance,
     bootstrap_ready_for_frontier,
     boundary_ready_for_frontier,
     build_recovery_commands,
@@ -162,6 +163,28 @@ def test_choose_open_heading_can_select_a_behind_escape_route() -> None:
     assert heading is not None
     assert 2.5 <= abs(heading) <= 3.2
     assert clearance >= 2.5
+
+
+def test_boundary_ray_clearance_stops_at_virtual_wall() -> None:
+    boundary = make_map(
+        6,
+        3,
+        [
+            0, 0, 0, 100, 100, 100,
+            0, 0, 0, 100, 100, 100,
+            0, 0, 0, 100, 100, 100,
+        ],
+    )
+
+    clearance = boundary_ray_clearance(
+        boundary,
+        robot_pose=RobotPose(x=1.5, y=1.5, yaw=0.0),
+        relative_angle=0.0,
+        max_distance=5.0,
+        step_distance=0.1,
+    )
+
+    assert 1.3 <= clearance <= 1.6
 
 
 def test_bootstrap_ready_for_frontier_requires_minimum_straight_progress() -> None:
