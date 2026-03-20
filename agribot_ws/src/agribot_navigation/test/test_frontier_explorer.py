@@ -6,6 +6,7 @@ from agribot_navigation.frontier_explorer import (
     RobotPose,
     bootstrap_ready_for_frontier,
     boundary_ready_for_frontier,
+    build_recovery_commands,
     build_coverage_fill_goals,
     build_frontier_candidates,
     choose_open_heading,
@@ -272,6 +273,36 @@ def test_wall_follow_command_searches_right_when_wall_is_lost() -> None:
 
     assert linear_x > 0.0
     assert angular_z < 0.0
+
+
+def test_build_recovery_commands_prefers_turn_and_drive_before_backup() -> None:
+    commands = build_recovery_commands(
+        front_clearance=1.1,
+        best_heading=0.6,
+        best_clearance=1.4,
+        recovery_backup_distance_m=0.5,
+        recovery_backup_speed_mps=0.12,
+        recovery_drive_distance_m=0.6,
+        recovery_drive_speed_mps=0.18,
+        recovery_default_spin_rad=3.141592653589793,
+    )
+
+    assert [command.kind for command in commands] == ['spin', 'drive', 'backup']
+
+
+def test_build_recovery_commands_keeps_backup_as_last_resort_in_tight_space() -> None:
+    commands = build_recovery_commands(
+        front_clearance=0.35,
+        best_heading=None,
+        best_clearance=0.40,
+        recovery_backup_distance_m=0.5,
+        recovery_backup_speed_mps=0.12,
+        recovery_drive_distance_m=0.6,
+        recovery_drive_speed_mps=0.18,
+        recovery_default_spin_rad=3.141592653589793,
+    )
+
+    assert [command.kind for command in commands] == ['spin', 'backup']
 
 
 def test_build_coverage_fill_goals_creates_boustrophedon_endpoints() -> None:

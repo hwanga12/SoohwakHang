@@ -1,8 +1,8 @@
 <!--
   Nav2 navigate-to-pose tree tuned for tight-space recovery.
-  Compared to the stock tree, this prioritizes backing out, turning around,
-  and then driving out on a straight heading so diff-drive robots do not
-  oscillate in narrow dead-ends.
+  Compared to the stock tree, this prioritizes turn-around and drive-out
+  before backing out so diff-drive robots keep moving forward unless they
+  truly need to reverse out of a dead-end.
 -->
 <root BTCPP_format="4" main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
@@ -52,6 +52,18 @@
         <ReactiveFallback name="RecoveryFallback">
           <GoalUpdated/>
           <RoundRobin name="RecoveryActions">
+            <Sequence name="TurnAroundAndDriveOut">
+              <ClearEntireCostmap
+                name="ClearLocalCostmap-TurnAround"
+                service_name="local_costmap/clear_entirely_local_costmap"/>
+              <Spin spin_dist="3.14159" error_code_id="{spin_error_code}"/>
+              <DriveOnHeading
+                dist_to_travel="0.60"
+                speed="0.14"
+                time_allowance="8.0"
+                error_code_id="{drive_on_heading_error_code}"/>
+            </Sequence>
+            <Spin spin_dist="3.14159" error_code_id="{spin_error_code}"/>
             <Sequence name="ClearAndBackOutShort">
               <ClearEntireCostmap
                 name="ClearLocalCostmap-ShortBackout"
@@ -65,17 +77,6 @@
                 time_allowance="6.0"
                 error_code_id="{backup_error_code}"/>
             </Sequence>
-            <Sequence name="TurnAroundAndDriveOut">
-              <ClearEntireCostmap
-                name="ClearLocalCostmap-TurnAround"
-                service_name="local_costmap/clear_entirely_local_costmap"/>
-              <Spin spin_dist="3.14159" error_code_id="{spin_error_code}"/>
-              <DriveOnHeading
-                dist_to_travel="0.60"
-                speed="0.14"
-                time_allowance="8.0"
-                error_code_id="{drive_on_heading_error_code}"/>
-            </Sequence>
             <Sequence name="BackOutLong">
               <BackUp
                 backup_dist="0.90"
@@ -86,7 +87,6 @@
                 name="ClearLocalCostmap-LongBackout"
                 service_name="local_costmap/clear_entirely_local_costmap"/>
             </Sequence>
-            <Spin spin_dist="3.14159" error_code_id="{spin_error_code}"/>
             <Wait wait_duration="2.0"/>
           </RoundRobin>
         </ReactiveFallback>

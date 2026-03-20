@@ -83,6 +83,56 @@ class CoverageGoal:
     heading: float
 
 
+def build_recovery_commands(
+    *,
+    front_clearance: float,
+    best_heading: float | None,
+    best_clearance: float,
+    recovery_backup_distance_m: float,
+    recovery_backup_speed_mps: float,
+    recovery_drive_distance_m: float,
+    recovery_drive_speed_mps: float,
+    recovery_default_spin_rad: float,
+    drive_clearance_threshold_m: float = 0.8,
+) -> list[RecoveryCommand]:
+    if best_heading is not None:
+        spin_angle = best_heading
+        if best_clearance <= front_clearance + 0.20 and abs(spin_angle) < 2.2:
+            spin_angle = math.copysign(recovery_default_spin_rad, spin_angle or 1.0)
+    else:
+        spin_angle = recovery_default_spin_rad
+
+    commands: list[RecoveryCommand] = [
+        RecoveryCommand(
+            kind='spin',
+            distance_or_yaw=spin_angle,
+            speed=0.0,
+            time_allowance_sec=10.0,
+            description='recovery spin to escape stuck loop',
+        )
+    ]
+    if best_clearance >= drive_clearance_threshold_m or front_clearance >= drive_clearance_threshold_m:
+        commands.append(
+            RecoveryCommand(
+                kind='drive',
+                distance_or_yaw=recovery_drive_distance_m,
+                speed=recovery_drive_speed_mps,
+                time_allowance_sec=8.0,
+                description='recovery drive on heading',
+            )
+        )
+    commands.append(
+        RecoveryCommand(
+            kind='backup',
+            distance_or_yaw=recovery_backup_distance_m,
+            speed=recovery_backup_speed_mps,
+            time_allowance_sec=8.0,
+            description='recovery backup as final fallback',
+        )
+    )
+    return commands
+
+
 def map_index(width: int, x: int, y: int) -> int:
     return y * width + x
 
@@ -1565,41 +1615,16 @@ class FrontierExplorerNode(Node):
             else (None, 0.0, float('-inf'))
         )
 
-        commands: list[RecoveryCommand] = [
-            RecoveryCommand(
-                kind='backup',
-                distance_or_yaw=self._recovery_backup_distance_m,
-                speed=self._recovery_backup_speed_mps,
-                time_allowance_sec=8.0,
-                description='recovery backup',
-            )
-        ]
-        if best_heading is not None:
-            spin_angle = best_heading
-            if best_clearance <= front_clearance + 0.20 and abs(spin_angle) < 2.2:
-                spin_angle = math.copysign(self._recovery_default_spin_rad, spin_angle or 1.0)
-        else:
-            spin_angle = self._recovery_default_spin_rad
-
-        commands.append(
-            RecoveryCommand(
-                kind='spin',
-                distance_or_yaw=spin_angle,
-                speed=0.0,
-                time_allowance_sec=10.0,
-                description='recovery spin to escape stuck loop',
-            )
+        commands = build_recovery_commands(
+            front_clearance=front_clearance,
+            best_heading=best_heading,
+            best_clearance=best_clearance,
+            recovery_backup_distance_m=self._recovery_backup_distance_m,
+            recovery_backup_speed_mps=self._recovery_backup_speed_mps,
+            recovery_drive_distance_m=self._recovery_drive_distance_m,
+            recovery_drive_speed_mps=self._recovery_drive_speed_mps,
+            recovery_default_spin_rad=self._recovery_default_spin_rad,
         )
-        if best_clearance >= 0.8 or front_clearance >= 0.8:
-            commands.append(
-                RecoveryCommand(
-                    kind='drive',
-                    distance_or_yaw=self._recovery_drive_distance_m,
-                    speed=self._recovery_drive_speed_mps,
-                    time_allowance_sec=8.0,
-                    description='recovery drive on heading',
-                )
-            )
 
         self._queue_behavior_commands(
             commands,
@@ -1712,6 +1737,14 @@ class FrontierExplorerNode(Node):
             return
 
         if result.status != GoalStatus.STATUS_SUCCEEDED:
+            if self._behavior_context == 'recovery' and self._behavior_queue:
+                self._set_mode(
+                    MODE_RECOVERY,
+                    f'Recovery behavior failed ({command.description if command else "unknown"}); '
+                    'trying the next forward-first escape action.',
+                )
+                self._start_next_behavior_command()
+                return
             self._behavior_queue.clear()
             if self._behavior_context == 'bootstrap':
                 self._set_mode(
