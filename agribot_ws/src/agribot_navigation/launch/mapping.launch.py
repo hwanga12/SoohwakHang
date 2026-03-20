@@ -31,6 +31,11 @@ def generate_launch_description():
         'config',
         'slam_mapping.yaml',
     )
+    default_ekf_params = os.path.join(
+        pkg_agribot_navigation,
+        'config',
+        'ekf_mapping.yaml',
+    )
     default_rviz_config = os.path.join(
         pkg_agribot_navigation,
         'rviz',
@@ -51,6 +56,11 @@ def generate_launch_description():
         'slam_params_file',
         default_value=default_slam_params,
         description='SLAM Toolbox parameter file for greenhouse mapping.',
+    )
+    ekf_params_arg = DeclareLaunchArgument(
+        'ekf_params_file',
+        default_value=default_ekf_params,
+        description='robot_localization EKF parameter file for manual mapping.',
     )
     use_rviz_arg = DeclareLaunchArgument(
         'use_rviz',
@@ -84,7 +94,19 @@ def generate_launch_description():
         launch_arguments={
             'world': LaunchConfiguration('world'),
             'publish_map_to_odom_tf': 'false',
+            'publish_odom_tf': 'true',
         }.items(),
+    )
+
+    ekf_filter = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='mapping_ekf_filter',
+        output='screen',
+        parameters=[
+            LaunchConfiguration('ekf_params_file'),
+            {'use_sim_time': LaunchConfiguration('use_sim_time')},
+        ],
     )
 
     slam_toolbox = IncludeLaunchDescription(
@@ -92,7 +114,7 @@ def generate_launch_description():
             os.path.join(
                 pkg_slam_toolbox,
                 'launch',
-                'online_async_launch.py',
+                'online_sync_launch.py',
             )
         ),
         launch_arguments={
@@ -118,11 +140,13 @@ def generate_launch_description():
         use_sim_time_arg,
         world_arg,
         slam_params_arg,
+        ekf_params_arg,
         use_rviz_arg,
         rviz_config_arg,
         autostart_arg,
         lifecycle_manager_arg,
         simulation,
+        ekf_filter,
         slam_toolbox,
         rviz,
     ])

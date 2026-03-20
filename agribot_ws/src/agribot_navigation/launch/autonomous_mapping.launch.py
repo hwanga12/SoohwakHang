@@ -18,6 +18,13 @@ def generate_launch_description():
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_agribot_navigation = get_package_share_directory('agribot_navigation')
     pkg_slam_toolbox = get_package_share_directory('slam_toolbox')
+    gpu_env_actions = []
+    if os.path.exists('/usr/bin/nvidia-smi'):
+        gpu_env_actions = [
+            SetEnvironmentVariable('DRI_PRIME', '1'),
+            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
+            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
+        ]
 
     default_world = os.path.join(
         pkg_agribot_description,
@@ -43,6 +50,16 @@ def generate_launch_description():
         pkg_agribot_navigation,
         'config',
         'frontier_explorer.yaml',
+    )
+    default_ekf_params = os.path.join(
+        pkg_agribot_navigation,
+        'config',
+        'ekf_mapping.yaml',
+    )
+    default_collision_monitor_params = os.path.join(
+        pkg_agribot_navigation,
+        'config',
+        'collision_monitor_mapping.yaml',
     )
     default_patrol_waypoints = os.path.join(
         pkg_agribot_navigation,
@@ -100,6 +117,16 @@ def generate_launch_description():
         default_value=default_frontier_params,
         description='Frontier explorer parameter file for generic autonomous mapping.',
     )
+    ekf_params_arg = DeclareLaunchArgument(
+        'ekf_params_file',
+        default_value=default_ekf_params,
+        description='robot_localization EKF parameter file for mapping sessions.',
+    )
+    collision_monitor_params_arg = DeclareLaunchArgument(
+        'collision_monitor_params_file',
+        default_value=default_collision_monitor_params,
+        description='Collision monitor parameter file for mapping sessions.',
+    )
     patrol_waypoints_arg = DeclareLaunchArgument(
         'patrol_waypoints_file',
         default_value=default_patrol_waypoints,
@@ -142,8 +169,8 @@ def generate_launch_description():
     )
     frontier_start_delay_arg = DeclareLaunchArgument(
         'frontier_start_delay_sec',
-        default_value='5.0',
-        description='Delay before the frontier explorer starts after Nav2 activation.',
+        default_value='1.0',
+        description='Delay before the frontier explorer starts its bootstrap drive.',
     )
     use_patrol_arg = DeclareLaunchArgument(
         'use_patrol',
@@ -162,8 +189,8 @@ def generate_launch_description():
     )
     nav_start_delay_arg = DeclareLaunchArgument(
         'nav_start_delay_sec',
-        default_value='4.0',
-        description='Delay before Nav2 lifecycle activation begins.',
+        default_value='8.0',
+        description='Delay before Nav2 lifecycle activation begins after bootstrap motion.',
     )
     inspect_dwell_arg = DeclareLaunchArgument(
         'inspect_dwell_sec',
@@ -197,7 +224,24 @@ def generate_launch_description():
         launch_arguments={
             'world': LaunchConfiguration('world'),
             'publish_map_to_odom_tf': 'false',
+            'publish_odom_tf': 'true',
+            'cmd_vel_input_topic': '/cmd_vel_checked',
         }.items(),
+    )
+
+    ekf_filter = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='mapping_ekf_filter',
+        output='screen',
+        parameters=[
+            LaunchConfiguration('ekf_params_file'),
+            {'use_sim_time': LaunchConfiguration('use_sim_time')},
+        ],
+    )
+    delayed_ekf_filter = TimerAction(
+        period=0.5,
+        actions=[ekf_filter],
     )
 
     slam_toolbox = IncludeLaunchDescription(
@@ -205,7 +249,7 @@ def generate_launch_description():
             os.path.join(
                 pkg_slam_toolbox,
                 'launch',
-                'online_async_launch.py',
+                'online_sync_launch.py',
             )
         ),
         launch_arguments={
@@ -218,6 +262,37 @@ def generate_launch_description():
     delayed_slam_toolbox = TimerAction(
         period=LaunchConfiguration('stack_start_delay_sec'),
         actions=[slam_toolbox],
+    )
+
+    collision_monitor = Node(
+        package='nav2_collision_monitor',
+        executable='collision_monitor',
+        name='mapping_collision_monitor',
+        output='screen',
+        parameters=[
+            LaunchConfiguration('collision_monitor_params_file'),
+            {'use_sim_time': LaunchConfiguration('use_sim_time')},
+        ],
+        arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')],
+    )
+    delayed_collision_monitor = TimerAction(
+        period=LaunchConfiguration('stack_start_delay_sec'),
+        actions=[collision_monitor],
+    )
+    collision_monitor_lifecycle_manager = Node(
+        package='nav2_lifecycle_manager',
+        executable='lifecycle_manager',
+        name='lifecycle_manager_mapping_collision_monitor',
+        output='screen',
+        parameters=[{
+            'autostart': LaunchConfiguration('autostart'),
+            'node_names': ['mapping_collision_monitor'],
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+        }],
+    )
+    delayed_collision_monitor_lifecycle_manager = TimerAction(
+        period=LaunchConfiguration('stack_start_delay_sec'),
+        actions=[collision_monitor_lifecycle_manager],
     )
 
     exploration_boundary_map_server = Node(
@@ -426,6 +501,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        *gpu_env_actions,
         use_sim_time_arg,
         world_arg,
         boundary_map_arg,
@@ -433,6 +509,8 @@ def generate_launch_description():
         slam_params_arg,
         nav2_params_arg,
         frontier_params_arg,
+        ekf_params_arg,
+        collision_monitor_params_arg,
         patrol_waypoints_arg,
         use_rviz_arg,
         rviz_config_arg,
@@ -451,9 +529,12 @@ def generate_launch_description():
         boundary_lifecycle_delay_arg,
         slam_lifecycle_manager_arg,
         simulation,
+        delayed_ekf_filter,
         delayed_slam_toolbox,
         delayed_exploration_boundary_map_server,
         delayed_exploration_boundary_lifecycle_manager,
+        delayed_collision_monitor,
+        delayed_collision_monitor_lifecycle_manager,
         delayed_navigation_nodes,
         delayed_navigation_lifecycle_manager,
         delayed_frontier_explorer,
