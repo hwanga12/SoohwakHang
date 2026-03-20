@@ -89,12 +89,7 @@ local_costmap:
       footprint: "[[0.24, 0.20], [0.24, -0.20], [-0.24, -0.20], [-0.24, 0.20]]"
       footprint_padding: 0.01
       transform_tolerance: 0.20
-      plugins: ["boundary_layer", "obstacle_layer", "inflation_layer"]
-      boundary_layer:
-        plugin: "nav2_costmap_2d::StaticLayer"
-        map_topic: /exploration_boundary_map
-        map_subscribe_transient_local: true
-        subscribe_to_updates: false
+      plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -128,16 +123,11 @@ global_costmap:
       footprint: "[[0.24, 0.20], [0.24, -0.20], [-0.24, -0.20], [-0.24, 0.20]]"
       footprint_padding: 0.01
       transform_tolerance: 0.30
-      plugins: ["static_layer", "boundary_layer", "obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
         subscribe_to_updates: true
-      boundary_layer:
-        plugin: "nav2_costmap_2d::StaticLayer"
-        map_topic: /exploration_boundary_map
-        map_subscribe_transient_local: true
-        subscribe_to_updates: false
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -169,7 +159,7 @@ planner_server:
       tolerance: 0.50
       downsample_costmap: false
       downsampling_factor: 1
-      allow_unknown: true
+      allow_unknown: false
       max_iterations: 1000000
       max_on_approach_iterations: 1000
       max_planning_time: 2.0

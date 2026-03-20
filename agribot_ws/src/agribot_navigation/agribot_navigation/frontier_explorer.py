@@ -1964,11 +1964,21 @@ class FrontierExplorerNode(Node):
         self._status_publisher.publish(String(data=json.dumps(payload, sort_keys=True)))
 
     def destroy_node(self) -> bool:
-        self._cmd_vel_publisher.publish(Twist())
-        self._navigate_client.destroy()
-        self._spin_client.destroy()
-        self._backup_client.destroy()
-        self._drive_client.destroy()
+        try:
+            if rclpy.ok():
+                self._cmd_vel_publisher.publish(Twist())
+        except Exception:
+            pass
+        for client in (
+            self._navigate_client,
+            self._spin_client,
+            self._backup_client,
+            self._drive_client,
+        ):
+            try:
+                client.destroy()
+            except Exception:
+                pass
         return super().destroy_node()
 
 
