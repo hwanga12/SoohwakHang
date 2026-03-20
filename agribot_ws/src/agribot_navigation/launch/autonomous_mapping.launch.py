@@ -226,6 +226,7 @@ def generate_launch_description():
             'publish_map_to_odom_tf': 'false',
             'publish_odom_tf': 'true',
             'cmd_vel_input_topic': '/cmd_vel_checked',
+            'use_camera_bridges': 'false',
         }.items(),
     )
 

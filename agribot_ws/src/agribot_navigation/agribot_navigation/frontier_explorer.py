@@ -384,18 +384,20 @@ def wall_follow_command(
         follow_side = 'right'
 
     if front_clearance < front_stop_distance:
-        return 0.0, max_angular_speed if follow_side == 'right' else -max_angular_speed
+        corner_linear = min(0.10, linear_speed * 0.35)
+        corner_turn = 0.70 * max_angular_speed if follow_side == 'right' else -0.70 * max_angular_speed
+        return corner_linear, corner_turn
 
     if side_clearance > wall_lost_distance:
-        search_turn = -0.65 * max_angular_speed if follow_side == 'right' else 0.65 * max_angular_speed
-        return 0.12, search_turn
+        search_turn = -0.35 * max_angular_speed if follow_side == 'right' else 0.35 * max_angular_speed
+        return max(0.18, linear_speed * 0.65), search_turn
 
     sign = 1.0 if follow_side == 'right' else -1.0
     side_error = target_distance - side_clearance
     diagonal_error = target_distance - diagonal_clearance
     angular_z = sign * (side_gain * side_error + diagonal_gain * diagonal_error)
     angular_z = clamp(angular_z, -max_angular_speed, max_angular_speed)
-    speed_scale = max(0.30, 1.0 - abs(angular_z) / max(max_angular_speed, 1.0e-6))
+    speed_scale = max(0.55, 1.0 - 0.70 * abs(angular_z) / max(max_angular_speed, 1.0e-6))
     linear_x = linear_speed * speed_scale
     return linear_x, angular_z
 
@@ -422,6 +424,27 @@ def bootstrap_ready_for_frontier(
     if bootstrap_passes < minimum_passes:
         return False
     if bootstrap_total_distance_m < minimum_total_distance_m:
+        return False
+    return True
+
+
+def boundary_ready_for_frontier(
+    *,
+    has_candidates: bool,
+    boundary_elapsed_sec: float,
+    minimum_boundary_duration_sec: float,
+    boundary_distance_m: float,
+    minimum_boundary_distance_m: float,
+    known_ratio: float,
+    known_ratio_threshold: float,
+) -> bool:
+    if not has_candidates:
+        return False
+    if boundary_elapsed_sec < minimum_boundary_duration_sec:
+        return False
+    if boundary_distance_m < minimum_boundary_distance_m:
+        return False
+    if known_ratio < known_ratio_threshold:
         return False
     return True
 
@@ -597,7 +620,7 @@ class FrontierExplorerNode(Node):
         self.declare_parameter('stop_service', 'mapping_explorer/stop')
         self.declare_parameter('resume_service', 'mapping_explorer/resume')
         self.declare_parameter('auto_start', True)
-        self.declare_parameter('planning_period_sec', 0.15)
+        self.declare_parameter('planning_period_sec', 0.30)
 
         self.declare_parameter('minimum_frontier_cluster_size', 10)
         self.declare_parameter('minimum_goal_distance_m', 1.2)
@@ -620,26 +643,27 @@ class FrontierExplorerNode(Node):
         self.declare_parameter('heading_clearance_percentile', 0.2)
         self.declare_parameter('frontier_completion_known_ratio', 0.92)
 
-        self.declare_parameter('bootstrap_drive_distance_m', 1.25)
-        self.declare_parameter('bootstrap_drive_speed_mps', 0.22)
-        self.declare_parameter('bootstrap_drive_timeout_sec', 8.0)
-        self.declare_parameter('bootstrap_front_clearance_m', 1.4)
-        self.declare_parameter('bootstrap_max_passes', 4)
-        self.declare_parameter('bootstrap_min_passes_before_frontier', 2)
-        self.declare_parameter('bootstrap_min_total_distance_m', 2.4)
-        self.declare_parameter('bootstrap_known_ratio_for_frontier', 0.06)
+        self.declare_parameter('bootstrap_drive_distance_m', 1.8)
+        self.declare_parameter('bootstrap_drive_speed_mps', 0.30)
+        self.declare_parameter('bootstrap_drive_timeout_sec', 10.0)
+        self.declare_parameter('bootstrap_front_clearance_m', 1.2)
+        self.declare_parameter('bootstrap_max_passes', 6)
+        self.declare_parameter('bootstrap_min_passes_before_frontier', 4)
+        self.declare_parameter('bootstrap_min_total_distance_m', 5.0)
+        self.declare_parameter('bootstrap_known_ratio_for_frontier', 0.12)
 
         self.declare_parameter('boundary_follow_target_distance_m', 0.60)
         self.declare_parameter('boundary_follow_front_stop_m', 0.75)
         self.declare_parameter('boundary_follow_wall_lost_m', 1.25)
-        self.declare_parameter('boundary_follow_linear_speed_mps', 0.24)
-        self.declare_parameter('boundary_follow_max_angular_speed_rps', 0.90)
-        self.declare_parameter('boundary_follow_side_gain', 2.6)
-        self.declare_parameter('boundary_follow_diagonal_gain', 1.6)
-        self.declare_parameter('boundary_follow_min_duration_sec', 8.0)
-        self.declare_parameter('boundary_follow_min_distance_m', 3.0)
-        self.declare_parameter('boundary_follow_stuck_timeout_sec', 4.0)
-        self.declare_parameter('boundary_follow_progress_distance_m', 0.18)
+        self.declare_parameter('boundary_follow_linear_speed_mps', 0.34)
+        self.declare_parameter('boundary_follow_max_angular_speed_rps', 0.65)
+        self.declare_parameter('boundary_follow_side_gain', 1.8)
+        self.declare_parameter('boundary_follow_diagonal_gain', 0.9)
+        self.declare_parameter('boundary_follow_min_duration_sec', 16.0)
+        self.declare_parameter('boundary_follow_min_distance_m', 10.0)
+        self.declare_parameter('boundary_follow_known_ratio_for_frontier', 0.18)
+        self.declare_parameter('boundary_follow_stuck_timeout_sec', 6.0)
+        self.declare_parameter('boundary_follow_progress_distance_m', 0.25)
 
         self.declare_parameter('recovery_backup_distance_m', 0.50)
         self.declare_parameter('recovery_backup_speed_mps', 0.12)
@@ -647,7 +671,7 @@ class FrontierExplorerNode(Node):
         self.declare_parameter('recovery_drive_speed_mps', 0.18)
         self.declare_parameter('recovery_default_spin_rad', 3.141592653589793)
 
-        self.declare_parameter('enable_coverage_fill', True)
+        self.declare_parameter('enable_coverage_fill', False)
         self.declare_parameter('coverage_known_ratio_threshold', 0.80)
         self.declare_parameter('coverage_lane_spacing_m', 0.80)
         self.declare_parameter('coverage_min_segment_length_m', 1.2)
@@ -757,6 +781,9 @@ class FrontierExplorerNode(Node):
         )
         self._boundary_follow_min_distance_m = float(
             self.get_parameter('boundary_follow_min_distance_m').value
+        )
+        self._boundary_follow_known_ratio_for_frontier = float(
+            self.get_parameter('boundary_follow_known_ratio_for_frontier').value
         )
         self._boundary_follow_stuck_timeout = Duration(
             seconds=float(self.get_parameter('boundary_follow_stuck_timeout_sec').value)
@@ -1234,10 +1261,15 @@ class FrontierExplorerNode(Node):
 
         candidates = self._candidate_points(robot_pose)
         boundary_elapsed = self.get_clock().now() - self._boundary_started_at
-        if (
-            candidates
-            and boundary_elapsed >= self._boundary_follow_min_duration
-            and self._boundary_distance_m >= self._boundary_follow_min_distance_m
+        known_ratio = self._known_ratio()
+        if boundary_ready_for_frontier(
+            has_candidates=bool(candidates),
+            boundary_elapsed_sec=float(boundary_elapsed.nanoseconds) / 1.0e9,
+            minimum_boundary_duration_sec=float(self._boundary_follow_min_duration.nanoseconds) / 1.0e9,
+            boundary_distance_m=self._boundary_distance_m,
+            minimum_boundary_distance_m=self._boundary_follow_min_distance_m,
+            known_ratio=known_ratio,
+            known_ratio_threshold=self._boundary_follow_known_ratio_for_frontier,
         ):
             self._stop_boundary_follow()
             self._set_mode(
@@ -1270,7 +1302,8 @@ class FrontierExplorerNode(Node):
         self._cmd_vel_publisher.publish(twist)
         self._state_message = (
             f'Boundary follow ({self._boundary_side}) front={front_clearance:.2f} '
-            f'side={side_clearance:.2f} dist={self._boundary_distance_m:.2f} m.'
+            f'side={side_clearance:.2f} dist={self._boundary_distance_m:.2f} m '
+            f'known={known_ratio:.2f}.'
         )
         self._publish_status()
 

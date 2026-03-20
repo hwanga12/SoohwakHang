@@ -95,6 +95,7 @@ def generate_launch_description():
             'world': LaunchConfiguration('world'),
             'publish_map_to_odom_tf': 'false',
             'publish_odom_tf': 'true',
+            'use_camera_bridges': 'false',
         }.items(),
     )
 

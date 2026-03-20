@@ -5,6 +5,7 @@ from sensor_msgs.msg import LaserScan
 from agribot_navigation.frontier_explorer import (
     RobotPose,
     bootstrap_ready_for_frontier,
+    boundary_ready_for_frontier,
     build_coverage_fill_goals,
     build_frontier_candidates,
     choose_open_heading,
@@ -182,6 +183,57 @@ def test_bootstrap_ready_for_frontier_requires_minimum_straight_progress() -> No
         bootstrap_total_distance_m=2.5,
         minimum_total_distance_m=2.4,
     )
+
+
+def test_boundary_ready_for_frontier_requires_outline_progress_and_known_ratio() -> None:
+    assert not boundary_ready_for_frontier(
+        has_candidates=True,
+        boundary_elapsed_sec=12.0,
+        minimum_boundary_duration_sec=16.0,
+        boundary_distance_m=11.0,
+        minimum_boundary_distance_m=10.0,
+        known_ratio=0.20,
+        known_ratio_threshold=0.18,
+    )
+
+    assert not boundary_ready_for_frontier(
+        has_candidates=True,
+        boundary_elapsed_sec=20.0,
+        minimum_boundary_duration_sec=16.0,
+        boundary_distance_m=11.0,
+        minimum_boundary_distance_m=10.0,
+        known_ratio=0.12,
+        known_ratio_threshold=0.18,
+    )
+
+    assert boundary_ready_for_frontier(
+        has_candidates=True,
+        boundary_elapsed_sec=20.0,
+        minimum_boundary_duration_sec=16.0,
+        boundary_distance_m=11.0,
+        minimum_boundary_distance_m=10.0,
+        known_ratio=0.20,
+        known_ratio_threshold=0.18,
+    )
+
+
+def test_wall_follow_command_arcs_through_a_corner_instead_of_full_spin() -> None:
+    linear_x, angular_z = wall_follow_command(
+        front_clearance=0.55,
+        side_clearance=0.55,
+        diagonal_clearance=0.50,
+        target_distance=0.6,
+        front_stop_distance=0.75,
+        wall_lost_distance=1.25,
+        linear_speed=0.34,
+        max_angular_speed=0.65,
+        side_gain=1.8,
+        diagonal_gain=0.9,
+        follow_side='right',
+    )
+
+    assert linear_x > 0.0
+    assert angular_z > 0.0
 
 
 def test_wall_follow_command_turns_left_when_right_wall_is_too_close() -> None:

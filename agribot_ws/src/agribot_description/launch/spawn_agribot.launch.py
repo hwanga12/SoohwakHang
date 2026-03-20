@@ -82,6 +82,11 @@ def generate_launch_description():
         default_value='/cmd_vel_safe',
         description='Output command velocity topic published by the watchdog.',
     )
+    use_camera_bridges_arg = DeclareLaunchArgument(
+        'use_camera_bridges',
+        default_value='true',
+        description='Launch RGB-D camera bridges. Disable during LiDAR-only mapping to reduce load.',
+    )
 
     # Gazebo Harmonic simulation
     gz_sim = IncludeLaunchDescription(
@@ -141,6 +146,7 @@ def generate_launch_description():
         arguments=[
             '/agribot/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
         ],
+        condition=IfCondition(LaunchConfiguration('use_camera_bridges')),
         output='screen',
     )
 
@@ -161,6 +167,7 @@ def generate_launch_description():
         executable='image_bridge',
         name='ros_gz_camera_image_bridge',
         arguments=['/agribot/camera/image'],
+        condition=IfCondition(LaunchConfiguration('use_camera_bridges')),
         output='screen',
     )
 
@@ -169,6 +176,7 @@ def generate_launch_description():
         executable='image_bridge',
         name='ros_gz_camera_depth_bridge',
         arguments=['/agribot/camera/depth_image'],
+        condition=IfCondition(LaunchConfiguration('use_camera_bridges')),
         output='screen',
     )
 
@@ -227,6 +235,7 @@ def generate_launch_description():
         publish_odom_tf_arg,
         cmd_vel_input_topic_arg,
         cmd_vel_output_topic_arg,
+        use_camera_bridges_arg,
         gz_sim,
         robot_state_publisher,
         cmd_vel_watchdog,

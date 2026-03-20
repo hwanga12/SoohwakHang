@@ -10,7 +10,7 @@
     base_shift_correction: true
     stop_pub_timeout: 0.4
 
-    polygons: ["FrontStopZone", "BodySlowZone"]
+    polygons: ["FrontStopZone"]
 
     FrontStopZone:
       type: polygon
@@ -19,16 +19,6 @@
       min_points: 4
       visualize: true
       polygon_pub_topic: /collision_monitor/front_stop_zone
-      enabled: true
-
-    BodySlowZone:
-      type: polygon
-      points: "[[0.35, 0.30], [0.35, -0.30], [-0.25, -0.30], [-0.25, 0.30]]"
-      action_type: slowdown
-      slowdown_ratio: 0.35
-      min_points: 4
-      visualize: true
-      polygon_pub_topic: /collision_monitor/body_slow_zone
       enabled: true
 
     observation_sources: ["scan"]

@@ -17,7 +17,7 @@
     stop_service: mapping_explorer/stop
     resume_service: mapping_explorer/resume
     auto_start: true
-    planning_period_sec: 0.15
+    planning_period_sec: 0.35
 
     minimum_frontier_cluster_size: 10
     minimum_goal_distance_m: 1.2
@@ -32,7 +32,7 @@
     blacklist_duration_sec: 45.0
     progress_timeout_sec: 18.0
     progress_required_distance_m: 0.35
-    no_frontier_confirmations: 5
+    no_frontier_confirmations: 3
     scan_timeout_sec: 1.0
     pose_reuse_timeout_sec: 1.0
     heading_window_rad: 0.45
@@ -40,26 +40,27 @@
     heading_clearance_percentile: 0.2
     frontier_completion_known_ratio: 0.92
 
-    bootstrap_drive_distance_m: 1.25
-    bootstrap_drive_speed_mps: 0.22
-    bootstrap_drive_timeout_sec: 8.0
-    bootstrap_front_clearance_m: 1.4
-    bootstrap_max_passes: 4
-    bootstrap_min_passes_before_frontier: 2
-    bootstrap_min_total_distance_m: 2.4
-    bootstrap_known_ratio_for_frontier: 0.06
+    bootstrap_drive_distance_m: 1.8
+    bootstrap_drive_speed_mps: 0.3
+    bootstrap_drive_timeout_sec: 10.0
+    bootstrap_front_clearance_m: 1.2
+    bootstrap_max_passes: 6
+    bootstrap_min_passes_before_frontier: 4
+    bootstrap_min_total_distance_m: 5.0
+    bootstrap_known_ratio_for_frontier: 0.12
 
     boundary_follow_target_distance_m: 0.6
     boundary_follow_front_stop_m: 0.75
     boundary_follow_wall_lost_m: 1.25
-    boundary_follow_linear_speed_mps: 0.24
-    boundary_follow_max_angular_speed_rps: 0.9
-    boundary_follow_side_gain: 2.6
-    boundary_follow_diagonal_gain: 1.6
-    boundary_follow_min_duration_sec: 8.0
-    boundary_follow_min_distance_m: 3.0
-    boundary_follow_stuck_timeout_sec: 4.0
-    boundary_follow_progress_distance_m: 0.18
+    boundary_follow_linear_speed_mps: 0.34
+    boundary_follow_max_angular_speed_rps: 0.65
+    boundary_follow_side_gain: 1.8
+    boundary_follow_diagonal_gain: 0.9
+    boundary_follow_min_duration_sec: 16.0
+    boundary_follow_min_distance_m: 10.0
+    boundary_follow_known_ratio_for_frontier: 0.18
+    boundary_follow_stuck_timeout_sec: 6.0
+    boundary_follow_progress_distance_m: 0.25
 
     recovery_backup_distance_m: 0.5
     recovery_backup_speed_mps: 0.12
@@ -67,7 +68,7 @@
     recovery_drive_speed_mps: 0.18
     recovery_default_spin_rad: 3.141592653589793
 
-    enable_coverage_fill: true
+    enable_coverage_fill: false
     coverage_known_ratio_threshold: 0.8
     coverage_lane_spacing_m: 0.8
     coverage_min_segment_length_m: 1.2
