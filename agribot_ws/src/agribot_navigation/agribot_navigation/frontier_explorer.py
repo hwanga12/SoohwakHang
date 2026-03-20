@@ -407,6 +407,25 @@ def compute_known_ratio(map_msg: OccupancyGrid | None) -> float:
     return known / float(len(map_msg.data))
 
 
+def bootstrap_ready_for_frontier(
+    *,
+    has_candidates: bool,
+    known_ratio: float,
+    known_ratio_threshold: float,
+    bootstrap_passes: int,
+    minimum_passes: int,
+    bootstrap_total_distance_m: float,
+    minimum_total_distance_m: float,
+) -> bool:
+    if not has_candidates or known_ratio < known_ratio_threshold:
+        return False
+    if bootstrap_passes < minimum_passes:
+        return False
+    if bootstrap_total_distance_m < minimum_total_distance_m:
+        return False
+    return True
+
+
 def build_frontier_candidates(
     map_msg: OccupancyGrid,
     *,
@@ -606,6 +625,8 @@ class FrontierExplorerNode(Node):
         self.declare_parameter('bootstrap_drive_timeout_sec', 8.0)
         self.declare_parameter('bootstrap_front_clearance_m', 1.4)
         self.declare_parameter('bootstrap_max_passes', 4)
+        self.declare_parameter('bootstrap_min_passes_before_frontier', 2)
+        self.declare_parameter('bootstrap_min_total_distance_m', 2.4)
         self.declare_parameter('bootstrap_known_ratio_for_frontier', 0.06)
 
         self.declare_parameter('boundary_follow_target_distance_m', 0.60)
@@ -700,6 +721,12 @@ class FrontierExplorerNode(Node):
             self.get_parameter('bootstrap_front_clearance_m').value
         )
         self._bootstrap_max_passes = int(self.get_parameter('bootstrap_max_passes').value)
+        self._bootstrap_min_passes_before_frontier = int(
+            self.get_parameter('bootstrap_min_passes_before_frontier').value
+        )
+        self._bootstrap_min_total_distance_m = float(
+            self.get_parameter('bootstrap_min_total_distance_m').value
+        )
         self._bootstrap_known_ratio_for_frontier = float(
             self.get_parameter('bootstrap_known_ratio_for_frontier').value
         )
@@ -791,6 +818,7 @@ class FrontierExplorerNode(Node):
         self._blacklisted_regions: list[BlacklistRegion] = []
         self._no_frontier_counter = 0
         self._bootstrap_passes = 0
+        self._bootstrap_total_distance_m = 0.0
         self._bootstrap_drive_active = False
         self._bootstrap_drive_start_pose: RobotPose | None = None
         self._bootstrap_drive_started_at = now
@@ -927,6 +955,7 @@ class FrontierExplorerNode(Node):
         self._last_error_message = ''
         self._no_frontier_counter = 0
         self._bootstrap_passes = 0
+        self._bootstrap_total_distance_m = 0.0
         self._bootstrap_drive_active = False
         self._bootstrap_drive_start_pose = None
         self._bootstrap_drive_started_at = now
@@ -1069,7 +1098,15 @@ class FrontierExplorerNode(Node):
 
         known_ratio = self._known_ratio()
         candidates = self._candidate_points(robot_pose)
-        if candidates and known_ratio >= self._bootstrap_known_ratio_for_frontier:
+        if bootstrap_ready_for_frontier(
+            has_candidates=bool(candidates),
+            known_ratio=known_ratio,
+            known_ratio_threshold=self._bootstrap_known_ratio_for_frontier,
+            bootstrap_passes=self._bootstrap_passes,
+            minimum_passes=self._bootstrap_min_passes_before_frontier,
+            bootstrap_total_distance_m=self._bootstrap_total_distance_m,
+            minimum_total_distance_m=self._bootstrap_min_total_distance_m,
+        ):
             self._stop_boundary_follow()
             self._set_mode(MODE_FRONTIER, 'Bootstrap finished; switching to frontier exploration.')
             return
@@ -1133,6 +1170,7 @@ class FrontierExplorerNode(Node):
         front_blocked = front_clearance < self._bootstrap_front_clearance_m
         timed_out = elapsed > self._bootstrap_drive_timeout
         if reached_distance or front_blocked or timed_out:
+            self._bootstrap_total_distance_m += distance_traveled
             self._stop_bootstrap_drive()
             reason = 'distance limit' if reached_distance else 'front obstacle' if front_blocked else 'timeout'
             self._set_mode(
@@ -1736,6 +1774,7 @@ class FrontierExplorerNode(Node):
             'distance_remaining_m': self._last_distance_remaining_m,
             'known_ratio': round(self._known_ratio(), 4),
             'bootstrap_passes': self._bootstrap_passes,
+            'bootstrap_total_distance_m': round(self._bootstrap_total_distance_m, 3),
             'boundary_side': self._boundary_side,
             'boundary_distance_m': round(self._boundary_distance_m, 3),
             'coverage_goal_index': self._coverage_goal_index,

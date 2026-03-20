@@ -4,6 +4,7 @@ from sensor_msgs.msg import LaserScan
 
 from agribot_navigation.frontier_explorer import (
     RobotPose,
+    bootstrap_ready_for_frontier,
     build_coverage_fill_goals,
     build_frontier_candidates,
     choose_open_heading,
@@ -159,6 +160,28 @@ def test_choose_open_heading_can_select_a_behind_escape_route() -> None:
     assert heading is not None
     assert 2.5 <= abs(heading) <= 3.2
     assert clearance >= 2.5
+
+
+def test_bootstrap_ready_for_frontier_requires_minimum_straight_progress() -> None:
+    assert not bootstrap_ready_for_frontier(
+        has_candidates=True,
+        known_ratio=0.08,
+        known_ratio_threshold=0.06,
+        bootstrap_passes=1,
+        minimum_passes=2,
+        bootstrap_total_distance_m=1.25,
+        minimum_total_distance_m=2.4,
+    )
+
+    assert bootstrap_ready_for_frontier(
+        has_candidates=True,
+        known_ratio=0.08,
+        known_ratio_threshold=0.06,
+        bootstrap_passes=2,
+        minimum_passes=2,
+        bootstrap_total_distance_m=2.5,
+        minimum_total_distance_m=2.4,
+    )
 
 
 def test_wall_follow_command_turns_left_when_right_wall_is_too_close() -> None:
