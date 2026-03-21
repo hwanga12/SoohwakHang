@@ -28,7 +28,7 @@ def get_data_files():
     ]
 
     # Models (Gazebo SDF)
-    model_dirs = ['agribot', 'greenhouse', 'leaf_scan', 'tomato_plant', 'tomato']
+    model_dirs = ['agribot', 'greenhouse', 'leaf_scan', 'tomato_plant', 'tomato', 'field_streaks', 'sprinkler']
     for model in model_dirs:
         # Base model files (sdf, config)
         data_files.append((

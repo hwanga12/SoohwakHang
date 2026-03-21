@@ -6,7 +6,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="1.5708 0 0"/>
       <geometry>
-        <mesh filename="package://agribot_description/models/agribot/meshes/agribot_gazebo.obj" scale="1.25 1.25 1.25"/>
+        <mesh filename="package://agribot_description/models/agribot/meshes/agribot_gazebo.obj" scale="0.14 0.14 0.14"/>
       </geometry>
     </visual>
     <collision>
