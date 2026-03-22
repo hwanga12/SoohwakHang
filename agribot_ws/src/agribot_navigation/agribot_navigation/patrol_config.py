@@ -40,6 +40,9 @@ class Waypoint:
     purpose: str
     description: str
     pose: Pose2D
+    lane_id: str = ''
+    batchable: bool = False
+    observe_here: bool = False
     observed_plant_ids: tuple[str, ...] = ()
     observed_tomato_ids: tuple[str, ...] = ()
 
@@ -128,12 +131,16 @@ def _load_waypoints(items: list[dict[str, Any]]) -> dict[str, Waypoint]:
         waypoint_id = str(item['waypoint_id'])
         if waypoint_id in waypoints:
             raise ValueError(f'Duplicate waypoint_id: {waypoint_id}')
+        purpose = str(item['purpose'])
         waypoints[waypoint_id] = Waypoint(
             waypoint_id=waypoint_id,
             display_name=str(item['display_name']),
-            purpose=str(item['purpose']),
+            purpose=purpose,
             description=str(item['description']),
             pose=Pose2D.from_dict(item['pose'], f'waypoints[{waypoint_id}]'),
+            lane_id=str(item.get('lane_id', '')),
+            batchable=bool(item.get('batchable', False)),
+            observe_here=bool(item.get('observe_here', purpose == 'inspect')),
             observed_plant_ids=tuple(str(value) for value in item.get('observed_plant_ids', [])),
             observed_tomato_ids=tuple(str(value) for value in item.get('observed_tomato_ids', [])),
         )

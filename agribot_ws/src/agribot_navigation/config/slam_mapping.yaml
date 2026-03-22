@@ -17,7 +17,7 @@ slam_toolbox:
     debug_logging: false
     throttle_scans: 2
     transform_publish_period: 0.12
-    map_update_interval: 4.0
+    map_update_interval: 2.0
     resolution: 0.10
     max_laser_range: 25.0
     minimum_time_interval: 0.20

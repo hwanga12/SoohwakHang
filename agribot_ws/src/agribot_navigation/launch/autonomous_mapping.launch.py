@@ -7,6 +7,7 @@ from launch.actions import (
     IncludeLaunchDescription,
     LogInfo,
     OpaqueFunction,
+    SetLaunchConfiguration,
     SetEnvironmentVariable,
     TimerAction,
 )
@@ -44,16 +45,48 @@ def _bool_value(context, name: str) -> bool:
     return LaunchConfiguration(name).perform(context).strip().lower() in _TRUE_VALUES
 
 
-def _validate_mapping_mode(context, *_args, **_kwargs):
-    use_frontier = _bool_value(context, 'use_frontier_explorer')
-    use_patrol = _bool_value(context, 'use_patrol')
-    if use_frontier and use_patrol:
+def _configure_mapping_strategy(context, *_args, **_kwargs):
+    strategy = LaunchConfiguration('mapping_strategy').perform(context).strip().lower()
+    if strategy not in {'sweep_hybrid', 'patrol_only', 'frontier_only'}:
         raise RuntimeError(
-            'autonomous_mapping.launch.py supports either frontier exploration or patrol, '
-            'not both at once.'
+            'mapping_strategy must be one of sweep_hybrid, patrol_only, frontier_only.'
         )
-    mode = 'patrol' if use_patrol else 'frontier' if use_frontier else 'slam_only'
-    return [LogInfo(msg=f'autonomous_mapping mode: {mode}')]
+
+    actions = [LogInfo(msg=f'autonomous_mapping strategy: {strategy}')]
+    if strategy == 'sweep_hybrid':
+        actions.extend(
+            [
+                SetLaunchConfiguration('use_patrol', 'true'),
+                SetLaunchConfiguration('patrol_autostart', 'true'),
+                SetLaunchConfiguration('patrol_completion_action', 'start_frontier_explorer'),
+                SetLaunchConfiguration('use_frontier_explorer', 'true'),
+                SetLaunchConfiguration('frontier_autostart', 'false'),
+                SetLaunchConfiguration('use_boundary_map', 'true'),
+            ]
+        )
+    elif strategy == 'patrol_only':
+        actions.extend(
+            [
+                SetLaunchConfiguration('use_patrol', 'true'),
+                SetLaunchConfiguration('patrol_autostart', 'true'),
+                SetLaunchConfiguration('patrol_completion_action', 'none'),
+                SetLaunchConfiguration('use_frontier_explorer', 'false'),
+                SetLaunchConfiguration('frontier_autostart', 'false'),
+                SetLaunchConfiguration('use_boundary_map', 'false'),
+            ]
+        )
+    else:
+        actions.extend(
+            [
+                SetLaunchConfiguration('use_patrol', 'false'),
+                SetLaunchConfiguration('patrol_autostart', 'false'),
+                SetLaunchConfiguration('patrol_completion_action', 'none'),
+                SetLaunchConfiguration('use_frontier_explorer', 'true'),
+                SetLaunchConfiguration('frontier_autostart', 'true'),
+                SetLaunchConfiguration('use_boundary_map', 'true'),
+            ]
+        )
+    return actions
 
 
 def generate_launch_description():
@@ -194,6 +227,11 @@ def generate_launch_description():
         default_value='false',
         description='Respawn Nav2 nodes if they crash.',
     )
+    mapping_strategy_arg = DeclareLaunchArgument(
+        'mapping_strategy',
+        default_value='sweep_hybrid',
+        description='Mapping strategy: sweep_hybrid, patrol_only, or frontier_only.',
+    )
     log_level_arg = DeclareLaunchArgument(
         'log_level',
         default_value='info',
@@ -223,6 +261,11 @@ def generate_launch_description():
         'patrol_autostart',
         default_value='true',
         description='Start the mapping patrol automatically.',
+    )
+    patrol_completion_action_arg = DeclareLaunchArgument(
+        'patrol_completion_action',
+        default_value='none',
+        description='Optional action to trigger after patrol completion.',
     )
     patrol_start_delay_arg = DeclareLaunchArgument(
         'patrol_start_delay_sec',
@@ -254,7 +297,7 @@ def generate_launch_description():
         default_value='false',
         description='Enable slam_toolbox lifecycle manager integration.',
     )
-    validate_mapping_mode = OpaqueFunction(function=_validate_mapping_mode)
+    configure_mapping_strategy = OpaqueFunction(function=_configure_mapping_strategy)
     frontier_enabled_condition = IfCondition(_bool_expr('use_frontier_explorer'))
     patrol_enabled_condition = IfCondition(_bool_expr('use_patrol'))
     frontier_boundary_condition = IfCondition(
@@ -530,6 +573,8 @@ def generate_launch_description():
             'start_service': 'mapping_patrol/start',
             'stop_service': 'mapping_patrol/stop',
             'resume_service': 'mapping_patrol/resume',
+            'completion_action': LaunchConfiguration('patrol_completion_action'),
+            'completion_start_service': 'mapping_explorer/start',
         }],
         condition=patrol_enabled_condition,
     )
@@ -565,19 +610,21 @@ def generate_launch_description():
         rviz_config_arg,
         autostart_arg,
         use_respawn_arg,
+        mapping_strategy_arg,
         log_level_arg,
         use_frontier_explorer_arg,
         frontier_autostart_arg,
         frontier_start_delay_arg,
         use_patrol_arg,
         patrol_autostart_arg,
+        patrol_completion_action_arg,
         patrol_start_delay_arg,
         nav_start_delay_arg,
         inspect_dwell_arg,
         stack_start_delay_arg,
         boundary_lifecycle_delay_arg,
         slam_lifecycle_manager_arg,
-        validate_mapping_mode,
+        configure_mapping_strategy,
         simulation,
         delayed_ekf_filter,
         delayed_slam_toolbox,

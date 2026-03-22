@@ -41,6 +41,9 @@ waypoints:
   - waypoint_id: greenhouse_01_home
     display_name: Home Pose
     purpose: home
+    lane_id: staging
+    batchable: true
+    observe_here: false
     description: Initial staging pose just inside the entrance gap before a patrol starts or after it finishes.
     pose:
       x: 0.0
@@ -50,6 +53,9 @@ waypoints:
   - waypoint_id: greenhouse_01_front_connector
     display_name: Front Connector
     purpose: connector
+    lane_id: transfer_front
+    batchable: true
+    observe_here: false
     description: Safe front cross-aisle connector used to enter the left lane and to return home after the right lane finishes.
     pose:
       x: 0.0
@@ -59,6 +65,9 @@ waypoints:
   - waypoint_id: greenhouse_01_rear_connector
     display_name: Rear Connector
     purpose: connector
+    lane_id: transfer_rear
+    batchable: true
+    observe_here: false
     description: Safe rear cross-aisle connector used to transfer from the left lane to the right lane.
     pose:
       x: 0.0
@@ -68,6 +77,9 @@ waypoints:
   - waypoint_id: greenhouse_01_left_entry
     display_name: Left Lane Entry
     purpose: entry
+    lane_id: left_lane
+    batchable: true
+    observe_here: false
     description: Entry pose for the left crop-bed patrol lane, aligned northbound in the center aisle.
     pose:
       x: -10.0
@@ -77,6 +89,9 @@ waypoints:
   - waypoint_id: greenhouse_01_left_front_inspect
     display_name: Left Front Inspection
     purpose: inspect
+    lane_id: left_lane
+    batchable: false
+    observe_here: true
     description: Front observation pose covering the entrance-side left crop bed.
     pose:
       x: -10.0
@@ -90,6 +105,9 @@ waypoints:
   - waypoint_id: greenhouse_01_left_front_mid_inspect
     display_name: Left Front-Mid Inspection
     purpose: inspect
+    lane_id: left_lane
+    batchable: false
+    observe_here: true
     description: Observation pose for the dense front-middle cluster on the left crop bed.
     pose:
       x: -10.0
@@ -105,6 +123,9 @@ waypoints:
   - waypoint_id: greenhouse_01_left_mid_inspect
     display_name: Left Mid Inspection
     purpose: inspect
+    lane_id: left_lane
+    batchable: false
+    observe_here: true
     description: Observation pose for the center of the left crop bed.
     pose:
       x: -10.0
@@ -118,6 +139,9 @@ waypoints:
   - waypoint_id: greenhouse_01_left_rear_mid_inspect
     display_name: Left Rear-Mid Inspection
     purpose: inspect
+    lane_id: left_lane
+    batchable: false
+    observe_here: true
     description: Observation pose for the main rear crop cluster on the left side.
     pose:
       x: -10.0
@@ -133,6 +157,9 @@ waypoints:
   - waypoint_id: greenhouse_01_left_rear_end_inspect
     display_name: Left Rear-End Inspection
     purpose: inspect
+    lane_id: left_lane
+    batchable: false
+    observe_here: true
     description: Final observation pose for the rear-most left crop bed target near the back wall.
     pose:
       x: -10.0
@@ -146,6 +173,9 @@ waypoints:
   - waypoint_id: greenhouse_01_left_turn
     display_name: Left Lane Turn
     purpose: turn
+    lane_id: left_lane
+    batchable: true
+    observe_here: false
     description: Rear turning anchor used to finish the left lane and hand off to the rear connector.
     pose:
       x: -10.0
@@ -155,6 +185,9 @@ waypoints:
   - waypoint_id: greenhouse_01_right_entry
     display_name: Right Lane Entry
     purpose: entry
+    lane_id: right_lane
+    batchable: true
+    observe_here: false
     description: Entry pose for the right crop-bed patrol lane, aligned southbound after the rear connector transfer.
     pose:
       x: 13.0
@@ -164,6 +197,9 @@ waypoints:
   - waypoint_id: greenhouse_01_right_rear_inspect
     display_name: Right Rear Inspection
     purpose: inspect
+    lane_id: right_lane
+    batchable: false
+    observe_here: true
     description: Observation pose for the rear-most right crop bed target.
     pose:
       x: 13.0
@@ -177,6 +213,9 @@ waypoints:
   - waypoint_id: greenhouse_01_right_mid_inspect
     display_name: Right Mid Inspection
     purpose: inspect
+    lane_id: right_lane
+    batchable: false
+    observe_here: true
     description: Observation pose for the center of the right crop bed.
     pose:
       x: 13.0
@@ -190,6 +229,9 @@ waypoints:
   - waypoint_id: greenhouse_01_right_front_inspect
     display_name: Right Front Inspection
     purpose: inspect
+    lane_id: right_lane
+    batchable: false
+    observe_here: true
     description: Observation pose for the entrance-side right crop bed.
     pose:
       x: 13.0
@@ -203,6 +245,9 @@ waypoints:
   - waypoint_id: greenhouse_01_right_turn
     display_name: Right Lane Turn
     purpose: turn
+    lane_id: right_lane
+    batchable: true
+    observe_here: false
     description: Front turning anchor used to finish the right lane and return to the front connector.
     pose:
       x: 13.0

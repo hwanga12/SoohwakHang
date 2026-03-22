@@ -159,7 +159,7 @@ planner_server:
       tolerance: 0.50
       downsample_costmap: true
       downsampling_factor: 2
-      allow_unknown: false
+      allow_unknown: true
       max_iterations: 250000
       max_on_approach_iterations: 1000
       max_planning_time: 1.0
