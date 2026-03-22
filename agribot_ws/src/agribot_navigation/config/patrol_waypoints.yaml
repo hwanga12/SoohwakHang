@@ -21,8 +21,8 @@ coordinate_rationale:
     rear_connector_y: 220.0
 
 robot_constraints:
-  recommended_travel_speed_mps: 1.60
-  recommended_observation_dwell_sec: 3.0
+  recommended_travel_speed_mps: 0.60
+  recommended_observation_dwell_sec: 0.5
   notes:
     - Keep the robot in the center aisle during patrol.
     - Harvest approach poses should stay inside the aisle-side crop-bed edge margin.

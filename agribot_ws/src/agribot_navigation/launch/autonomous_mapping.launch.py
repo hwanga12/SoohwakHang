@@ -5,13 +5,55 @@ from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     IncludeLaunchDescription,
+    LogInfo,
+    OpaqueFunction,
     SetEnvironmentVariable,
     TimerAction,
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
+
+
+_TRUE_VALUES = ('true', '1', 'yes', 'on')
+
+
+def _bool_expr(name: str) -> PythonExpression:
+    return PythonExpression([
+        "'",
+        LaunchConfiguration(name),
+        "'.lower() in ['true', '1', 'yes', 'on']",
+    ])
+
+
+def _all_true_expr(*names: str) -> PythonExpression:
+    expression = []
+    for index, name in enumerate(names):
+        if index:
+            expression.append(' and ')
+        expression.extend([
+            "'",
+            LaunchConfiguration(name),
+            "'.lower() in ['true', '1', 'yes', 'on']",
+        ])
+    return PythonExpression(expression)
+
+
+def _bool_value(context, name: str) -> bool:
+    return LaunchConfiguration(name).perform(context).strip().lower() in _TRUE_VALUES
+
+
+def _validate_mapping_mode(context, *_args, **_kwargs):
+    use_frontier = _bool_value(context, 'use_frontier_explorer')
+    use_patrol = _bool_value(context, 'use_patrol')
+    if use_frontier and use_patrol:
+        raise RuntimeError(
+            'autonomous_mapping.launch.py supports either frontier exploration or patrol, '
+            'not both at once.'
+        )
+    mode = 'patrol' if use_patrol else 'frontier' if use_frontier else 'slam_only'
+    return [LogInfo(msg=f'autonomous_mapping mode: {mode}')]
 
 
 def generate_launch_description():
@@ -100,7 +142,7 @@ def generate_launch_description():
     use_boundary_map_arg = DeclareLaunchArgument(
         'use_boundary_map',
         default_value='true',
-        description='Enable the optional exploration boundary map.',
+        description='Enable the optional exploration boundary map when frontier mode is active.',
     )
     slam_params_arg = DeclareLaunchArgument(
         'slam_params_file',
@@ -159,7 +201,7 @@ def generate_launch_description():
     )
     use_frontier_explorer_arg = DeclareLaunchArgument(
         'use_frontier_explorer',
-        default_value='true',
+        default_value='false',
         description='Launch the generic frontier explorer for map completion.',
     )
     frontier_autostart_arg = DeclareLaunchArgument(
@@ -169,37 +211,37 @@ def generate_launch_description():
     )
     frontier_start_delay_arg = DeclareLaunchArgument(
         'frontier_start_delay_sec',
-        default_value='1.0',
-        description='Delay before the frontier explorer starts its bootstrap drive.',
+        default_value='12.0',
+        description='Delay before the frontier explorer starts, after SLAM and Nav2 are active.',
     )
     use_patrol_arg = DeclareLaunchArgument(
         'use_patrol',
-        default_value='false',
+        default_value='true',
         description='Launch the greenhouse-specific waypoint patrol mapper.',
     )
     patrol_autostart_arg = DeclareLaunchArgument(
         'patrol_autostart',
-        default_value='false',
+        default_value='true',
         description='Start the mapping patrol automatically.',
     )
     patrol_start_delay_arg = DeclareLaunchArgument(
         'patrol_start_delay_sec',
-        default_value='1.0',
-        description='Delay before the autonomous mapping patrol starts.',
+        default_value='12.0',
+        description='Delay before the autonomous mapping patrol starts, after Nav2 activation.',
     )
     nav_start_delay_arg = DeclareLaunchArgument(
         'nav_start_delay_sec',
-        default_value='8.0',
+        default_value='10.0',
         description='Delay before Nav2 lifecycle activation begins after bootstrap motion.',
     )
     inspect_dwell_arg = DeclareLaunchArgument(
         'inspect_dwell_sec',
-        default_value='1.5',
+        default_value='0.5',
         description='Pause duration at inspection waypoints to densify SLAM scans.',
     )
     stack_start_delay_arg = DeclareLaunchArgument(
         'stack_start_delay_sec',
-        default_value='2.0',
+        default_value='3.0',
         description='Delay before starting SLAM, boundary map, and Nav2 nodes.',
     )
     boundary_lifecycle_delay_arg = DeclareLaunchArgument(
@@ -211,6 +253,12 @@ def generate_launch_description():
         'use_slam_lifecycle_manager',
         default_value='false',
         description='Enable slam_toolbox lifecycle manager integration.',
+    )
+    validate_mapping_mode = OpaqueFunction(function=_validate_mapping_mode)
+    frontier_enabled_condition = IfCondition(_bool_expr('use_frontier_explorer'))
+    patrol_enabled_condition = IfCondition(_bool_expr('use_patrol'))
+    frontier_boundary_condition = IfCondition(
+        _all_true_expr('use_frontier_explorer', 'use_boundary_map')
     )
 
     simulation = IncludeLaunchDescription(
@@ -310,7 +358,7 @@ def generate_launch_description():
             ('/map', '/exploration_boundary_map'),
             ('/map_metadata', '/exploration_boundary_map_metadata'),
         ],
-        condition=IfCondition(LaunchConfiguration('use_boundary_map')),
+        condition=frontier_boundary_condition,
     )
     delayed_exploration_boundary_map_server = TimerAction(
         period=LaunchConfiguration('stack_start_delay_sec'),
@@ -327,7 +375,7 @@ def generate_launch_description():
             'node_names': ['exploration_boundary_map_server'],
             'use_sim_time': LaunchConfiguration('use_sim_time'),
         }],
-        condition=IfCondition(LaunchConfiguration('use_boundary_map')),
+        condition=frontier_boundary_condition,
     )
     delayed_exploration_boundary_lifecycle_manager = TimerAction(
         period=LaunchConfiguration('boundary_lifecycle_delay_sec'),
@@ -457,7 +505,7 @@ def generate_launch_description():
                 'boundary_map_topic': '/exploration_boundary_map',
             },
         ],
-        condition=IfCondition(LaunchConfiguration('use_frontier_explorer')),
+        condition=frontier_enabled_condition,
     )
 
     delayed_frontier_explorer = TimerAction(
@@ -483,7 +531,7 @@ def generate_launch_description():
             'stop_service': 'mapping_patrol/stop',
             'resume_service': 'mapping_patrol/resume',
         }],
-        condition=IfCondition(LaunchConfiguration('use_patrol')),
+        condition=patrol_enabled_condition,
     )
 
     delayed_mapping_patrol = TimerAction(
@@ -529,6 +577,7 @@ def generate_launch_description():
         stack_start_delay_arg,
         boundary_lifecycle_delay_arg,
         slam_lifecycle_manager_arg,
+        validate_mapping_mode,
         simulation,
         delayed_ekf_filter,
         delayed_slam_toolbox,

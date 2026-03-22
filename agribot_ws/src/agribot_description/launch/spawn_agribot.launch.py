@@ -186,7 +186,10 @@ def generate_launch_description():
         package='agribot_description',
         executable='odom_tf_broadcaster',
         name='odom_tf_broadcaster',
-        parameters=[{'use_sim_time': True}],
+        parameters=[{
+            'use_sim_time': True,
+            'reset_on_time_jump_sec': 1.0,
+        }],
         condition=IfCondition(LaunchConfiguration('publish_odom_tf')),
         output='screen',
     )

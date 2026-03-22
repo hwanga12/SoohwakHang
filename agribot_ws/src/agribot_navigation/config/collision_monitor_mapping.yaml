@@ -5,19 +5,19 @@
     cmd_vel_in_topic: /cmd_vel
     cmd_vel_out_topic: /cmd_vel_checked
     state_topic: /collision_monitor_state
-    transform_tolerance: 0.2
-    source_timeout: 0.3
+    transform_tolerance: 0.3
+    source_timeout: 0.5
     base_shift_correction: true
-    stop_pub_timeout: 0.4
+    stop_pub_timeout: 0.6
 
     polygons: ["FrontStopZone"]
 
     FrontStopZone:
       type: polygon
-      points: "[[0.42, 0.28], [0.42, -0.28], [0.04, -0.28], [0.04, 0.28]]"
+      points: "[[0.36, 0.22], [0.36, -0.22], [0.12, -0.22], [0.12, 0.22]]"
       action_type: stop
       min_points: 4
-      visualize: true
+      visualize: false
       polygon_pub_topic: /collision_monitor/front_stop_zone
       enabled: true
 

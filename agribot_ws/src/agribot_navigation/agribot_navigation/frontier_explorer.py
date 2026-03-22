@@ -17,6 +17,7 @@ from rclpy.action import ActionClient
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
@@ -549,11 +550,15 @@ def build_frontier_candidates(
     staging_support_radius_m: float,
     blacklisted_points: list[tuple[float, float]],
     blacklist_radius_m: float,
+    recent_goal_points: list[tuple[float, float]] | None = None,
+    recent_goal_radius_m: float = 0.0,
     boundary_map: OccupancyGrid | None = None,
 ) -> list[FrontierCandidate]:
     robot_cell = world_to_map(map_msg, robot_pose.x, robot_pose.y)
     if robot_cell is None:
         return []
+    if recent_goal_points is None:
+        recent_goal_points = []
 
     resolution = float(map_msg.info.resolution)
     standoff_cells = max(1, int(round(frontier_standoff_m / resolution)))
@@ -582,6 +587,13 @@ def build_frontier_candidates(
         if not boundary_allows(boundary_map, world_x, world_y):
             continue
         if is_blacklisted(world_x, world_y, blacklisted_points, blacklist_radius_m):
+            continue
+        if recent_goal_radius_m > 0.0 and is_blacklisted(
+            world_x,
+            world_y,
+            recent_goal_points,
+            recent_goal_radius_m,
+        ):
             continue
 
         distance_m = math.hypot(world_x - robot_pose.x, world_y - robot_pose.y)
@@ -705,26 +717,31 @@ class FrontierExplorerNode(Node):
         self.declare_parameter('stop_service', 'mapping_explorer/stop')
         self.declare_parameter('resume_service', 'mapping_explorer/resume')
         self.declare_parameter('auto_start', True)
-        self.declare_parameter('planning_period_sec', 0.30)
+        self.declare_parameter('planning_period_sec', 0.60)
+        self.declare_parameter('boundary_map_qos_durability', 'transient_local')
+        self.declare_parameter('boundary_map_qos_reliability', 'reliable')
+        self.declare_parameter('boundary_map_qos_depth', 1)
 
         self.declare_parameter('minimum_frontier_cluster_size', 10)
         self.declare_parameter('minimum_goal_distance_m', 1.2)
         self.declare_parameter('cluster_size_weight', 2.5)
         self.declare_parameter('maximum_distance_score_m', 8.0)
         self.declare_parameter('support_area_weight', 0.18)
-        self.declare_parameter('forward_preference_weight', 1.5)
+        self.declare_parameter('forward_preference_weight', 2.4)
         self.declare_parameter('frontier_standoff_m', 0.60)
         self.declare_parameter('staging_search_radius_m', 0.50)
         self.declare_parameter('staging_support_radius_m', 0.35)
         self.declare_parameter('blacklist_radius_m', 1.0)
         self.declare_parameter('blacklist_duration_sec', 45.0)
-        self.declare_parameter('progress_timeout_sec', 18.0)
-        self.declare_parameter('progress_required_distance_m', 0.35)
-        self.declare_parameter('no_frontier_confirmations', 5)
+        self.declare_parameter('recent_goal_radius_m', 1.0)
+        self.declare_parameter('recent_goal_ttl_sec', 120.0)
+        self.declare_parameter('progress_timeout_sec', 22.0)
+        self.declare_parameter('progress_required_distance_m', 0.22)
+        self.declare_parameter('no_frontier_confirmations', 3)
         self.declare_parameter('scan_timeout_sec', 1.0)
         self.declare_parameter('pose_reuse_timeout_sec', 1.0)
         self.declare_parameter('heading_window_rad', 0.45)
-        self.declare_parameter('heading_forward_bias_weight', 1.2)
+        self.declare_parameter('heading_forward_bias_weight', 1.6)
         self.declare_parameter('heading_clearance_percentile', 0.2)
         self.declare_parameter('frontier_completion_known_ratio', 0.92)
 
@@ -740,23 +757,23 @@ class FrontierExplorerNode(Node):
         self.declare_parameter('boundary_follow_target_distance_m', 0.60)
         self.declare_parameter('boundary_follow_front_stop_m', 0.75)
         self.declare_parameter('boundary_follow_wall_lost_m', 1.25)
-        self.declare_parameter('boundary_follow_linear_speed_mps', 0.34)
+        self.declare_parameter('boundary_follow_linear_speed_mps', 0.30)
         self.declare_parameter('boundary_follow_max_angular_speed_rps', 0.65)
         self.declare_parameter('boundary_follow_side_gain', 1.8)
         self.declare_parameter('boundary_follow_diagonal_gain', 0.9)
         self.declare_parameter('boundary_follow_min_duration_sec', 16.0)
         self.declare_parameter('boundary_follow_min_distance_m', 10.0)
         self.declare_parameter('boundary_follow_known_ratio_for_frontier', 0.18)
-        self.declare_parameter('boundary_follow_stuck_timeout_sec', 6.0)
+        self.declare_parameter('boundary_follow_stuck_timeout_sec', 9.0)
         self.declare_parameter('boundary_follow_progress_distance_m', 0.25)
 
         self.declare_parameter('recovery_backup_distance_m', 0.50)
         self.declare_parameter('recovery_backup_speed_mps', 0.12)
         self.declare_parameter('recovery_drive_distance_m', 0.60)
         self.declare_parameter('recovery_drive_speed_mps', 0.18)
-        self.declare_parameter('recovery_default_spin_rad', 3.141592653589793)
+        self.declare_parameter('recovery_default_spin_rad', 1.35)
 
-        self.declare_parameter('enable_coverage_fill', False)
+        self.declare_parameter('enable_coverage_fill', True)
         self.declare_parameter('coverage_known_ratio_threshold', 0.80)
         self.declare_parameter('coverage_lane_spacing_m', 0.80)
         self.declare_parameter('coverage_min_segment_length_m', 1.2)
@@ -770,6 +787,13 @@ class FrontierExplorerNode(Node):
         self._bootstrap_pose_frame = str(self.get_parameter('bootstrap_pose_frame').value)
         self._robot_base_frame = str(self.get_parameter('robot_base_frame').value)
         self._planning_period_sec = float(self.get_parameter('planning_period_sec').value)
+        boundary_map_qos_durability = str(
+            self.get_parameter('boundary_map_qos_durability').value
+        ).strip().lower()
+        boundary_map_qos_reliability = str(
+            self.get_parameter('boundary_map_qos_reliability').value
+        ).strip().lower()
+        boundary_map_qos_depth = max(1, int(self.get_parameter('boundary_map_qos_depth').value))
         self._minimum_frontier_cluster_size = int(
             self.get_parameter('minimum_frontier_cluster_size').value
         )
@@ -792,6 +816,10 @@ class FrontierExplorerNode(Node):
         self._blacklist_radius_m = float(self.get_parameter('blacklist_radius_m').value)
         self._blacklist_duration = Duration(
             seconds=float(self.get_parameter('blacklist_duration_sec').value)
+        )
+        self._recent_goal_radius_m = float(self.get_parameter('recent_goal_radius_m').value)
+        self._recent_goal_ttl = Duration(
+            seconds=float(self.get_parameter('recent_goal_ttl_sec').value)
         )
         self._progress_timeout = Duration(
             seconds=float(self.get_parameter('progress_timeout_sec').value)
@@ -914,6 +942,9 @@ class FrontierExplorerNode(Node):
         now = self.get_clock().now()
         self._map: OccupancyGrid | None = None
         self._boundary_map: OccupancyGrid | None = None
+        self._boundary_map_frame = ''
+        self._boundary_map_qos_durability = boundary_map_qos_durability
+        self._boundary_map_qos_reliability = boundary_map_qos_reliability
         self._latest_scan: LaserScan | None = None
         self._latest_scan_time = now
         self._last_robot_pose: RobotPose | None = None
@@ -928,6 +959,7 @@ class FrontierExplorerNode(Node):
         self._last_progress_distance_remaining_m: float | None = None
         self._last_progress_time = now
         self._blacklisted_regions: list[BlacklistRegion] = []
+        self._recent_goal_regions: list[BlacklistRegion] = []
         self._no_frontier_counter = 0
         self._bootstrap_passes = 0
         self._bootstrap_total_distance_m = 0.0
@@ -966,6 +998,32 @@ class FrontierExplorerNode(Node):
         self._spin_client = ActionClient(self, Spin, self._spin_action_name)
         self._backup_client = ActionClient(self, BackUp, self._backup_action_name)
         self._drive_client = ActionClient(self, DriveOnHeading, self._drive_action_name)
+        if boundary_map_qos_durability == 'volatile':
+            boundary_map_durability = QoSDurabilityPolicy.VOLATILE
+        else:
+            if boundary_map_qos_durability != 'transient_local':
+                self.get_logger().warning(
+                    'Unknown boundary_map_qos_durability; defaulting to transient_local.'
+                )
+                boundary_map_qos_durability = 'transient_local'
+                self._boundary_map_qos_durability = boundary_map_qos_durability
+            boundary_map_durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
+        if boundary_map_qos_reliability == 'best_effort':
+            boundary_map_reliability = QoSReliabilityPolicy.BEST_EFFORT
+        else:
+            if boundary_map_qos_reliability != 'reliable':
+                self.get_logger().warning(
+                    'Unknown boundary_map_qos_reliability; defaulting to reliable.'
+                )
+                boundary_map_qos_reliability = 'reliable'
+                self._boundary_map_qos_reliability = boundary_map_qos_reliability
+            boundary_map_reliability = QoSReliabilityPolicy.RELIABLE
+        boundary_map_qos = QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=boundary_map_qos_depth,
+            reliability=boundary_map_reliability,
+            durability=boundary_map_durability,
+        )
 
         self._map_subscription = self.create_subscription(
             OccupancyGrid,
@@ -979,7 +1037,7 @@ class FrontierExplorerNode(Node):
                 OccupancyGrid,
                 self._boundary_map_topic,
                 self._handle_boundary_map,
-                10,
+                boundary_map_qos,
             )
         self._scan_subscription = self.create_subscription(
             LaserScan,
@@ -1003,6 +1061,7 @@ class FrontierExplorerNode(Node):
 
     def _handle_boundary_map(self, msg: OccupancyGrid) -> None:
         self._boundary_map = msg
+        self._boundary_map_frame = msg.header.frame_id
 
     def _handle_scan(self, msg: LaserScan) -> None:
         self._latest_scan = msg
@@ -1072,6 +1131,7 @@ class FrontierExplorerNode(Node):
         self._bootstrap_drive_start_pose = None
         self._bootstrap_drive_started_at = now
         self._blacklisted_regions.clear()
+        self._recent_goal_regions.clear()
         self._coverage_goals.clear()
         self._coverage_goal_index = 0
         self._boundary_distance_m = 0.0
@@ -1083,6 +1143,7 @@ class FrontierExplorerNode(Node):
 
     def _plan_once(self) -> None:
         self._prune_blacklist()
+        self._prune_recent_goals()
         if not self._active:
             return
         if self._fresh_scan() is None:
@@ -1193,11 +1254,16 @@ class FrontierExplorerNode(Node):
             staging_support_radius_m=self._staging_support_radius_m,
             blacklisted_points=self._blacklisted_points(),
             blacklist_radius_m=self._blacklist_radius_m,
+            recent_goal_points=self._recent_goal_points(),
+            recent_goal_radius_m=self._recent_goal_radius_m,
             boundary_map=self._boundary_map if self._use_boundary_map else None,
         )
 
     def _blacklisted_points(self) -> list[tuple[float, float]]:
         return [(region.x, region.y) for region in self._blacklisted_regions]
+
+    def _recent_goal_points(self) -> list[tuple[float, float]]:
+        return [(region.x, region.y) for region in self._recent_goal_regions]
 
     def _step_bootstrap(self, robot_pose: RobotPose) -> None:
         scan = self._fresh_scan()
@@ -1566,6 +1632,8 @@ class FrontierExplorerNode(Node):
         self._active_goal_source = source
         self._active_goal_pose = goal.pose
         self._active_goal_point = (goal_x, goal_y)
+        if source == 'frontier':
+            self._remember_recent_goal(goal_x, goal_y)
         self._last_distance_remaining_m = None
         self._last_progress_distance_remaining_m = None
         self._last_progress_time = self.get_clock().now()
@@ -1916,6 +1984,23 @@ class FrontierExplorerNode(Node):
             region for region in self._blacklisted_regions if region.expires_at_ns > now_ns
         ]
 
+    def _remember_recent_goal(self, x: float, y: float) -> None:
+        if self._recent_goal_radius_m <= 0.0 or self._recent_goal_ttl.nanoseconds <= 0:
+            return
+        self._recent_goal_regions.append(
+            BlacklistRegion(
+                x=x,
+                y=y,
+                expires_at_ns=(self.get_clock().now() + self._recent_goal_ttl).nanoseconds,
+            )
+        )
+
+    def _prune_recent_goals(self) -> None:
+        now_ns = self.get_clock().now().nanoseconds
+        self._recent_goal_regions = [
+            region for region in self._recent_goal_regions if region.expires_at_ns > now_ns
+        ]
+
     def _describe_active_goal(self) -> str:
         if self._active_goal_point is None:
             return 'n/a'
@@ -1943,6 +2028,11 @@ class FrontierExplorerNode(Node):
             'frame_id': self._goal_frame,
             'bootstrap_pose_frame': self._bootstrap_pose_frame,
             'map_topic': self._map_topic,
+            'boundary_map_topic': self._boundary_map_topic,
+            'boundary_map_frame': self._boundary_map_frame or None,
+            'boundary_map_received': self._boundary_map is not None,
+            'boundary_map_qos_durability': self._boundary_map_qos_durability,
+            'boundary_map_qos_reliability': self._boundary_map_qos_reliability,
             'scan_topic': self._scan_topic,
             'use_boundary_map': self._use_boundary_map,
             'active_goal': self._active_goal_point,
@@ -1956,6 +2046,8 @@ class FrontierExplorerNode(Node):
             'coverage_goal_index': self._coverage_goal_index,
             'coverage_goal_count': len(self._coverage_goals),
             'blacklisted_goal_count': len(self._blacklisted_regions),
+            'recent_goal_count': len(self._recent_goal_regions),
+            'recent_goal_radius_m': self._recent_goal_radius_m,
             'active_behavior': (
                 self._active_behavior_command.description if self._active_behavior_command else None
             ),

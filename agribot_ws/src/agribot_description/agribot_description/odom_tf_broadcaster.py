@@ -12,8 +12,12 @@ class OdomTfBroadcaster(Node):
 
     def __init__(self) -> None:
         super().__init__('odom_tf_broadcaster')
+        self.declare_parameter('reset_on_time_jump_sec', 1.0)
         self._broadcaster = TransformBroadcaster(self)
         self._last_stamp_ns: int | None = None
+        self._reset_on_time_jump_ns = int(
+            float(self.get_parameter('reset_on_time_jump_sec').value) * 1_000_000_000
+        )
         self._subscription = self.create_subscription(
             Odometry,
             '/odom',
@@ -29,7 +33,14 @@ class OdomTfBroadcaster(Node):
         )
         stamp_ns = stamp.sec * 1_000_000_000 + stamp.nanosec
         if self._last_stamp_ns is not None and stamp_ns < self._last_stamp_ns:
-            return
+            backwards_jump_ns = self._last_stamp_ns - stamp_ns
+            if backwards_jump_ns >= self._reset_on_time_jump_ns:
+                self.get_logger().warning(
+                    'Detected backward /odom timestamp jump; resetting TF timestamp guard.'
+                )
+                self._last_stamp_ns = None
+            else:
+                return
 
         transform = TransformStamped()
         transform.header.stamp = stamp

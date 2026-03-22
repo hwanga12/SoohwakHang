@@ -2,7 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -77,6 +77,11 @@ def generate_launch_description():
         default_value='true',
         description='Automatically configure and activate slam_toolbox.',
     )
+    stack_start_delay_arg = DeclareLaunchArgument(
+        'stack_start_delay_sec',
+        default_value='2.5',
+        description='Delay before starting EKF and SLAM so sim time and /odom settle first.',
+    )
     lifecycle_manager_arg = DeclareLaunchArgument(
         'use_lifecycle_manager',
         default_value='false',
@@ -109,6 +114,10 @@ def generate_launch_description():
             {'use_sim_time': LaunchConfiguration('use_sim_time')},
         ],
     )
+    delayed_ekf_filter = TimerAction(
+        period=0.5,
+        actions=[ekf_filter],
+    )
 
     slam_toolbox = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -124,6 +133,10 @@ def generate_launch_description():
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'slam_params_file': LaunchConfiguration('slam_params_file'),
         }.items(),
+    )
+    delayed_slam_toolbox = TimerAction(
+        period=LaunchConfiguration('stack_start_delay_sec'),
+        actions=[slam_toolbox],
     )
 
     rviz = Node(
@@ -145,9 +158,10 @@ def generate_launch_description():
         use_rviz_arg,
         rviz_config_arg,
         autostart_arg,
+        stack_start_delay_arg,
         lifecycle_manager_arg,
         simulation,
-        ekf_filter,
-        slam_toolbox,
+        delayed_ekf_filter,
+        delayed_slam_toolbox,
         rviz,
     ])
