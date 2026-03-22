@@ -12,8 +12,8 @@ home_pose_id: greenhouse_01_home
 coordinate_rationale:
   description: Patrol lanes are offset into the center aisle so Nav2 can observe crop beds without entering occupied crop-bed cells.
   lane_clearances_m:
-    left_row_lane: 2.41
-    right_row_lane: 2.77
+    left_row_lane: 3.91
+    right_row_lane: 3.97
   source_bounds:
     left_bed_edge_x: -12.4095
     right_bed_edge_x: 15.7679
@@ -82,7 +82,7 @@ waypoints:
     observe_here: false
     description: Entry pose for the left crop-bed patrol lane, aligned northbound in the center aisle.
     pose:
-      x: -10.0
+      x: -8.5
       y: 12.0
       z: 0.0
       yaw: 1.5708
@@ -94,7 +94,7 @@ waypoints:
     observe_here: true
     description: Front observation pose covering the entrance-side left crop bed.
     pose:
-      x: -10.0
+      x: -8.5
       y: 14.0
       z: 0.0
       yaw: 3.1416
@@ -110,7 +110,7 @@ waypoints:
     observe_here: true
     description: Observation pose for the dense front-middle cluster on the left crop bed.
     pose:
-      x: -10.0
+      x: -8.5
       y: 42.0
       z: 0.0
       yaw: 3.1416
@@ -128,7 +128,7 @@ waypoints:
     observe_here: true
     description: Observation pose for the center of the left crop bed.
     pose:
-      x: -10.0
+      x: -8.5
       y: 114.0
       z: 0.0
       yaw: 3.1416
@@ -144,7 +144,7 @@ waypoints:
     observe_here: true
     description: Observation pose for the main rear crop cluster on the left side.
     pose:
-      x: -10.0
+      x: -8.5
       y: 178.0
       z: 0.0
       yaw: 3.1416
@@ -162,7 +162,7 @@ waypoints:
     observe_here: true
     description: Final observation pose for the rear-most left crop bed target near the back wall.
     pose:
-      x: -10.0
+      x: -8.5
       y: 220.0
       z: 0.0
       yaw: 3.1416
@@ -178,7 +178,7 @@ waypoints:
     observe_here: false
     description: Rear turning anchor used to finish the left lane and hand off to the rear connector.
     pose:
-      x: -10.0
+      x: -8.5
       y: 224.0
       z: 0.0
       yaw: 0.0
@@ -190,7 +190,7 @@ waypoints:
     observe_here: false
     description: Entry pose for the right crop-bed patrol lane, aligned southbound after the rear connector transfer.
     pose:
-      x: 13.0
+      x: 11.8
       y: 220.0
       z: 0.0
       yaw: -1.5708
@@ -202,7 +202,7 @@ waypoints:
     observe_here: true
     description: Observation pose for the rear-most right crop bed target.
     pose:
-      x: 13.0
+      x: 11.8
       y: 166.0
       z: 0.0
       yaw: 0.0
@@ -218,7 +218,7 @@ waypoints:
     observe_here: true
     description: Observation pose for the center of the right crop bed.
     pose:
-      x: 13.0
+      x: 11.8
       y: 124.0
       z: 0.0
       yaw: 0.0
@@ -234,7 +234,7 @@ waypoints:
     observe_here: true
     description: Observation pose for the entrance-side right crop bed.
     pose:
-      x: 13.0
+      x: 11.8
       y: 38.0
       z: 0.0
       yaw: 0.0
@@ -250,7 +250,7 @@ waypoints:
     observe_here: false
     description: Front turning anchor used to finish the right lane and return to the front connector.
     pose:
-      x: 13.0
+      x: 11.8
       y: 12.0
       z: 0.0
       yaw: 3.1416

@@ -1,5 +1,10 @@
 from agribot_navigation.patrol_config import Pose2D, Waypoint
-from agribot_navigation.patrol_node import collect_batch_goal_end_index
+from agribot_navigation.patrol_node import (
+    build_intermediate_segment_poses,
+    collect_batch_goal_end_index,
+    is_pose_within_xy_tolerance,
+    resolve_effective_waypoint_pose,
+)
 
 
 def make_waypoint(
@@ -159,3 +164,120 @@ def test_collect_batch_goal_end_index_stops_when_lane_id_is_missing() -> None:
     )
 
     assert end_index == 0
+
+
+def test_build_intermediate_segment_poses_returns_no_pose_for_short_hops() -> None:
+    start = Pose2D(x=-10.0, y=14.0, z=0.0, yaw=3.1416)
+    end = Pose2D(x=-10.0, y=30.0, z=0.0, yaw=3.1416)
+
+    segment_poses = build_intermediate_segment_poses(
+        start,
+        end,
+        max_segment_length_m=24.0,
+    )
+
+    assert segment_poses == ()
+
+
+def test_build_intermediate_segment_poses_splits_long_lane_travel() -> None:
+    start = Pose2D(x=-10.0, y=42.0, z=0.0, yaw=3.1416)
+    end = Pose2D(x=-10.0, y=114.0, z=0.0, yaw=3.1416)
+
+    segment_poses = build_intermediate_segment_poses(
+        start,
+        end,
+        max_segment_length_m=24.0,
+    )
+
+    assert len(segment_poses) == 2
+    assert segment_poses[0].x == -10.0
+    assert segment_poses[0].y == 66.0
+    assert segment_poses[1].x == -10.0
+    assert segment_poses[1].y == 90.0
+    assert segment_poses[0].yaw == 1.5707963267948966
+
+
+def test_resolve_effective_waypoint_pose_keeps_lane_heading_for_inspect_waypoint() -> None:
+    waypoint_ids = ('left_entry', 'left_front_inspect')
+    waypoints = {
+        'left_entry': Waypoint(
+            waypoint_id='left_entry',
+            display_name='Left Entry',
+            purpose='entry',
+            description='entry',
+            pose=Pose2D(x=-10.0, y=12.0, z=0.0, yaw=1.5708),
+            lane_id='left_lane',
+            batchable=True,
+            observe_here=False,
+        ),
+        'left_front_inspect': Waypoint(
+            waypoint_id='left_front_inspect',
+            display_name='Left Front Inspect',
+            purpose='inspect',
+            description='inspect',
+            pose=Pose2D(x=-10.0, y=14.0, z=0.0, yaw=3.1416),
+            lane_id='left_lane',
+            batchable=False,
+            observe_here=True,
+        ),
+    }
+
+    pose = resolve_effective_waypoint_pose(
+        waypoint_ids,
+        waypoints,
+        1,
+        prefer_lane_heading_on_inspect_waypoints=True,
+    )
+
+    assert pose.x == -10.0
+    assert pose.y == 14.0
+    assert pose.yaw == 1.5707963267948966
+
+
+def test_resolve_effective_waypoint_pose_preserves_original_yaw_when_disabled() -> None:
+    waypoint_ids = ('left_entry', 'left_front_inspect')
+    waypoints = {
+        'left_entry': Waypoint(
+            waypoint_id='left_entry',
+            display_name='Left Entry',
+            purpose='entry',
+            description='entry',
+            pose=Pose2D(x=-10.0, y=12.0, z=0.0, yaw=1.5708),
+            lane_id='left_lane',
+            batchable=True,
+            observe_here=False,
+        ),
+        'left_front_inspect': Waypoint(
+            waypoint_id='left_front_inspect',
+            display_name='Left Front Inspect',
+            purpose='inspect',
+            description='inspect',
+            pose=Pose2D(x=-10.0, y=14.0, z=0.0, yaw=3.1416),
+            lane_id='left_lane',
+            batchable=False,
+            observe_here=True,
+        ),
+    }
+
+    pose = resolve_effective_waypoint_pose(
+        waypoint_ids,
+        waypoints,
+        1,
+        prefer_lane_heading_on_inspect_waypoints=False,
+    )
+
+    assert pose.yaw == 3.1416
+
+
+def test_is_pose_within_xy_tolerance_returns_true_near_target() -> None:
+    current = Pose2D(x=0.02, y=1.83, z=0.0, yaw=0.0)
+    target = Pose2D(x=0.0, y=2.0, z=0.0, yaw=1.5708)
+
+    assert is_pose_within_xy_tolerance(current, target, xy_tolerance_m=0.2)
+
+
+def test_is_pose_within_xy_tolerance_returns_false_outside_radius() -> None:
+    current = Pose2D(x=-8.5, y=14.0, z=0.0, yaw=1.5708)
+    target = Pose2D(x=-8.5, y=42.0, z=0.0, yaw=1.5708)
+
+    assert not is_pose_within_xy_tolerance(current, target, xy_tolerance_m=0.5)

@@ -269,7 +269,7 @@ def generate_launch_description():
     )
     patrol_start_delay_arg = DeclareLaunchArgument(
         'patrol_start_delay_sec',
-        default_value='12.0',
+        default_value='18.0',
         description='Delay before the autonomous mapping patrol starts, after Nav2 activation.',
     )
     nav_start_delay_arg = DeclareLaunchArgument(
@@ -569,10 +569,13 @@ def generate_launch_description():
             'nav_server_wait_sec': 60.0,
             'goal_reject_retry_sec': 1.0,
             'goal_reject_retry_limit': 30,
+            'max_lane_segment_length_m': 10.0,
+            'already_reached_xy_tolerance_m': 0.70,
             'status_topic': 'mapping_patrol/status',
             'start_service': 'mapping_patrol/start',
             'stop_service': 'mapping_patrol/stop',
             'resume_service': 'mapping_patrol/resume',
+            'prefer_lane_heading_on_inspect_waypoints': True,
             'completion_action': LaunchConfiguration('patrol_completion_action'),
             'completion_start_service': 'mapping_explorer/start',
         }],

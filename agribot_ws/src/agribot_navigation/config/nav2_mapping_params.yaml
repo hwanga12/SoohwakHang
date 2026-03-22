@@ -1,7 +1,7 @@
 bt_navigator:
   ros__parameters:
     enable_stamped_cmd_vel: false
-    global_frame: map
+    global_frame: odom
     robot_base_frame: base_link
     odom_topic: /odometry/filtered
     bt_loop_duration: 25
@@ -40,15 +40,15 @@ controller_server:
     general_goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
       stateful: false
-      xy_goal_tolerance: 0.30
+      xy_goal_tolerance: 0.65
       yaw_goal_tolerance: 0.70
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.55
-      lookahead_dist: 0.90
-      min_lookahead_dist: 0.45
-      max_lookahead_dist: 1.80
-      lookahead_time: 1.4
+      desired_linear_vel: 0.40
+      lookahead_dist: 0.70
+      min_lookahead_dist: 0.35
+      max_lookahead_dist: 1.40
+      lookahead_time: 1.0
       use_velocity_scaled_lookahead_dist: true
       min_approach_linear_velocity: 0.10
       approach_velocity_scaling_dist: 1.20
@@ -64,7 +64,7 @@ controller_server:
       max_angular_accel: 1.80
       allow_reversing: false
       use_collision_detection: true
-      max_allowed_time_to_collision_up_to_carrot: 0.4
+      max_allowed_time_to_collision_up_to_carrot: 0.25
       transform_tolerance: 0.25
       max_robot_pose_search_dist: 6.0
       interpolate_curvature_after_goal: false
@@ -85,9 +85,11 @@ local_costmap:
       rolling_window: true
       width: 6
       height: 6
+      origin_x: -3.0
+      origin_y: -3.0
       resolution: 0.07
-      footprint: "[[0.24, 0.20], [0.24, -0.20], [-0.24, -0.20], [-0.24, 0.20]]"
-      footprint_padding: 0.01
+      footprint: "[[0.20, 0.15], [0.20, -0.15], [-0.20, -0.15], [-0.20, 0.15]]"
+      footprint_padding: 0.0
       transform_tolerance: 0.20
       plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
@@ -108,7 +110,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 4.0
-        inflation_radius: 0.40
+        inflation_radius: 0.32
       always_send_full_costmap: false
 
 global_costmap:
@@ -116,18 +118,19 @@ global_costmap:
     ros__parameters:
       update_frequency: 0.5
       publish_frequency: 0.25
-      global_frame: map
+      global_frame: odom
       robot_base_frame: base_link
+      rolling_window: true
+      width: 60
+      height: 60
+      origin_x: -30.0
+      origin_y: -30.0
       resolution: 0.10
       track_unknown_space: true
-      footprint: "[[0.24, 0.20], [0.24, -0.20], [-0.24, -0.20], [-0.24, 0.20]]"
-      footprint_padding: 0.01
+      footprint: "[[0.20, 0.15], [0.20, -0.15], [-0.20, -0.15], [-0.20, 0.15]]"
+      footprint_padding: 0.0
       transform_tolerance: 0.30
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
-      static_layer:
-        plugin: "nav2_costmap_2d::StaticLayer"
-        map_subscribe_transient_local: true
-        subscribe_to_updates: true
+      plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -146,7 +149,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 4.0
-        inflation_radius: 0.40
+        inflation_radius: 0.32
       always_send_full_costmap: false
 
 planner_server:
@@ -201,7 +204,7 @@ behavior_server:
     wait:
       plugin: "nav2_behaviors::Wait"
     local_frame: odom
-    global_frame: map
+    global_frame: odom
     robot_base_frame: base_link
     transform_tolerance: 0.20
     simulate_ahead_time: 0.5

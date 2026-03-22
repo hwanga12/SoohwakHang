@@ -9,6 +9,7 @@ from typing import Any
 
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
 from nav2_msgs.action import NavigateThroughPoses, NavigateToPose
 import rclpy
 from rclpy.action import ActionClient
@@ -18,7 +19,13 @@ from rclpy.timer import Timer
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
-from .patrol_config import PatrolPlan, Waypoint, get_default_patrol_waypoints_path, load_patrol_plan
+from .patrol_config import (
+    PatrolPlan,
+    Pose2D,
+    Waypoint,
+    get_default_patrol_waypoints_path,
+    load_patrol_plan,
+)
 
 
 def collect_batch_goal_end_index(
@@ -53,6 +60,86 @@ def collect_batch_goal_end_index(
     return end_index
 
 
+def build_intermediate_segment_poses(
+    start_pose: Pose2D,
+    end_pose: Pose2D,
+    *,
+    max_segment_length_m: float,
+) -> tuple[Pose2D, ...]:
+    """Split long lane travel into shorter synthetic goals."""
+    if max_segment_length_m <= 0.0:
+        return ()
+
+    delta_x = end_pose.x - start_pose.x
+    delta_y = end_pose.y - start_pose.y
+    delta_z = end_pose.z - start_pose.z
+    distance = math.hypot(delta_x, delta_y)
+    if distance <= max_segment_length_m:
+        return ()
+
+    segment_count = int(math.ceil(distance / max_segment_length_m))
+    travel_yaw = math.atan2(delta_y, delta_x) if distance > 1.0e-6 else end_pose.yaw
+    return tuple(
+        Pose2D(
+            x=start_pose.x + (delta_x * index / segment_count),
+            y=start_pose.y + (delta_y * index / segment_count),
+            z=start_pose.z + (delta_z * index / segment_count),
+            yaw=travel_yaw,
+        )
+        for index in range(1, segment_count)
+    )
+
+
+def resolve_effective_waypoint_pose(
+    waypoint_ids: tuple[str, ...],
+    waypoints: dict[str, Waypoint],
+    waypoint_index: int,
+    *,
+    prefer_lane_heading_on_inspect_waypoints: bool,
+) -> Pose2D:
+    """Optionally keep inspect waypoints aligned with lane travel during mapping patrol."""
+    waypoint = waypoints[waypoint_ids[waypoint_index]]
+    if (
+        not prefer_lane_heading_on_inspect_waypoints
+        or waypoint_index <= 0
+        or waypoint.purpose != 'inspect'
+        or not waypoint.lane_id
+    ):
+        return waypoint.pose
+
+    previous_waypoint = waypoints[waypoint_ids[waypoint_index - 1]]
+    if previous_waypoint.lane_id != waypoint.lane_id:
+        return waypoint.pose
+
+    delta_x = waypoint.pose.x - previous_waypoint.pose.x
+    delta_y = waypoint.pose.y - previous_waypoint.pose.y
+    if math.hypot(delta_x, delta_y) <= 1.0e-6:
+        return waypoint.pose
+
+    return Pose2D(
+        x=waypoint.pose.x,
+        y=waypoint.pose.y,
+        z=waypoint.pose.z,
+        yaw=math.atan2(delta_y, delta_x),
+    )
+
+
+def is_pose_within_xy_tolerance(
+    current_pose: Pose2D | None,
+    target_pose: Pose2D,
+    *,
+    xy_tolerance_m: float,
+) -> bool:
+    """Return True when the current pose is already close enough to the target pose."""
+    if current_pose is None or xy_tolerance_m <= 0.0:
+        return False
+
+    return math.hypot(
+        target_pose.x - current_pose.x,
+        target_pose.y - current_pose.y,
+    ) <= xy_tolerance_m
+
+
 class PatrolNode(Node):
     """Visit the configured waypoint list in order and expose patrol controls."""
 
@@ -76,6 +163,9 @@ class PatrolNode(Node):
         self.declare_parameter('goal_reject_retry_sec', 0.0)
         self.declare_parameter('goal_reject_retry_limit', 0)
         self.declare_parameter('enable_batch_navigation', True)
+        self.declare_parameter('max_lane_segment_length_m', 24.0)
+        self.declare_parameter('prefer_lane_heading_on_inspect_waypoints', False)
+        self.declare_parameter('already_reached_xy_tolerance_m', 0.45)
         self.declare_parameter('completion_action', 'none')
         self.declare_parameter('completion_start_service', 'mapping_explorer/start')
         self.declare_parameter('completion_service_wait_sec', 2.0)
@@ -90,6 +180,17 @@ class PatrolNode(Node):
         )
         self._enable_batch_navigation = bool(
             self.get_parameter('enable_batch_navigation').value
+        )
+        self._max_lane_segment_length_m = max(
+            0.0,
+            float(self.get_parameter('max_lane_segment_length_m').value),
+        )
+        self._prefer_lane_heading_on_inspect_waypoints = bool(
+            self.get_parameter('prefer_lane_heading_on_inspect_waypoints').value
+        )
+        self._already_reached_xy_tolerance_m = max(
+            0.0,
+            float(self.get_parameter('already_reached_xy_tolerance_m').value),
         )
         configured_dwell_sec = float(self.get_parameter('inspect_dwell_sec').value)
         if configured_dwell_sec > 0.0:
@@ -122,6 +223,12 @@ class PatrolNode(Node):
             navigate_through_poses_action,
         )
         self._status_publisher = self.create_publisher(String, status_topic, 10)
+        self._odom_subscription = self.create_subscription(
+            Odometry,
+            '/odom',
+            self._handle_odom,
+            10,
+        )
         self._start_service = self.create_service(Trigger, start_service, self._handle_start)
         self._stop_service = self.create_service(Trigger, stop_service, self._handle_stop)
         self._resume_service = self.create_service(Trigger, resume_service, self._handle_resume)
@@ -147,8 +254,14 @@ class PatrolNode(Node):
         self._goal_reject_retry_count = 0
         self._last_distance_remaining_m: float | None = None
         self._last_error_message = ''
+        self._latest_robot_pose: Pose2D | None = None
         self._active_navigation_kind = 'single'
         self._active_batch_end_index: int | None = None
+        self._active_target_pose: Pose2D | None = None
+        self._active_goal_soft_completed = False
+        self._segment_goal_queue: list[PoseStamped] = []
+        self._segment_total_goal_count = 0
+        self._segment_target_waypoint_index: int | None = None
 
         self.get_logger().info(
             'Loaded patrol plan with '
@@ -287,6 +400,18 @@ class PatrolNode(Node):
         return True
 
     def _send_goal_for_index(self, waypoint_index: int) -> None:
+        if self._is_waypoint_already_reached(waypoint_index):
+            self._clear_segment_goal_sequence()
+            self._set_state(
+                'running',
+                f'Skipping navigation because waypoint {self._describe_waypoint(waypoint_index)} is already within tolerance.',
+            )
+            self._handle_successful_waypoint(waypoint_index)
+            return
+
+        if self._prepare_segment_goal_sequence(waypoint_index):
+            return
+
         batch_end_index = collect_batch_goal_end_index(
             self._waypoint_ids,
             self._plan.waypoints,
@@ -304,11 +429,101 @@ class PatrolNode(Node):
 
         self._send_single_goal(waypoint_index)
 
+    def _prepare_segment_goal_sequence(self, waypoint_index: int) -> bool:
+        segment_goals = self._build_segment_goal_queue(waypoint_index)
+        if not segment_goals:
+            self._clear_segment_goal_sequence()
+            return False
+
+        self._segment_goal_queue = segment_goals
+        self._segment_total_goal_count = len(segment_goals)
+        self._segment_target_waypoint_index = waypoint_index
+        self._dispatch_next_segment_goal()
+        return True
+
+    def _build_segment_goal_queue(self, waypoint_index: int) -> list[PoseStamped]:
+        if waypoint_index <= 0 or self._max_lane_segment_length_m <= 0.0:
+            return []
+
+        previous_waypoint = self._waypoint_for_index(waypoint_index - 1)
+        target_waypoint = self._waypoint_for_index(waypoint_index)
+        if (
+            not previous_waypoint.lane_id
+            or previous_waypoint.lane_id != target_waypoint.lane_id
+        ):
+            return []
+
+        intermediate_poses = build_intermediate_segment_poses(
+            previous_waypoint.pose,
+            target_waypoint.pose,
+            max_segment_length_m=self._max_lane_segment_length_m,
+        )
+        if not intermediate_poses:
+            return []
+
+        goal_queue = [
+            self._build_pose_stamped_from_pose(pose)
+            for pose in intermediate_poses
+        ]
+        goal_queue.append(self._build_pose_stamped_for_index(waypoint_index))
+        return goal_queue
+
+    def _dispatch_next_segment_goal(self) -> None:
+        if not self._segment_goal_queue or self._segment_target_waypoint_index is None:
+            self._clear_segment_goal_sequence()
+            return
+
+        while self._segment_goal_queue and self._is_pose_already_reached(
+            self._pose_2d_from_stamped(self._segment_goal_queue[0])
+        ):
+            self._segment_goal_queue.pop(0)
+
+        if not self._segment_goal_queue:
+            final_waypoint_index = self._segment_target_waypoint_index
+            self._clear_segment_goal_sequence()
+            self._handle_successful_waypoint(final_waypoint_index)
+            return
+
+        goal = NavigateToPose.Goal()
+        goal.pose = self._segment_goal_queue[0]
+        goal.behavior_tree = ''
+        self._active_target_pose = self._pose_2d_from_stamped(goal.pose)
+        self._active_goal_soft_completed = False
+
+        step_index = self._segment_total_goal_count - len(self._segment_goal_queue) + 1
+        waypoint_index = self._segment_target_waypoint_index
+
+        self._active_navigation_kind = 'segment'
+        self._active_batch_end_index = None
+        self._current_waypoint_index = waypoint_index
+        self._next_waypoint_index = waypoint_index
+        self._goal_send_future = self._navigate_client.send_goal_async(
+            goal,
+            feedback_callback=self._handle_navigation_feedback,
+        )
+        self._goal_send_future.add_done_callback(
+            lambda future, start=waypoint_index: self._handle_goal_response(
+                future,
+                start,
+                start,
+                'segment',
+            )
+        )
+        self._set_state(
+            'starting',
+            'Starting segmented navigation '
+            f'({step_index}/{self._segment_total_goal_count}) to waypoint '
+            f'{self._describe_waypoint(waypoint_index)}.',
+        )
+
     def _send_single_goal(self, waypoint_index: int) -> None:
+        self._clear_segment_goal_sequence()
         waypoint = self._waypoint_for_index(waypoint_index)
         goal = NavigateToPose.Goal()
-        goal.pose = self._build_pose_stamped(waypoint)
+        goal.pose = self._build_pose_stamped_for_index(waypoint_index)
         goal.behavior_tree = ''
+        self._active_target_pose = self._effective_waypoint_pose(waypoint_index)
+        self._active_goal_soft_completed = False
 
         self._active_navigation_kind = 'single'
         self._active_batch_end_index = None
@@ -332,12 +547,15 @@ class PatrolNode(Node):
         )
 
     def _send_batch_goal(self, start_index: int, end_index: int) -> None:
+        self._clear_segment_goal_sequence()
         goal = NavigateThroughPoses.Goal()
         goal.poses = [
-            self._build_pose_stamped(self._waypoint_for_index(index))
+            self._build_pose_stamped_for_index(index)
             for index in range(start_index, end_index + 1)
         ]
         goal.behavior_tree = ''
+        self._active_target_pose = None
+        self._active_goal_soft_completed = False
 
         self._active_navigation_kind = 'batch'
         self._active_batch_end_index = end_index
@@ -379,6 +597,8 @@ class PatrolNode(Node):
         self._goal_send_future = None
 
         if not goal_handle.accepted:
+            if kind == 'segment':
+                self._clear_segment_goal_sequence()
             if self._stop_requested:
                 self._stop_requested = False
                 self._set_state('stopped', 'Patrol stop completed before goal acceptance.')
@@ -421,7 +641,29 @@ class PatrolNode(Node):
 
     def _handle_navigation_feedback(self, feedback_msg: Any) -> None:
         self._last_distance_remaining_m = float(feedback_msg.feedback.distance_remaining)
+        if (
+            not self._active_goal_soft_completed
+            and self._active_navigation_kind in {'single', 'segment'}
+            and self._active_target_pose is not None
+            and (
+                self._last_distance_remaining_m <= self._already_reached_xy_tolerance_m
+                or self._is_pose_already_reached(self._active_target_pose)
+            )
+        ):
+            self._active_goal_soft_completed = True
         self._publish_status()
+
+    def _handle_odom(self, message: Odometry) -> None:
+        orientation = message.pose.pose.orientation
+        self._latest_robot_pose = Pose2D(
+            x=float(message.pose.pose.position.x),
+            y=float(message.pose.pose.position.y),
+            z=float(message.pose.pose.position.z),
+            yaw=math.atan2(
+                2.0 * orientation.w * orientation.z,
+                1.0 - 2.0 * orientation.z * orientation.z,
+            ),
+        )
 
     def _handle_navigation_result(
         self,
@@ -434,6 +676,10 @@ class PatrolNode(Node):
         self._goal_result_future = None
         self._last_distance_remaining_m = None
         self._active_batch_end_index = None
+        active_target_pose = self._active_target_pose
+        active_goal_soft_completed = self._active_goal_soft_completed
+        self._active_target_pose = None
+        self._active_goal_soft_completed = False
 
         try:
             result = future.result()
@@ -448,10 +694,30 @@ class PatrolNode(Node):
         nav_result = result.result
 
         if status == GoalStatus.STATUS_SUCCEEDED:
+            if kind == 'segment':
+                self._handle_successful_segment_goal()
+                return
             self._handle_successful_waypoint(end_index)
             return
 
+        if (
+            active_goal_soft_completed
+            and kind in {'single', 'segment'}
+            and active_target_pose is not None
+        ):
+            self.get_logger().warning(
+                'Treating near-complete navigation as success for '
+                f'{self._describe_goal_target(start_index, end_index, kind)}.'
+            )
+            if kind == 'segment':
+                self._handle_successful_segment_goal()
+            else:
+                self._handle_successful_waypoint(end_index)
+            return
+
         if status == GoalStatus.STATUS_CANCELED:
+            if kind == 'segment':
+                self._clear_segment_goal_sequence()
             self._stop_requested = False
             self._set_state(
                 'stopped',
@@ -459,12 +725,29 @@ class PatrolNode(Node):
             )
             return
 
+        if kind == 'segment':
+            self._clear_segment_goal_sequence()
         error_msg = nav_result.error_msg if nav_result.error_msg else 'Navigation goal failed.'
         if nav_result.error_code != NavigateToPose.Result.NONE:
             error_msg = f'{error_msg} (error_code={nav_result.error_code})'
         self._set_error(
             f'Navigation to {self._describe_goal_target(start_index, end_index, kind)} failed: {error_msg}'
         )
+
+    def _handle_successful_segment_goal(self) -> None:
+        if self._segment_target_waypoint_index is None or not self._segment_goal_queue:
+            self._clear_segment_goal_sequence()
+            self._set_error('Segmented patrol goal state became inconsistent.')
+            return
+
+        self._segment_goal_queue.pop(0)
+        final_waypoint_index = self._segment_target_waypoint_index
+        if self._segment_goal_queue:
+            self._dispatch_next_segment_goal()
+            return
+
+        self._clear_segment_goal_sequence()
+        self._handle_successful_waypoint(final_waypoint_index)
 
     def _handle_successful_waypoint(self, waypoint_index: int) -> None:
         self._current_waypoint_index = None
@@ -625,15 +908,51 @@ class PatrolNode(Node):
         )
 
     def _build_pose_stamped(self, waypoint: Waypoint) -> PoseStamped:
+        return self._build_pose_stamped_from_pose(waypoint.pose)
+
+    def _build_pose_stamped_for_index(self, waypoint_index: int) -> PoseStamped:
+        return self._build_pose_stamped_from_pose(self._effective_waypoint_pose(waypoint_index))
+
+    def _build_pose_stamped_from_pose(self, pose_2d: Pose2D) -> PoseStamped:
         pose = PoseStamped()
         pose.header.stamp = self.get_clock().now().to_msg()
         pose.header.frame_id = self._plan.frame_id
-        pose.pose.position.x = waypoint.pose.x
-        pose.pose.position.y = waypoint.pose.y
-        pose.pose.position.z = waypoint.pose.z
-        pose.pose.orientation.z = math.sin(waypoint.pose.yaw / 2.0)
-        pose.pose.orientation.w = math.cos(waypoint.pose.yaw / 2.0)
+        pose.pose.position.x = pose_2d.x
+        pose.pose.position.y = pose_2d.y
+        pose.pose.position.z = pose_2d.z
+        pose.pose.orientation.z = math.sin(pose_2d.yaw / 2.0)
+        pose.pose.orientation.w = math.cos(pose_2d.yaw / 2.0)
         return pose
+
+    def _pose_2d_from_stamped(self, pose: PoseStamped) -> Pose2D:
+        orientation = pose.pose.orientation
+        return Pose2D(
+            x=float(pose.pose.position.x),
+            y=float(pose.pose.position.y),
+            z=float(pose.pose.position.z),
+            yaw=math.atan2(
+                2.0 * orientation.w * orientation.z,
+                1.0 - 2.0 * orientation.z * orientation.z,
+            ),
+        )
+
+    def _is_pose_already_reached(self, target_pose: Pose2D) -> bool:
+        return is_pose_within_xy_tolerance(
+            self._latest_robot_pose,
+            target_pose,
+            xy_tolerance_m=self._already_reached_xy_tolerance_m,
+        )
+
+    def _is_waypoint_already_reached(self, waypoint_index: int) -> bool:
+        return self._is_pose_already_reached(self._effective_waypoint_pose(waypoint_index))
+
+    def _effective_waypoint_pose(self, waypoint_index: int) -> Pose2D:
+        return resolve_effective_waypoint_pose(
+            self._waypoint_ids,
+            self._plan.waypoints,
+            waypoint_index,
+            prefer_lane_heading_on_inspect_waypoints=self._prefer_lane_heading_on_inspect_waypoints,
+        )
 
     def _waypoint_for_index(self, waypoint_index: int) -> Waypoint:
         return self._plan.waypoints[self._waypoint_ids[waypoint_index]]
@@ -651,6 +970,8 @@ class PatrolNode(Node):
                 f'batched route from {self._describe_waypoint(start_index)} '
                 f'to {self._describe_waypoint(end_index)}'
             )
+        if kind == 'segment':
+            return f'segmented route toward {self._describe_waypoint(end_index)}'
         return f'waypoint {self._describe_waypoint(end_index)}'
 
     def _describe_active_target(self) -> str:
@@ -708,10 +1029,23 @@ class PatrolNode(Node):
             'active_navigation_kind': self._active_navigation_kind,
             'active_batch_end_index': self._active_batch_end_index,
             'active_batch_end_waypoint_id': active_batch_end_waypoint_id,
+            'segment_target_waypoint_id': (
+                self._waypoint_ids[self._segment_target_waypoint_index]
+                if self._segment_target_waypoint_index is not None
+                and self._segment_target_waypoint_index < len(self._waypoint_ids)
+                else None
+            ),
+            'segment_steps_remaining': len(self._segment_goal_queue),
+            'segment_total_steps': self._segment_total_goal_count,
             'completion_action': self._completion_action,
             'error': self._last_error_message or None,
         }
         self._status_publisher.publish(String(data=json.dumps(payload, sort_keys=True)))
+
+    def _clear_segment_goal_sequence(self) -> None:
+        self._segment_goal_queue = []
+        self._segment_total_goal_count = 0
+        self._segment_target_waypoint_index = None
 
     def destroy_node(self) -> bool:
         self._cancel_dwell_timer()
