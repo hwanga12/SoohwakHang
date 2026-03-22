@@ -37,13 +37,17 @@ def collect_batch_goal_end_index(
         return observe_on_waypoints and waypoint.observe_here and inspect_dwell_sec > 0.0
 
     current = waypoints[waypoint_ids[start_index]]
-    if should_observe(current) or not current.batchable:
+    if should_observe(current) or not current.batchable or not current.lane_id:
         return start_index
 
     end_index = start_index
     for index in range(start_index + 1, len(waypoint_ids)):
         waypoint = waypoints[waypoint_ids[index]]
-        if should_observe(waypoint) or not waypoint.batchable:
+        if (
+            should_observe(waypoint)
+            or not waypoint.batchable
+            or waypoint.lane_id != current.lane_id
+        ):
             break
         end_index = index
     return end_index
