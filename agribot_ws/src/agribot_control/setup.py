@@ -27,6 +27,7 @@ setup(
     entry_points={
         'console_scripts': [
             'mission_manager = agribot_control.mission_manager:main',
+            'watering_decision_node = agribot_control.watering_decision_node:main',
         ],
     },
 )
