@@ -44,10 +44,10 @@ controller_server:
       yaw_goal_tolerance: 0.70
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.40
-      lookahead_dist: 0.70
-      min_lookahead_dist: 0.35
-      max_lookahead_dist: 1.40
+      desired_linear_vel: 0.42
+      lookahead_dist: 0.95
+      min_lookahead_dist: 0.45
+      max_lookahead_dist: 1.80
       lookahead_time: 1.0
       use_velocity_scaled_lookahead_dist: true
       min_approach_linear_velocity: 0.10
@@ -121,10 +121,10 @@ global_costmap:
       global_frame: odom
       robot_base_frame: base_link
       rolling_window: true
-      width: 60
-      height: 60
-      origin_x: -30.0
-      origin_y: -30.0
+      width: 24
+      height: 24
+      origin_x: -12.0
+      origin_y: -12.0
       resolution: 0.10
       track_unknown_space: true
       footprint: "[[0.20, 0.15], [0.20, -0.15], [-0.20, -0.15], [-0.20, 0.15]]"

@@ -17,21 +17,22 @@
     stop_service: mapping_explorer/stop
     resume_service: mapping_explorer/resume
     auto_start: true
-    planning_period_sec: 0.60
+    planning_period_sec: 0.75
+    start_frontier_known_ratio: 0.40
 
     minimum_frontier_cluster_size: 10
-    minimum_goal_distance_m: 1.6
-    maximum_goal_distance_m: 12.0
-    cluster_size_weight: 1.2
-    maximum_distance_score_m: 8.0
+    minimum_goal_distance_m: 1.2
+    maximum_goal_distance_m: 6.5
+    cluster_size_weight: 0.75
+    maximum_distance_score_m: 4.0
     support_area_weight: 0.18
-    forward_preference_weight: 2.4
-    frontier_standoff_m: 0.6
+    forward_preference_weight: 3.2
+    frontier_standoff_m: 0.7
     staging_search_radius_m: 0.5
     staging_support_radius_m: 0.35
     blacklist_radius_m: 1.0
-    blacklist_duration_sec: 45.0
-    recent_goal_radius_m: 1.0
+    blacklist_duration_sec: 90.0
+    recent_goal_radius_m: 1.6
     recent_goal_ttl_sec: 120.0
     progress_timeout_sec: 40.0
     progress_required_distance_m: 0.10
@@ -47,9 +48,9 @@
     bootstrap_drive_speed_mps: 0.30
     bootstrap_drive_timeout_sec: 8.0
     bootstrap_front_clearance_m: 1.0
-    bootstrap_max_passes: 5
-    bootstrap_min_passes_before_frontier: 3
-    bootstrap_min_total_distance_m: 6.0
+    bootstrap_max_passes: 3
+    bootstrap_min_passes_before_frontier: 2
+    bootstrap_min_total_distance_m: 3.0
     bootstrap_known_ratio_for_frontier: 0.16
 
     boundary_follow_target_distance_m: 0.58
@@ -59,8 +60,8 @@
     boundary_follow_max_angular_speed_rps: 0.42
     boundary_follow_side_gain: 1.15
     boundary_follow_diagonal_gain: 0.45
-    boundary_follow_min_duration_sec: 18.0
-    boundary_follow_min_distance_m: 14.0
+    boundary_follow_min_duration_sec: 8.0
+    boundary_follow_min_distance_m: 6.0
     boundary_follow_known_ratio_for_frontier: 0.18
     boundary_follow_stuck_timeout_sec: 9.0
     boundary_follow_progress_distance_m: 0.30
@@ -73,5 +74,5 @@
 
     enable_coverage_fill: true
     coverage_known_ratio_threshold: 0.8
-    coverage_lane_spacing_m: 0.8
-    coverage_min_segment_length_m: 1.2
+    coverage_lane_spacing_m: 1.8
+    coverage_min_segment_length_m: 1.0
