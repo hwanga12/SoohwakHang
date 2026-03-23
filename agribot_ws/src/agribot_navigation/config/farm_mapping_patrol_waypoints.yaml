@@ -1,0 +1,336 @@
+# Mapping-specific sweep plan for the rectangular 20x20m farm_world.
+# This file keeps a lightweight serpentine sweep so patrol-first mapping
+# covers every aisle with minimal stop-and-go before frontier hole-fill.
+
+schema_version: 1
+frame_id: odom
+zone_id: farm_01
+world_file: agribot_description/worlds/farm_world.sdf
+map_file: agribot_navigation/maps/farm_map.yaml
+home_pose_id: farm_01_home
+
+coordinate_rationale:
+  description: Coordinates are expressed in the odom frame initialized at the center spawn, so odom-x follows the world north direction and odom-y follows world west. Lane changes must happen near odom-x +/-8.6, which matches the real row-end connector gaps in farm_world.
+  lane_clearances_m:
+    west_outer_aisle: 0.75
+    inner_aisles: 1.50
+    center_aisle: 3.50
+    east_outer_aisle: 0.75
+  source_bounds:
+    left_bed_edge_x: -8.25
+    right_bed_edge_x: 8.25
+    front_connector_y: -8.60
+    rear_connector_y: 8.60
+
+robot_constraints:
+  recommended_travel_speed_mps: 0.40
+  recommended_observation_dwell_sec: 0.0
+  notes:
+    - Keep the robot on the aisle centers between crop rows.
+    - Prefer long straight traversals and only turn at the south or north cross-aisle gaps.
+
+harvest_routing:
+  approach_margin_from_bed_edge_m: 0.40
+  max_lateral_offset_from_inspect_m: 1.20
+  return_modes:
+    default: home
+    fallback: home
+  notes:
+    - This mapping-specific plan is for sweep coverage only.
+    - Harvest routing should keep using the greenhouse patrol metadata until crop instances are realigned.
+
+waypoints:
+  - waypoint_id: farm_01_home
+    display_name: Home Pose
+    purpose: home
+    lane_id: sweep_05
+    batchable: false
+    observe_here: false
+    description: Start pose aligned with the Gazebo spawn on the center aisle and reused as the center-lane connector.
+    pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+
+  - waypoint_id: farm_01_lane_01_south
+    display_name: West Outer South
+    purpose: entry
+    lane_id: sweep_01
+    batchable: true
+    observe_here: false
+    description: South start for the west outer aisle.
+    pose:
+      x: -8.6
+      y: 9.0
+      z: 0.0
+      yaw: 0.0
+  - waypoint_id: farm_01_lane_01_north
+    display_name: West Outer North
+    purpose: inspect
+    lane_id: sweep_01
+    batchable: true
+    observe_here: false
+    description: North end for the west outer aisle.
+    pose:
+      x: 8.6
+      y: 9.0
+      z: 0.0
+      yaw: 0.0
+
+  - waypoint_id: farm_01_lane_02_north
+    display_name: West Inner North
+    purpose: entry
+    lane_id: sweep_02
+    batchable: true
+    observe_here: false
+    description: North start for the west inner aisle.
+    pose:
+      x: 8.6
+      y: 7.0
+      z: 0.0
+      yaw: 3.1416
+  - waypoint_id: farm_01_lane_02_south
+    display_name: West Inner South
+    purpose: inspect
+    lane_id: sweep_02
+    batchable: true
+    observe_here: false
+    description: South end for the west inner aisle.
+    pose:
+      x: -8.6
+      y: 7.0
+      z: 0.0
+      yaw: 3.1416
+
+  - waypoint_id: farm_01_lane_03_south
+    display_name: West Mid South
+    purpose: entry
+    lane_id: sweep_03
+    batchable: true
+    observe_here: false
+    description: South start for the west mid aisle.
+    pose:
+      x: -8.6
+      y: 5.0
+      z: 0.0
+      yaw: 0.0
+  - waypoint_id: farm_01_lane_03_north
+    display_name: West Mid North
+    purpose: inspect
+    lane_id: sweep_03
+    batchable: true
+    observe_here: false
+    description: North end for the west mid aisle.
+    pose:
+      x: 8.6
+      y: 5.0
+      z: 0.0
+      yaw: 0.0
+
+  - waypoint_id: farm_01_lane_04_north
+    display_name: West Center North
+    purpose: entry
+    lane_id: sweep_04
+    batchable: true
+    observe_here: false
+    description: North start for the west-center aisle.
+    pose:
+      x: 8.6
+      y: 3.0
+      z: 0.0
+      yaw: 3.1416
+  - waypoint_id: farm_01_lane_04_south
+    display_name: West Center South
+    purpose: inspect
+    lane_id: sweep_04
+    batchable: true
+    observe_here: false
+    description: South end for the west-center aisle.
+    pose:
+      x: -8.6
+      y: 3.0
+      z: 0.0
+      yaw: 3.1416
+
+  - waypoint_id: farm_01_lane_05_south
+    display_name: Center South
+    purpose: entry
+    lane_id: sweep_05
+    batchable: true
+    observe_here: false
+    description: South start for the center aisle.
+    pose:
+      x: -8.6
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+  - waypoint_id: farm_01_lane_05_north
+    display_name: Center North
+    purpose: inspect
+    lane_id: sweep_05
+    batchable: true
+    observe_here: false
+    description: North end for the center aisle.
+    pose:
+      x: 8.6
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+
+  - waypoint_id: farm_01_lane_06_north
+    display_name: East Center North
+    purpose: entry
+    lane_id: sweep_06
+    batchable: true
+    observe_here: false
+    description: North start for the east-center aisle.
+    pose:
+      x: 8.6
+      y: -3.0
+      z: 0.0
+      yaw: 3.1416
+  - waypoint_id: farm_01_lane_06_south
+    display_name: East Center South
+    purpose: inspect
+    lane_id: sweep_06
+    batchable: true
+    observe_here: false
+    description: South end for the east-center aisle.
+    pose:
+      x: -8.6
+      y: -3.0
+      z: 0.0
+      yaw: 3.1416
+
+  - waypoint_id: farm_01_lane_07_south
+    display_name: East Mid South
+    purpose: entry
+    lane_id: sweep_07
+    batchable: true
+    observe_here: false
+    description: South start for the east mid aisle.
+    pose:
+      x: -8.6
+      y: -5.0
+      z: 0.0
+      yaw: 0.0
+  - waypoint_id: farm_01_lane_07_north
+    display_name: East Mid North
+    purpose: inspect
+    lane_id: sweep_07
+    batchable: true
+    observe_here: false
+    description: North end for the east mid aisle.
+    pose:
+      x: 8.6
+      y: -5.0
+      z: 0.0
+      yaw: 0.0
+
+  - waypoint_id: farm_01_lane_08_north
+    display_name: East Inner North
+    purpose: entry
+    lane_id: sweep_08
+    batchable: true
+    observe_here: false
+    description: North start for the east inner aisle.
+    pose:
+      x: 8.6
+      y: -7.0
+      z: 0.0
+      yaw: 3.1416
+  - waypoint_id: farm_01_lane_08_south
+    display_name: East Inner South
+    purpose: inspect
+    lane_id: sweep_08
+    batchable: true
+    observe_here: false
+    description: South end for the east inner aisle.
+    pose:
+      x: -8.6
+      y: -7.0
+      z: 0.0
+      yaw: 3.1416
+
+  - waypoint_id: farm_01_lane_09_south
+    display_name: East Outer South
+    purpose: entry
+    lane_id: sweep_09
+    batchable: true
+    observe_here: false
+    description: South start for the east outer aisle.
+    pose:
+      x: -8.6
+      y: -9.0
+      z: 0.0
+      yaw: 0.0
+  - waypoint_id: farm_01_lane_09_north
+    display_name: East Outer North
+    purpose: inspect
+    lane_id: sweep_09
+    batchable: true
+    observe_here: false
+    description: North end for the east outer aisle.
+    pose:
+      x: 8.6
+      y: -9.0
+      z: 0.0
+      yaw: 0.0
+
+routes:
+  - route_id: farm_01_serpentine_sweep
+    display_name: Rectangular Farm Center-Start Sweep
+    zone_id: farm_01
+    lane_side: full
+    description: Start on the center aisle, hand off between adjacent lanes on the open north or south connector, then finish with the lower center pass.
+    entry_pose_id: farm_01_lane_05_north
+    inspect_pose_ids:
+      - farm_01_lane_06_north
+      - farm_01_lane_06_south
+      - farm_01_lane_07_south
+      - farm_01_lane_07_north
+      - farm_01_lane_08_north
+      - farm_01_lane_08_south
+      - farm_01_lane_09_south
+      - farm_01_lane_09_north
+      - farm_01_lane_05_north
+      - farm_01_lane_04_north
+      - farm_01_lane_04_south
+      - farm_01_lane_03_south
+      - farm_01_lane_03_north
+      - farm_01_lane_02_north
+      - farm_01_lane_02_south
+      - farm_01_lane_01_south
+      - farm_01_lane_01_north
+      - farm_01_lane_05_north
+      - farm_01_home
+      - farm_01_lane_05_south
+    turn_pose_id: farm_01_lane_09_north
+    exit_pose_id: farm_01_lane_05_south
+    observed_plant_ids: []
+    observed_tomato_ids: []
+
+default_patrol_sequence:
+  - farm_01_home
+  - farm_01_lane_05_north
+  - farm_01_lane_06_north
+  - farm_01_lane_06_south
+  - farm_01_lane_07_south
+  - farm_01_lane_07_north
+  - farm_01_lane_08_north
+  - farm_01_lane_08_south
+  - farm_01_lane_09_south
+  - farm_01_lane_09_north
+  - farm_01_lane_05_north
+  - farm_01_lane_04_north
+  - farm_01_lane_04_south
+  - farm_01_lane_03_south
+  - farm_01_lane_03_north
+  - farm_01_lane_02_north
+  - farm_01_lane_02_south
+  - farm_01_lane_01_south
+  - farm_01_lane_01_north
+  - farm_01_lane_05_north
+  - farm_01_home
+  - farm_01_lane_05_south

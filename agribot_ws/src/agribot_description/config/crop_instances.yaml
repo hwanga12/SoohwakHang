@@ -1,0 +1,1890 @@
+# Canonical plant / tomato IDs realigned to the rectangular farm_world grid.
+# Plants are loaded from the Gazebo tomato_plant instances in farm_world.sdf.
+
+schema_version: 1
+frame_id: map
+world_file: agribot_description/worlds/farm_world.sdf
+default_zone_id: farm_01
+id_policy:
+  zone_prefixes:
+    farm_01: farm01
+  plant_id_pattern: <zone_prefix>_plant_<nn>
+  tomato_id_pattern: <plant_id>_tomato_<nn>
+  crop_status_contract:
+    plant_status_crop_id: plant_id
+    tomato_status_crop_id: tomato_id
+    plant_status_tomato_id: ''
+plants:
+- plant_id: farm01_plant_01
+  crop_id: farm01_plant_01
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 01
+  world_model_name: tomato_0
+  pose:
+    x: -8.0
+    y: -8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_02
+  crop_id: farm01_plant_02
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 02
+  world_model_name: tomato_9
+  pose:
+    x: -6.0
+    y: -8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_03
+  crop_id: farm01_plant_03
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 03
+  world_model_name: tomato_18
+  pose:
+    x: -4.0
+    y: -8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_04
+  crop_id: farm01_plant_04
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 04
+  world_model_name: tomato_27
+  pose:
+    x: -2.0
+    y: -8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_05
+  crop_id: farm01_plant_05
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 05
+  world_model_name: tomato_36
+  pose:
+    x: 2.0
+    y: -8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_06
+  crop_id: farm01_plant_06
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 06
+  world_model_name: tomato_45
+  pose:
+    x: 4.0
+    y: -8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_07
+  crop_id: farm01_plant_07
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 07
+  world_model_name: tomato_54
+  pose:
+    x: 6.0
+    y: -8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_08
+  crop_id: farm01_plant_08
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 08
+  world_model_name: tomato_63
+  pose:
+    x: 8.0
+    y: -8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_09
+  crop_id: farm01_plant_09
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 09
+  world_model_name: tomato_1
+  pose:
+    x: -8.0
+    y: -6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_10
+  crop_id: farm01_plant_10
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 10
+  world_model_name: tomato_10
+  pose:
+    x: -6.0
+    y: -6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_11
+  crop_id: farm01_plant_11
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 11
+  world_model_name: tomato_19
+  pose:
+    x: -4.0
+    y: -6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_12
+  crop_id: farm01_plant_12
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 12
+  world_model_name: tomato_28
+  pose:
+    x: -2.0
+    y: -6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_13
+  crop_id: farm01_plant_13
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 13
+  world_model_name: tomato_37
+  pose:
+    x: 2.0
+    y: -6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_14
+  crop_id: farm01_plant_14
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 14
+  world_model_name: tomato_46
+  pose:
+    x: 4.0
+    y: -6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_15
+  crop_id: farm01_plant_15
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 15
+  world_model_name: tomato_55
+  pose:
+    x: 6.0
+    y: -6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_16
+  crop_id: farm01_plant_16
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 16
+  world_model_name: tomato_64
+  pose:
+    x: 8.0
+    y: -6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_17
+  crop_id: farm01_plant_17
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 17
+  world_model_name: tomato_2
+  pose:
+    x: -8.0
+    y: -4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_18
+  crop_id: farm01_plant_18
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 18
+  world_model_name: tomato_11
+  pose:
+    x: -6.0
+    y: -4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_19
+  crop_id: farm01_plant_19
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 19
+  world_model_name: tomato_20
+  pose:
+    x: -4.0
+    y: -4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_20
+  crop_id: farm01_plant_20
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 20
+  world_model_name: tomato_29
+  pose:
+    x: -2.0
+    y: -4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_21
+  crop_id: farm01_plant_21
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 21
+  world_model_name: tomato_38
+  pose:
+    x: 2.0
+    y: -4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_22
+  crop_id: farm01_plant_22
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 22
+  world_model_name: tomato_47
+  pose:
+    x: 4.0
+    y: -4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_23
+  crop_id: farm01_plant_23
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 23
+  world_model_name: tomato_56
+  pose:
+    x: 6.0
+    y: -4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_24
+  crop_id: farm01_plant_24
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 24
+  world_model_name: tomato_65
+  pose:
+    x: 8.0
+    y: -4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_25
+  crop_id: farm01_plant_25
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 25
+  world_model_name: tomato_3
+  pose:
+    x: -8.0
+    y: -2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_26
+  crop_id: farm01_plant_26
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 26
+  world_model_name: tomato_12
+  pose:
+    x: -6.0
+    y: -2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_27
+  crop_id: farm01_plant_27
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 27
+  world_model_name: tomato_21
+  pose:
+    x: -4.0
+    y: -2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_28
+  crop_id: farm01_plant_28
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 28
+  world_model_name: tomato_30
+  pose:
+    x: -2.0
+    y: -2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_29
+  crop_id: farm01_plant_29
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 29
+  world_model_name: tomato_39
+  pose:
+    x: 2.0
+    y: -2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_30
+  crop_id: farm01_plant_30
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 30
+  world_model_name: tomato_48
+  pose:
+    x: 4.0
+    y: -2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_31
+  crop_id: farm01_plant_31
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 31
+  world_model_name: tomato_57
+  pose:
+    x: 6.0
+    y: -2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_32
+  crop_id: farm01_plant_32
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 32
+  world_model_name: tomato_66
+  pose:
+    x: 8.0
+    y: -2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_33
+  crop_id: farm01_plant_33
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 33
+  world_model_name: tomato_4
+  pose:
+    x: -8.0
+    y: 0.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_34
+  crop_id: farm01_plant_34
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 34
+  world_model_name: tomato_13
+  pose:
+    x: -6.0
+    y: 0.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_35
+  crop_id: farm01_plant_35
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 35
+  world_model_name: tomato_22
+  pose:
+    x: -4.0
+    y: 0.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_36
+  crop_id: farm01_plant_36
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 36
+  world_model_name: tomato_31
+  pose:
+    x: -2.0
+    y: 0.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_37
+  crop_id: farm01_plant_37
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 37
+  world_model_name: tomato_40
+  pose:
+    x: 2.0
+    y: 0.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_38
+  crop_id: farm01_plant_38
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 38
+  world_model_name: tomato_49
+  pose:
+    x: 4.0
+    y: 0.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_39
+  crop_id: farm01_plant_39
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 39
+  world_model_name: tomato_58
+  pose:
+    x: 6.0
+    y: 0.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_40
+  crop_id: farm01_plant_40
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 40
+  world_model_name: tomato_67
+  pose:
+    x: 8.0
+    y: 0.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_41
+  crop_id: farm01_plant_41
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 41
+  world_model_name: tomato_5
+  pose:
+    x: -8.0
+    y: 2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_42
+  crop_id: farm01_plant_42
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 42
+  world_model_name: tomato_14
+  pose:
+    x: -6.0
+    y: 2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_43
+  crop_id: farm01_plant_43
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 43
+  world_model_name: tomato_23
+  pose:
+    x: -4.0
+    y: 2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_44
+  crop_id: farm01_plant_44
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 44
+  world_model_name: tomato_32
+  pose:
+    x: -2.0
+    y: 2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_45
+  crop_id: farm01_plant_45
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 45
+  world_model_name: tomato_41
+  pose:
+    x: 2.0
+    y: 2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_46
+  crop_id: farm01_plant_46
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 46
+  world_model_name: tomato_50
+  pose:
+    x: 4.0
+    y: 2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_47
+  crop_id: farm01_plant_47
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 47
+  world_model_name: tomato_59
+  pose:
+    x: 6.0
+    y: 2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_48
+  crop_id: farm01_plant_48
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 48
+  world_model_name: tomato_68
+  pose:
+    x: 8.0
+    y: 2.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_49
+  crop_id: farm01_plant_49
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 49
+  world_model_name: tomato_6
+  pose:
+    x: -8.0
+    y: 4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_50
+  crop_id: farm01_plant_50
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 50
+  world_model_name: tomato_15
+  pose:
+    x: -6.0
+    y: 4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_51
+  crop_id: farm01_plant_51
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 51
+  world_model_name: tomato_24
+  pose:
+    x: -4.0
+    y: 4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_52
+  crop_id: farm01_plant_52
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 52
+  world_model_name: tomato_33
+  pose:
+    x: -2.0
+    y: 4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_53
+  crop_id: farm01_plant_53
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 53
+  world_model_name: tomato_42
+  pose:
+    x: 2.0
+    y: 4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_54
+  crop_id: farm01_plant_54
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 54
+  world_model_name: tomato_51
+  pose:
+    x: 4.0
+    y: 4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_55
+  crop_id: farm01_plant_55
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 55
+  world_model_name: tomato_60
+  pose:
+    x: 6.0
+    y: 4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_56
+  crop_id: farm01_plant_56
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 56
+  world_model_name: tomato_69
+  pose:
+    x: 8.0
+    y: 4.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_57
+  crop_id: farm01_plant_57
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 57
+  world_model_name: tomato_7
+  pose:
+    x: -8.0
+    y: 6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_58
+  crop_id: farm01_plant_58
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 58
+  world_model_name: tomato_16
+  pose:
+    x: -6.0
+    y: 6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_59
+  crop_id: farm01_plant_59
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 59
+  world_model_name: tomato_25
+  pose:
+    x: -4.0
+    y: 6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_60
+  crop_id: farm01_plant_60
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 60
+  world_model_name: tomato_34
+  pose:
+    x: -2.0
+    y: 6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_61
+  crop_id: farm01_plant_61
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 61
+  world_model_name: tomato_43
+  pose:
+    x: 2.0
+    y: 6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_62
+  crop_id: farm01_plant_62
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 62
+  world_model_name: tomato_52
+  pose:
+    x: 4.0
+    y: 6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_63
+  crop_id: farm01_plant_63
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 63
+  world_model_name: tomato_61
+  pose:
+    x: 6.0
+    y: 6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_64
+  crop_id: farm01_plant_64
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 64
+  world_model_name: tomato_70
+  pose:
+    x: 8.0
+    y: 6.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_65
+  crop_id: farm01_plant_65
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 65
+  world_model_name: tomato_8
+  pose:
+    x: -8.0
+    y: 8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_66
+  crop_id: farm01_plant_66
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 66
+  world_model_name: tomato_17
+  pose:
+    x: -6.0
+    y: 8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_67
+  crop_id: farm01_plant_67
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 67
+  world_model_name: tomato_26
+  pose:
+    x: -4.0
+    y: 8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_68
+  crop_id: farm01_plant_68
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 68
+  world_model_name: tomato_35
+  pose:
+    x: -2.0
+    y: 8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_69
+  crop_id: farm01_plant_69
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 69
+  world_model_name: tomato_44
+  pose:
+    x: 2.0
+    y: 8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_70
+  crop_id: farm01_plant_70
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 70
+  world_model_name: tomato_53
+  pose:
+    x: 4.0
+    y: 8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_71
+  crop_id: farm01_plant_71
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 71
+  world_model_name: tomato_62
+  pose:
+    x: 6.0
+    y: 8.0
+    z: 0.75
+    yaw: 0.0
+- plant_id: farm01_plant_72
+  crop_id: farm01_plant_72
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: plant
+  display_name: Farm Tomato Plant 72
+  world_model_name: tomato_71
+  pose:
+    x: 8.0
+    y: 8.0
+    z: 0.75
+    yaw: 0.0
+tomatoes:
+- tomato_id: farm01_plant_01_tomato_01
+  crop_id: farm01_plant_01_tomato_01
+  parent_plant_id: farm01_plant_01
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 01-01
+  world_model_name: tomato_0::fruit_01
+  pose:
+    x: -8.0
+    y: -8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_02_tomato_01
+  crop_id: farm01_plant_02_tomato_01
+  parent_plant_id: farm01_plant_02
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 02-01
+  world_model_name: tomato_9::fruit_01
+  pose:
+    x: -6.0
+    y: -8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_03_tomato_01
+  crop_id: farm01_plant_03_tomato_01
+  parent_plant_id: farm01_plant_03
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 03-01
+  world_model_name: tomato_18::fruit_01
+  pose:
+    x: -4.0
+    y: -8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_04_tomato_01
+  crop_id: farm01_plant_04_tomato_01
+  parent_plant_id: farm01_plant_04
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 04-01
+  world_model_name: tomato_27::fruit_01
+  pose:
+    x: -2.0
+    y: -8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_05_tomato_01
+  crop_id: farm01_plant_05_tomato_01
+  parent_plant_id: farm01_plant_05
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 05-01
+  world_model_name: tomato_36::fruit_01
+  pose:
+    x: 2.0
+    y: -8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_06_tomato_01
+  crop_id: farm01_plant_06_tomato_01
+  parent_plant_id: farm01_plant_06
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 06-01
+  world_model_name: tomato_45::fruit_01
+  pose:
+    x: 4.0
+    y: -8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_07_tomato_01
+  crop_id: farm01_plant_07_tomato_01
+  parent_plant_id: farm01_plant_07
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 07-01
+  world_model_name: tomato_54::fruit_01
+  pose:
+    x: 6.0
+    y: -8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_08_tomato_01
+  crop_id: farm01_plant_08_tomato_01
+  parent_plant_id: farm01_plant_08
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 08-01
+  world_model_name: tomato_63::fruit_01
+  pose:
+    x: 8.0
+    y: -8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_09_tomato_01
+  crop_id: farm01_plant_09_tomato_01
+  parent_plant_id: farm01_plant_09
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 09-01
+  world_model_name: tomato_1::fruit_01
+  pose:
+    x: -8.0
+    y: -6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_10_tomato_01
+  crop_id: farm01_plant_10_tomato_01
+  parent_plant_id: farm01_plant_10
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 10-01
+  world_model_name: tomato_10::fruit_01
+  pose:
+    x: -6.0
+    y: -6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_11_tomato_01
+  crop_id: farm01_plant_11_tomato_01
+  parent_plant_id: farm01_plant_11
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 11-01
+  world_model_name: tomato_19::fruit_01
+  pose:
+    x: -4.0
+    y: -6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_12_tomato_01
+  crop_id: farm01_plant_12_tomato_01
+  parent_plant_id: farm01_plant_12
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 12-01
+  world_model_name: tomato_28::fruit_01
+  pose:
+    x: -2.0
+    y: -6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_13_tomato_01
+  crop_id: farm01_plant_13_tomato_01
+  parent_plant_id: farm01_plant_13
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 13-01
+  world_model_name: tomato_37::fruit_01
+  pose:
+    x: 2.0
+    y: -6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_14_tomato_01
+  crop_id: farm01_plant_14_tomato_01
+  parent_plant_id: farm01_plant_14
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 14-01
+  world_model_name: tomato_46::fruit_01
+  pose:
+    x: 4.0
+    y: -6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_15_tomato_01
+  crop_id: farm01_plant_15_tomato_01
+  parent_plant_id: farm01_plant_15
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 15-01
+  world_model_name: tomato_55::fruit_01
+  pose:
+    x: 6.0
+    y: -6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_16_tomato_01
+  crop_id: farm01_plant_16_tomato_01
+  parent_plant_id: farm01_plant_16
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 16-01
+  world_model_name: tomato_64::fruit_01
+  pose:
+    x: 8.0
+    y: -6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_17_tomato_01
+  crop_id: farm01_plant_17_tomato_01
+  parent_plant_id: farm01_plant_17
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 17-01
+  world_model_name: tomato_2::fruit_01
+  pose:
+    x: -8.0
+    y: -4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_18_tomato_01
+  crop_id: farm01_plant_18_tomato_01
+  parent_plant_id: farm01_plant_18
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 18-01
+  world_model_name: tomato_11::fruit_01
+  pose:
+    x: -6.0
+    y: -4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_19_tomato_01
+  crop_id: farm01_plant_19_tomato_01
+  parent_plant_id: farm01_plant_19
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 19-01
+  world_model_name: tomato_20::fruit_01
+  pose:
+    x: -4.0
+    y: -4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_20_tomato_01
+  crop_id: farm01_plant_20_tomato_01
+  parent_plant_id: farm01_plant_20
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 20-01
+  world_model_name: tomato_29::fruit_01
+  pose:
+    x: -2.0
+    y: -4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_21_tomato_01
+  crop_id: farm01_plant_21_tomato_01
+  parent_plant_id: farm01_plant_21
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 21-01
+  world_model_name: tomato_38::fruit_01
+  pose:
+    x: 2.0
+    y: -4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_22_tomato_01
+  crop_id: farm01_plant_22_tomato_01
+  parent_plant_id: farm01_plant_22
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 22-01
+  world_model_name: tomato_47::fruit_01
+  pose:
+    x: 4.0
+    y: -4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_23_tomato_01
+  crop_id: farm01_plant_23_tomato_01
+  parent_plant_id: farm01_plant_23
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 23-01
+  world_model_name: tomato_56::fruit_01
+  pose:
+    x: 6.0
+    y: -4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_24_tomato_01
+  crop_id: farm01_plant_24_tomato_01
+  parent_plant_id: farm01_plant_24
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 24-01
+  world_model_name: tomato_65::fruit_01
+  pose:
+    x: 8.0
+    y: -4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_25_tomato_01
+  crop_id: farm01_plant_25_tomato_01
+  parent_plant_id: farm01_plant_25
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 25-01
+  world_model_name: tomato_3::fruit_01
+  pose:
+    x: -8.0
+    y: -2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_26_tomato_01
+  crop_id: farm01_plant_26_tomato_01
+  parent_plant_id: farm01_plant_26
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 26-01
+  world_model_name: tomato_12::fruit_01
+  pose:
+    x: -6.0
+    y: -2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_27_tomato_01
+  crop_id: farm01_plant_27_tomato_01
+  parent_plant_id: farm01_plant_27
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 27-01
+  world_model_name: tomato_21::fruit_01
+  pose:
+    x: -4.0
+    y: -2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_28_tomato_01
+  crop_id: farm01_plant_28_tomato_01
+  parent_plant_id: farm01_plant_28
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 28-01
+  world_model_name: tomato_30::fruit_01
+  pose:
+    x: -2.0
+    y: -2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_29_tomato_01
+  crop_id: farm01_plant_29_tomato_01
+  parent_plant_id: farm01_plant_29
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 29-01
+  world_model_name: tomato_39::fruit_01
+  pose:
+    x: 2.0
+    y: -2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_30_tomato_01
+  crop_id: farm01_plant_30_tomato_01
+  parent_plant_id: farm01_plant_30
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 30-01
+  world_model_name: tomato_48::fruit_01
+  pose:
+    x: 4.0
+    y: -2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_31_tomato_01
+  crop_id: farm01_plant_31_tomato_01
+  parent_plant_id: farm01_plant_31
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 31-01
+  world_model_name: tomato_57::fruit_01
+  pose:
+    x: 6.0
+    y: -2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_32_tomato_01
+  crop_id: farm01_plant_32_tomato_01
+  parent_plant_id: farm01_plant_32
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 32-01
+  world_model_name: tomato_66::fruit_01
+  pose:
+    x: 8.0
+    y: -2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_33_tomato_01
+  crop_id: farm01_plant_33_tomato_01
+  parent_plant_id: farm01_plant_33
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 33-01
+  world_model_name: tomato_4::fruit_01
+  pose:
+    x: -8.0
+    y: 0.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_34_tomato_01
+  crop_id: farm01_plant_34_tomato_01
+  parent_plant_id: farm01_plant_34
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 34-01
+  world_model_name: tomato_13::fruit_01
+  pose:
+    x: -6.0
+    y: 0.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_35_tomato_01
+  crop_id: farm01_plant_35_tomato_01
+  parent_plant_id: farm01_plant_35
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 35-01
+  world_model_name: tomato_22::fruit_01
+  pose:
+    x: -4.0
+    y: 0.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_36_tomato_01
+  crop_id: farm01_plant_36_tomato_01
+  parent_plant_id: farm01_plant_36
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 36-01
+  world_model_name: tomato_31::fruit_01
+  pose:
+    x: -2.0
+    y: 0.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_37_tomato_01
+  crop_id: farm01_plant_37_tomato_01
+  parent_plant_id: farm01_plant_37
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 37-01
+  world_model_name: tomato_40::fruit_01
+  pose:
+    x: 2.0
+    y: 0.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_38_tomato_01
+  crop_id: farm01_plant_38_tomato_01
+  parent_plant_id: farm01_plant_38
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 38-01
+  world_model_name: tomato_49::fruit_01
+  pose:
+    x: 4.0
+    y: 0.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_39_tomato_01
+  crop_id: farm01_plant_39_tomato_01
+  parent_plant_id: farm01_plant_39
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 39-01
+  world_model_name: tomato_58::fruit_01
+  pose:
+    x: 6.0
+    y: 0.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_40_tomato_01
+  crop_id: farm01_plant_40_tomato_01
+  parent_plant_id: farm01_plant_40
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 40-01
+  world_model_name: tomato_67::fruit_01
+  pose:
+    x: 8.0
+    y: 0.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_41_tomato_01
+  crop_id: farm01_plant_41_tomato_01
+  parent_plant_id: farm01_plant_41
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 41-01
+  world_model_name: tomato_5::fruit_01
+  pose:
+    x: -8.0
+    y: 2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_42_tomato_01
+  crop_id: farm01_plant_42_tomato_01
+  parent_plant_id: farm01_plant_42
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 42-01
+  world_model_name: tomato_14::fruit_01
+  pose:
+    x: -6.0
+    y: 2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_43_tomato_01
+  crop_id: farm01_plant_43_tomato_01
+  parent_plant_id: farm01_plant_43
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 43-01
+  world_model_name: tomato_23::fruit_01
+  pose:
+    x: -4.0
+    y: 2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_44_tomato_01
+  crop_id: farm01_plant_44_tomato_01
+  parent_plant_id: farm01_plant_44
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 44-01
+  world_model_name: tomato_32::fruit_01
+  pose:
+    x: -2.0
+    y: 2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_45_tomato_01
+  crop_id: farm01_plant_45_tomato_01
+  parent_plant_id: farm01_plant_45
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 45-01
+  world_model_name: tomato_41::fruit_01
+  pose:
+    x: 2.0
+    y: 2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_46_tomato_01
+  crop_id: farm01_plant_46_tomato_01
+  parent_plant_id: farm01_plant_46
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 46-01
+  world_model_name: tomato_50::fruit_01
+  pose:
+    x: 4.0
+    y: 2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_47_tomato_01
+  crop_id: farm01_plant_47_tomato_01
+  parent_plant_id: farm01_plant_47
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 47-01
+  world_model_name: tomato_59::fruit_01
+  pose:
+    x: 6.0
+    y: 2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_48_tomato_01
+  crop_id: farm01_plant_48_tomato_01
+  parent_plant_id: farm01_plant_48
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 48-01
+  world_model_name: tomato_68::fruit_01
+  pose:
+    x: 8.0
+    y: 2.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_49_tomato_01
+  crop_id: farm01_plant_49_tomato_01
+  parent_plant_id: farm01_plant_49
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 49-01
+  world_model_name: tomato_6::fruit_01
+  pose:
+    x: -8.0
+    y: 4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_50_tomato_01
+  crop_id: farm01_plant_50_tomato_01
+  parent_plant_id: farm01_plant_50
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 50-01
+  world_model_name: tomato_15::fruit_01
+  pose:
+    x: -6.0
+    y: 4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_51_tomato_01
+  crop_id: farm01_plant_51_tomato_01
+  parent_plant_id: farm01_plant_51
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 51-01
+  world_model_name: tomato_24::fruit_01
+  pose:
+    x: -4.0
+    y: 4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_52_tomato_01
+  crop_id: farm01_plant_52_tomato_01
+  parent_plant_id: farm01_plant_52
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 52-01
+  world_model_name: tomato_33::fruit_01
+  pose:
+    x: -2.0
+    y: 4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_53_tomato_01
+  crop_id: farm01_plant_53_tomato_01
+  parent_plant_id: farm01_plant_53
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 53-01
+  world_model_name: tomato_42::fruit_01
+  pose:
+    x: 2.0
+    y: 4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_54_tomato_01
+  crop_id: farm01_plant_54_tomato_01
+  parent_plant_id: farm01_plant_54
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 54-01
+  world_model_name: tomato_51::fruit_01
+  pose:
+    x: 4.0
+    y: 4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_55_tomato_01
+  crop_id: farm01_plant_55_tomato_01
+  parent_plant_id: farm01_plant_55
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 55-01
+  world_model_name: tomato_60::fruit_01
+  pose:
+    x: 6.0
+    y: 4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_56_tomato_01
+  crop_id: farm01_plant_56_tomato_01
+  parent_plant_id: farm01_plant_56
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 56-01
+  world_model_name: tomato_69::fruit_01
+  pose:
+    x: 8.0
+    y: 4.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_57_tomato_01
+  crop_id: farm01_plant_57_tomato_01
+  parent_plant_id: farm01_plant_57
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 57-01
+  world_model_name: tomato_7::fruit_01
+  pose:
+    x: -8.0
+    y: 6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_58_tomato_01
+  crop_id: farm01_plant_58_tomato_01
+  parent_plant_id: farm01_plant_58
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 58-01
+  world_model_name: tomato_16::fruit_01
+  pose:
+    x: -6.0
+    y: 6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_59_tomato_01
+  crop_id: farm01_plant_59_tomato_01
+  parent_plant_id: farm01_plant_59
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 59-01
+  world_model_name: tomato_25::fruit_01
+  pose:
+    x: -4.0
+    y: 6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_60_tomato_01
+  crop_id: farm01_plant_60_tomato_01
+  parent_plant_id: farm01_plant_60
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 60-01
+  world_model_name: tomato_34::fruit_01
+  pose:
+    x: -2.0
+    y: 6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_61_tomato_01
+  crop_id: farm01_plant_61_tomato_01
+  parent_plant_id: farm01_plant_61
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 61-01
+  world_model_name: tomato_43::fruit_01
+  pose:
+    x: 2.0
+    y: 6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_62_tomato_01
+  crop_id: farm01_plant_62_tomato_01
+  parent_plant_id: farm01_plant_62
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 62-01
+  world_model_name: tomato_52::fruit_01
+  pose:
+    x: 4.0
+    y: 6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_63_tomato_01
+  crop_id: farm01_plant_63_tomato_01
+  parent_plant_id: farm01_plant_63
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 63-01
+  world_model_name: tomato_61::fruit_01
+  pose:
+    x: 6.0
+    y: 6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_64_tomato_01
+  crop_id: farm01_plant_64_tomato_01
+  parent_plant_id: farm01_plant_64
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 64-01
+  world_model_name: tomato_70::fruit_01
+  pose:
+    x: 8.0
+    y: 6.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_65_tomato_01
+  crop_id: farm01_plant_65_tomato_01
+  parent_plant_id: farm01_plant_65
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 65-01
+  world_model_name: tomato_8::fruit_01
+  pose:
+    x: -8.0
+    y: 8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_66_tomato_01
+  crop_id: farm01_plant_66_tomato_01
+  parent_plant_id: farm01_plant_66
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 66-01
+  world_model_name: tomato_17::fruit_01
+  pose:
+    x: -6.0
+    y: 8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_67_tomato_01
+  crop_id: farm01_plant_67_tomato_01
+  parent_plant_id: farm01_plant_67
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 67-01
+  world_model_name: tomato_26::fruit_01
+  pose:
+    x: -4.0
+    y: 8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_68_tomato_01
+  crop_id: farm01_plant_68_tomato_01
+  parent_plant_id: farm01_plant_68
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 68-01
+  world_model_name: tomato_35::fruit_01
+  pose:
+    x: -2.0
+    y: 8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_69_tomato_01
+  crop_id: farm01_plant_69_tomato_01
+  parent_plant_id: farm01_plant_69
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 69-01
+  world_model_name: tomato_44::fruit_01
+  pose:
+    x: 2.0
+    y: 8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_70_tomato_01
+  crop_id: farm01_plant_70_tomato_01
+  parent_plant_id: farm01_plant_70
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 70-01
+  world_model_name: tomato_53::fruit_01
+  pose:
+    x: 4.0
+    y: 8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_71_tomato_01
+  crop_id: farm01_plant_71_tomato_01
+  parent_plant_id: farm01_plant_71
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 71-01
+  world_model_name: tomato_62::fruit_01
+  pose:
+    x: 6.0
+    y: 8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
+- tomato_id: farm01_plant_72_tomato_01
+  crop_id: farm01_plant_72_tomato_01
+  parent_plant_id: farm01_plant_72
+  zone_id: farm_01
+  crop_name: tomato
+  crop_type: tomato_fruit
+  display_name: Farm Tomato Fruit 72-01
+  world_model_name: tomato_71::fruit_01
+  pose:
+    x: 8.0
+    y: 8.0
+    z: 1.05
+    yaw: 0.0
+  ready_to_harvest: true
