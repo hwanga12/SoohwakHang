@@ -160,9 +160,17 @@ agribot_description/
 | 타입 | 파일명 | 설명 |
 | --- | --- | --- |
 | msg | `CropStatus.msg` | `crop_id`, `zone_id`, `plant_id`, `tomato_id`, 작물 이름, 상태값, 위치 |
+| msg | `PlantObservation.msg` | 관측 ID, 식물/과실 ID, class, confidence, health score, pose, image path |
+| msg | `RobotStatus.msg` | 로봇 모드, 상태, pose, 속도, 에러 정보 |
+| msg | `HarvestEvent.msg` | 수확 이벤트 ID, plant/fruit ID, 성공 여부, 실패 사유, 바구니 수량 |
+| msg | `MissionStatus.msg` | 미션 ID, 타입, 단계, 진행률, 재시도 횟수 |
+| msg | `IoTDeviceState.msg` | 장치 종류, 구역, 현재 상태, 열림 비율, 속도, 가용 여부 |
 | msg | `IoTCommand.msg` | IoT 기기 ID, 명령 유형, 목표 값, 단위 |
 | msg | `EnvironmentData.msg` | 온도, 습도, 토양 수분, 조도, CO2 농도, 구역 ID |
 | srv | `SetHumidity.srv` | 구역별 목표 습도 설정 요청 → 성공 여부/현재 습도 응답 |
+| srv | `ExecuteActuation.srv` | 급수/커튼/환기/영양제 실행 요청 → 접수 여부/상태 응답 |
+| action | `RunPatrol.action` | 장시간 순찰 실행/피드백/결과 인터페이스 |
+| action | `HarvestTomato.action` | 접근-정렬-수확-적재 작업 인터페이스 |
 
 ---
 

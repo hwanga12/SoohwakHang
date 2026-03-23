@@ -1,0 +1,22 @@
+# ExecuteActuation.srv
+# 주변 IoT 장치 실행 요청
+
+# Request
+std_msgs/Header header
+string command_id
+string zone_id
+string device_id
+string device_type
+string command_type
+float32 target_value
+string unit
+bool requires_approval
+bool auto_execute
+string requested_by
+string reason
+---
+# Response
+bool accepted
+string command_id
+string status
+string message
