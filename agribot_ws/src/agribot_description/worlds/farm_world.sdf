@@ -50,7 +50,7 @@
           <geometry>
             <plane>
               <normal>0 0 1</normal>
-              <size>100 100</size>
+              <size>120 500</size>
             </plane>
           </geometry>
         </collision>
@@ -58,7 +58,7 @@
           <geometry>
             <plane>
               <normal>0 0 1</normal>
-              <size>100 100</size>
+              <size>120 500</size>
             </plane>
           </geometry>
           <material>
@@ -124,10 +124,10 @@
       <static>true</static>
       <link name="link">
         <collision name="collision">
-          <pose>-19.92445 115.9957725 0.9 0 0 0</pose>
+          <pose>-19.92445 115.9957725 0.15 0 0 0</pose>
           <geometry>
             <box>
-              <size>15.0299 223.498445 1.8</size>
+              <size>15.0299 223.498445 0.30</size>
             </box>
           </geometry>
         </collision>
@@ -138,10 +138,10 @@
       <static>true</static>
       <link name="link">
         <collision name="collision">
-          <pose>21.190872 101.8023525 0.9 0 0 0</pose>
+          <pose>21.190872 101.8023525 0.15 0 0 0</pose>
           <geometry>
             <box>
-              <size>10.84586 135.535309 1.8</size>
+              <size>10.84586 135.535309 0.30</size>
             </box>
           </geometry>
         </collision>
@@ -151,7 +151,7 @@
     <!-- Greenhouse Structure -->
     <include>
       <uri>model://greenhouse</uri>
-      <pose>0 0 0.75 0 0 0</pose>
+      <pose>0 0 0 0 0 0</pose>
     </include>
 
     <!-- AgriBot Robot -->
@@ -169,7 +169,7 @@
     <include>
       <name>tomato_plant_2</name>
       <uri>model://tomato_plant</uri>
-      <pose>24.113802 38.034698 -0.633620 0 0 0</pose>
+      <pose>24.113802 38.034698 0.75 0 0 0</pose>
     </include>
     <include>
       <name>tomato_plant_3</name>

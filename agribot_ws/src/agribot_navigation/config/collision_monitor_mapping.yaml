@@ -1,0 +1,28 @@
+/**:
+  ros__parameters:
+    base_frame_id: base_link
+    odom_frame_id: odom
+    cmd_vel_in_topic: /cmd_vel
+    cmd_vel_out_topic: /cmd_vel_checked
+    state_topic: /collision_monitor_state
+    transform_tolerance: 0.3
+    source_timeout: 0.5
+    base_shift_correction: true
+    stop_pub_timeout: 0.6
+
+    polygons: ["FrontStopZone"]
+
+    FrontStopZone:
+      type: polygon
+      points: "[[0.40, 0.14], [0.40, -0.14], [0.24, -0.14], [0.24, 0.14]]"
+      action_type: stop
+      min_points: 6
+      visualize: false
+      polygon_pub_topic: /collision_monitor/front_stop_zone
+      enabled: true
+
+    observation_sources: ["scan"]
+    scan:
+      type: scan
+      topic: /agribot/lidar
+      enabled: true
