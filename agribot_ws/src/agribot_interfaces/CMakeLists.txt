@@ -7,6 +7,7 @@ endif()
 
 # Find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(action_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -18,9 +19,18 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CropStatus.msg"
   "msg/IoTCommand.msg"
   "msg/EnvironmentData.msg"
+  "msg/PlantObservation.msg"
+  "msg/RobotStatus.msg"
+  "msg/HarvestEvent.msg"
+  "msg/MissionStatus.msg"
+  "msg/IoTDeviceState.msg"
+  # Actions
+  "action/RunPatrol.action"
+  "action/HarvestTomato.action"
   # Services
   "srv/SetHumidity.srv"
-  DEPENDENCIES std_msgs geometry_msgs sensor_msgs
+  "srv/ExecuteActuation.srv"
+  DEPENDENCIES action_msgs std_msgs geometry_msgs sensor_msgs
 )
 
 if(BUILD_TESTING)
