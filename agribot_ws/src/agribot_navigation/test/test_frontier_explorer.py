@@ -7,10 +7,11 @@ from agribot_navigation.frontier_explorer import (
     boundary_ray_clearance,
     bootstrap_ready_for_frontier,
     boundary_ready_for_frontier,
-    build_recovery_commands,
     build_coverage_fill_goals,
     build_frontier_candidates,
+    build_recovery_commands,
     choose_open_heading,
+    frontier_distance_reward,
     frontier_clusters,
     wall_follow_command,
 )
@@ -197,6 +198,12 @@ def test_build_frontier_candidates_skips_goals_beyond_maximum_distance() -> None
     )
 
     assert candidates == []
+
+
+def test_frontier_distance_reward_prefers_nearer_candidates() -> None:
+    assert frontier_distance_reward(1.0, 4.0) == 3.0
+    assert frontier_distance_reward(2.5, 4.0) == 1.5
+    assert frontier_distance_reward(8.0, 4.0) == 0.0
 
 
 def test_choose_open_heading_prefers_forward_gap_when_front_is_clear() -> None:

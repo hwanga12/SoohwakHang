@@ -28,7 +28,7 @@ def generate_launch_description():
     default_map = os.path.join(
         pkg_agribot_navigation,
         'maps',
-        'greenhouse_map.yaml',
+        'farm_map.yaml',
     )
     default_localization_params = os.path.join(
         pkg_agribot_navigation,

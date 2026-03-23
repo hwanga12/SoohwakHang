@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -151,15 +152,16 @@ def load_crop_catalog(path: Path) -> CropCatalog:
     return catalog
 
 
-def _route_y_bounds(plan: PatrolPlan, route: PatrolRoute) -> tuple[float, float]:
+def _route_bounds(plan: PatrolPlan, route: PatrolRoute) -> tuple[float, float, float, float]:
     referenced_waypoints = (
         route.entry_pose_id,
         *route.inspect_pose_ids,
         route.turn_pose_id,
         route.exit_pose_id,
     )
+    x_values = [plan.waypoints[waypoint_id].pose.x for waypoint_id in referenced_waypoints]
     y_values = [plan.waypoints[waypoint_id].pose.y for waypoint_id in referenced_waypoints]
-    return min(y_values), max(y_values)
+    return min(x_values), max(x_values), min(y_values), max(y_values)
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
@@ -170,10 +172,23 @@ def _find_observation_context(
     plan: PatrolPlan,
     catalog: CropCatalog,
     tomato_id: str,
+    *,
+    preferred_inspect_waypoint_id: str | None = None,
 ) -> HarvestObservationContext:
     tomato = catalog.tomatoes[tomato_id]
     plant_id = tomato.parent_plant_id
     candidates: list[tuple[int, float, PatrolRoute, Waypoint]] = []
+
+    if preferred_inspect_waypoint_id and preferred_inspect_waypoint_id in plan.waypoints:
+        preferred_waypoint = plan.waypoints[preferred_inspect_waypoint_id]
+        observes_target = (
+            tomato_id in preferred_waypoint.observed_tomato_ids
+            or plant_id in preferred_waypoint.observed_plant_ids
+        )
+        if observes_target:
+            for route in plan.routes.values():
+                if preferred_inspect_waypoint_id in route.inspect_pose_ids:
+                    return HarvestObservationContext(route=route, inspect_waypoint=preferred_waypoint)
 
     for route in plan.routes.values():
         for inspect_pose_id in route.inspect_pose_ids:
@@ -187,7 +202,10 @@ def _find_observation_context(
                 candidates.append(
                     (
                         score,
-                        abs(inspect_waypoint.pose.y - tomato.pose.y),
+                        math.hypot(
+                            inspect_waypoint.pose.x - tomato.pose.x,
+                            inspect_waypoint.pose.y - tomato.pose.y,
+                        ),
                         route,
                         inspect_waypoint,
                     )
@@ -206,11 +224,17 @@ def _find_observation_context(
         inspect_waypoints = [plan.waypoints[waypoint_id] for waypoint_id in route.inspect_pose_ids]
         inspect_waypoint = min(
             inspect_waypoints,
-            key=lambda waypoint: abs(waypoint.pose.y - tomato.pose.y),
+            key=lambda waypoint: math.hypot(
+                waypoint.pose.x - tomato.pose.x,
+                waypoint.pose.y - tomato.pose.y,
+            ),
         )
         route_candidates.append(
             (
-                abs(inspect_waypoint.pose.y - tomato.pose.y),
+                math.hypot(
+                    inspect_waypoint.pose.x - tomato.pose.x,
+                    inspect_waypoint.pose.y - tomato.pose.y,
+                ),
                 route,
                 inspect_waypoint,
             )
@@ -233,27 +257,42 @@ def _compute_approach_pose(
     inspect_waypoint: Waypoint,
     tomato: TomatoInstance,
 ) -> Pose2D:
-    margin = plan.harvest_routing.approach_margin_from_bed_edge_m
-    lateral_limit = plan.harvest_routing.max_lateral_offset_from_inspect_m
-    min_route_y, max_route_y = _route_y_bounds(plan, route)
+    standoff_margin = plan.harvest_routing.approach_margin_from_bed_edge_m
+    approach_limit = plan.harvest_routing.max_lateral_offset_from_inspect_m
+    min_route_x, max_route_x, min_route_y, max_route_y = _route_bounds(plan, route)
 
-    if route.lane_side == 'left':
-        bed_edge_candidate_x = plan.source_bounds.left_bed_edge_x + margin
-        lateral_limit_x = inspect_waypoint.pose.x - lateral_limit
-        approach_x = max(bed_edge_candidate_x, lateral_limit_x)
-    elif route.lane_side == 'right':
-        bed_edge_candidate_x = plan.source_bounds.right_bed_edge_x - margin
-        lateral_limit_x = inspect_waypoint.pose.x + lateral_limit
-        approach_x = min(bed_edge_candidate_x, lateral_limit_x)
+    delta_x = tomato.pose.x - inspect_waypoint.pose.x
+    delta_y = tomato.pose.y - inspect_waypoint.pose.y
+    distance_to_target = math.hypot(delta_x, delta_y)
+
+    if distance_to_target <= 1e-6:
+        approach_x = inspect_waypoint.pose.x
+        approach_y = inspect_waypoint.pose.y
+        approach_yaw = inspect_waypoint.pose.yaw
     else:
-        raise ValueError(f'Unsupported lane_side for route {route.route_id}: {route.lane_side}')
+        travel_distance = min(
+            approach_limit,
+            max(0.0, distance_to_target - standoff_margin),
+        )
+        scale = travel_distance / distance_to_target
+        approach_x = inspect_waypoint.pose.x + (delta_x * scale)
+        approach_y = inspect_waypoint.pose.y + (delta_y * scale)
+        expansion = approach_limit
+        approach_x = _clamp(approach_x, min_route_x - expansion, max_route_x + expansion)
+        approach_y = _clamp(approach_y, min_route_y - expansion, max_route_y + expansion)
 
-    approach_y = _clamp(tomato.pose.y, min_route_y, max_route_y)
+        remaining_x = tomato.pose.x - approach_x
+        remaining_y = tomato.pose.y - approach_y
+        if abs(remaining_x) <= 1e-6 and abs(remaining_y) <= 1e-6:
+            approach_yaw = inspect_waypoint.pose.yaw
+        else:
+            approach_yaw = math.atan2(remaining_y, remaining_x)
+
     return Pose2D(
         x=approach_x,
         y=approach_y,
         z=inspect_waypoint.pose.z,
-        yaw=inspect_waypoint.pose.yaw,
+        yaw=approach_yaw,
     )
 
 
@@ -292,7 +331,12 @@ def compute_harvest_route(
         raise ValueError(f'Unknown tomato_id: {tomato_id}')
 
     tomato = catalog.tomatoes[tomato_id]
-    context = _find_observation_context(plan, catalog, tomato_id)
+    context = _find_observation_context(
+        plan,
+        catalog,
+        tomato_id,
+        preferred_inspect_waypoint_id=preferred_return_waypoint_id,
+    )
     requested_return_mode = return_mode or plan.harvest_routing.default_return_mode
 
     return_waypoint_id = _resolve_return_waypoint_id(
