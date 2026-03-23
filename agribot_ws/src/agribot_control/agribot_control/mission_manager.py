@@ -75,6 +75,21 @@ class PatrolStatusSnapshot:
     progress_pct: float
 
 
+@dataclass(slots=True)
+class StatusTelemetry:
+    mission_type: str
+    mission_state: str
+    current_phase: str
+    target_id: str
+    progress_pct: float
+    detail_message: str
+    robot_mode: str
+    is_returning_home: bool
+    has_error: bool
+    error_code: str
+    error_message: str
+
+
 def parse_patrol_status(raw_data: str) -> PatrolStatusSnapshot | None:
     try:
         payload = json.loads(raw_data)
@@ -114,6 +129,124 @@ def parse_patrol_status(raw_data: str) -> PatrolStatusSnapshot | None:
         next_waypoint_index=next_waypoint_index,
         total_waypoints=total_waypoints,
         progress_pct=max(0.0, min(100.0, progress_pct)),
+    )
+
+
+def build_status_telemetry(
+    mission_snapshot: MissionSnapshot,
+    *,
+    robot_mode: str,
+    patrol_status: PatrolStatusSnapshot | None,
+    active_observation: ObservationTaskCandidate | None,
+    pending_observation_count: int,
+    pending_observation_activation_requested: bool,
+) -> StatusTelemetry:
+    mission_type = mission_snapshot.mission_type
+    mission_state = mission_snapshot.state
+    current_phase = mission_snapshot.current_phase or robot_mode or 'IDLE'
+    target_id = mission_snapshot.target_id
+    progress_pct = mission_snapshot.progress_pct
+    detail_parts: list[str] = []
+
+    if mission_snapshot.detail_message:
+        detail_parts.append(mission_snapshot.detail_message)
+
+    if mission_type == MissionType.PATROL.value and patrol_status is not None:
+        patrol_phase_map = {
+            'starting': 'PATROL_NAVIGATING',
+            'running': 'PATROL_NAVIGATING',
+            'observing': 'PATROL_OBSERVING',
+            'stopped': 'PATROL_PAUSED',
+            'completed': 'PATROL_COMPLETED',
+            'error': 'PATROL_ERROR',
+        }
+        current_phase = patrol_phase_map.get(patrol_status.state, current_phase)
+        target_id = patrol_status.next_waypoint_id or patrol_status.current_waypoint_id or target_id
+        progress_pct = max(progress_pct, patrol_status.progress_pct)
+        if patrol_status.message:
+            detail_parts = [patrol_status.message]
+        waypoint_parts = []
+        if patrol_status.current_waypoint_id:
+            waypoint_parts.append(f'current={patrol_status.current_waypoint_id}')
+        if patrol_status.next_waypoint_id:
+            waypoint_parts.append(f'next={patrol_status.next_waypoint_id}')
+        if waypoint_parts:
+            detail_parts.append(', '.join(waypoint_parts))
+    elif mission_type == MissionType.RETURN_HOME.value and mission_state == MissionState.RUNNING.value:
+        current_phase = 'RETURN_HOME_NAVIGATING'
+    elif mission_type == MissionType.HARVEST.value and mission_state == MissionState.RUNNING.value:
+        current_phase = 'HARVEST_ACTIVE'
+    elif mission_type == MissionType.OBSERVE.value and mission_state == MissionState.RUNNING.value:
+        current_phase = 'OBSERVE_ACTIVE'
+    elif mission_type == MissionType.IOT_ACTION.value and mission_state == MissionState.RUNNING.value:
+        current_phase = 'IOT_ACTION_ACTIVE'
+    elif mission_state == MissionState.PAUSED.value:
+        current_phase = 'PAUSED'
+    elif mission_state == MissionState.COMPLETED.value and not mission_type:
+        current_phase = 'IDLE'
+
+    if active_observation is not None:
+        target_id = active_observation.target_id or target_id
+        detail_parts.append(
+            f'active_observation={active_observation.event_kind}:{active_observation.target_id}'
+        )
+
+    if pending_observation_count > 0:
+        detail_parts.append(f'pending_observations={pending_observation_count}')
+
+    if pending_observation_activation_requested:
+        detail_parts.append('waiting_for_patrol_stop=true')
+
+    deduped_detail_parts: list[str] = []
+    for part in detail_parts:
+        normalized_part = part.strip()
+        if normalized_part and normalized_part not in deduped_detail_parts:
+            deduped_detail_parts.append(normalized_part)
+    detail_message = '; '.join(deduped_detail_parts)
+
+    is_returning_home = (
+        robot_mode == RobotMode.RETURN_HOME.value
+        or (
+            mission_type == MissionType.RETURN_HOME.value
+            and mission_state == MissionState.RUNNING.value
+        )
+    )
+
+    has_error = (
+        robot_mode == RobotMode.ERROR.value
+        or mission_state == MissionState.FAILED.value
+        or (patrol_status is not None and patrol_status.state == 'error')
+    )
+
+    error_code = ''
+    if has_error:
+        if patrol_status is not None and patrol_status.state == 'error':
+            error_code = 'PATROL_ERROR'
+        elif mission_type == MissionType.RETURN_HOME.value:
+            error_code = 'RETURN_HOME_ERROR'
+        elif mission_type == MissionType.HARVEST.value:
+            error_code = 'HARVEST_ERROR'
+        elif mission_type == MissionType.OBSERVE.value:
+            error_code = 'OBSERVE_ERROR'
+        elif mission_type == MissionType.IOT_ACTION.value:
+            error_code = 'IOT_ACTION_ERROR'
+        else:
+            error_code = 'MISSION_ERROR'
+
+    error_message = detail_message if has_error else ''
+
+    return StatusTelemetry(
+        mission_type=mission_type,
+        mission_state=mission_state,
+        current_phase=current_phase,
+        target_id=target_id,
+        progress_pct=max(0.0, min(100.0, progress_pct)),
+        detail_message=detail_message,
+        robot_mode=robot_mode,
+        is_returning_home=is_returning_home,
+        has_error=has_error,
+        error_code=error_code,
+        error_message=error_message,
     )
 
 
@@ -346,6 +479,7 @@ class MissionManagerNode(Node):
             ),
         )
         self._pending_observation_activation_requested = False
+        self._latest_patrol_status: PatrolStatusSnapshot | None = None
 
         mission_status_topic = str(self.get_parameter('mission_status_topic').value)
         robot_status_topic = str(self.get_parameter('robot_status_topic').value)
@@ -542,6 +676,7 @@ class MissionManagerNode(Node):
             self.get_logger().warning('Ignored invalid patrol status payload.')
             return
 
+        self._latest_patrol_status = snapshot
         apply_patrol_status_snapshot(self._mission_machine, snapshot)
         if snapshot.state == 'completed':
             self._activate_best_pending_observation(
@@ -785,19 +920,27 @@ class MissionManagerNode(Node):
     def _publish_status(self) -> None:
         mission_snapshot = self._mission_machine.snapshot()
         now = self.get_clock().now().to_msg()
+        telemetry = build_status_telemetry(
+            mission_snapshot,
+            robot_mode=self._mission_machine.robot_mode,
+            patrol_status=self._latest_patrol_status,
+            active_observation=self._observation_arbiter.active_candidate,
+            pending_observation_count=self._observation_arbiter.pending_count(),
+            pending_observation_activation_requested=self._pending_observation_activation_requested,
+        )
 
         mission_status = MissionStatus()
         mission_status.header.stamp = now
         mission_status.header.frame_id = 'map'
         mission_status.mission_id = mission_snapshot.mission_id
-        mission_status.mission_type = mission_snapshot.mission_type
-        mission_status.state = mission_snapshot.state
-        mission_status.current_phase = mission_snapshot.current_phase
+        mission_status.mission_type = telemetry.mission_type
+        mission_status.state = telemetry.mission_state
+        mission_status.current_phase = telemetry.current_phase
         mission_status.zone_id = mission_snapshot.zone_id
-        mission_status.target_id = mission_snapshot.target_id
-        mission_status.progress_pct = mission_snapshot.progress_pct
+        mission_status.target_id = telemetry.target_id
+        mission_status.progress_pct = telemetry.progress_pct
         mission_status.retry_count = mission_snapshot.retry_count
-        mission_status.detail_message = mission_snapshot.detail_message
+        mission_status.detail_message = telemetry.detail_message
         self._mission_status_publisher.publish(mission_status)
 
         robot_status = RobotStatus()
@@ -806,23 +949,15 @@ class MissionManagerNode(Node):
         robot_status.robot_id = self._robot_id
         robot_status.zone_id = self._zone_id
         robot_status.mission_id = mission_snapshot.mission_id
-        robot_status.mode = self._mission_machine.robot_mode
-        robot_status.state = mission_snapshot.state
+        robot_status.mode = telemetry.robot_mode
+        robot_status.state = telemetry.mission_state
         robot_status.pose = self._last_pose
         robot_status.linear_velocity = self._last_linear_velocity
         robot_status.angular_velocity = self._last_angular_velocity
-        robot_status.is_returning_home = (
-            self._mission_machine.robot_mode == RobotMode.RETURN_HOME.value
-        )
-        robot_status.has_error = (
-            self._mission_machine.robot_mode == RobotMode.ERROR.value
-        )
-        robot_status.error_code = (
-            'MISSION_ERROR' if robot_status.has_error else ''
-        )
-        robot_status.error_message = (
-            mission_snapshot.detail_message if robot_status.has_error else ''
-        )
+        robot_status.is_returning_home = telemetry.is_returning_home
+        robot_status.has_error = telemetry.has_error
+        robot_status.error_code = telemetry.error_code
+        robot_status.error_message = telemetry.error_message
         self._robot_status_publisher.publish(robot_status)
 
 
