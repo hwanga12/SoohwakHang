@@ -1,0 +1,18 @@
+# Goal
+string mission_id
+string patrol_id
+string zone_id
+string resume_from_waypoint_id
+bool return_home_on_complete
+---
+# Result
+bool success
+uint32 completed_waypoint_count
+string last_waypoint_id
+string message
+---
+# Feedback
+string current_waypoint_id
+float32 progress_pct
+uint32 retry_count
+string state
