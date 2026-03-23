@@ -10,7 +10,7 @@ map_file: agribot_navigation/maps/farm_map.yaml
 home_pose_id: farm_01_home
 
 coordinate_rationale:
-  description: Start from the Gazebo spawn on the center aisle, clear the center and east block first, then cross once to finish the west block.
+  description: Coordinates are expressed in the odom frame initialized at the center spawn, so odom-x follows the world north direction and odom-y follows world west. Lane changes must happen near odom-x +/-8.6, which matches the real row-end connector gaps in farm_world.
   lane_clearances_m:
     west_outer_aisle: 0.75
     inner_aisles: 1.50
@@ -19,8 +19,8 @@ coordinate_rationale:
   source_bounds:
     left_bed_edge_x: -8.25
     right_bed_edge_x: 8.25
-    front_connector_y: -6.80
-    rear_connector_y: 6.80
+    front_connector_y: -8.60
+    rear_connector_y: 8.60
 
 robot_constraints:
   recommended_travel_speed_mps: 0.40
@@ -43,15 +43,15 @@ waypoints:
   - waypoint_id: farm_01_home
     display_name: Home Pose
     purpose: home
-    lane_id: staging
+    lane_id: sweep_05
     batchable: false
     observe_here: false
-    description: Start pose aligned with the Gazebo spawn on the center aisle.
+    description: Start pose aligned with the Gazebo spawn on the center aisle and reused as the center-lane connector.
     pose:
       x: 0.0
       y: 0.0
       z: 0.0
-      yaw: 1.5708
+      yaw: 0.0
 
   - waypoint_id: farm_01_lane_01_south
     display_name: West Outer South
@@ -61,10 +61,10 @@ waypoints:
     observe_here: false
     description: South start for the west outer aisle.
     pose:
-      x: -9.0
-      y: -6.8
+      x: -8.6
+      y: 9.0
       z: 0.0
-      yaw: 1.5708
+      yaw: 0.0
   - waypoint_id: farm_01_lane_01_north
     display_name: West Outer North
     purpose: inspect
@@ -73,10 +73,10 @@ waypoints:
     observe_here: false
     description: North end for the west outer aisle.
     pose:
-      x: -9.0
-      y: 6.8
+      x: 8.6
+      y: 9.0
       z: 0.0
-      yaw: 1.5708
+      yaw: 0.0
 
   - waypoint_id: farm_01_lane_02_north
     display_name: West Inner North
@@ -86,10 +86,10 @@ waypoints:
     observe_here: false
     description: North start for the west inner aisle.
     pose:
-      x: -7.0
-      y: 6.8
+      x: 8.6
+      y: 7.0
       z: 0.0
-      yaw: -1.5708
+      yaw: 3.1416
   - waypoint_id: farm_01_lane_02_south
     display_name: West Inner South
     purpose: inspect
@@ -98,10 +98,10 @@ waypoints:
     observe_here: false
     description: South end for the west inner aisle.
     pose:
-      x: -7.0
-      y: -6.8
+      x: -8.6
+      y: 7.0
       z: 0.0
-      yaw: -1.5708
+      yaw: 3.1416
 
   - waypoint_id: farm_01_lane_03_south
     display_name: West Mid South
@@ -111,10 +111,10 @@ waypoints:
     observe_here: false
     description: South start for the west mid aisle.
     pose:
-      x: -5.0
-      y: -6.8
+      x: -8.6
+      y: 5.0
       z: 0.0
-      yaw: 1.5708
+      yaw: 0.0
   - waypoint_id: farm_01_lane_03_north
     display_name: West Mid North
     purpose: inspect
@@ -123,10 +123,10 @@ waypoints:
     observe_here: false
     description: North end for the west mid aisle.
     pose:
-      x: -5.0
-      y: 6.8
+      x: 8.6
+      y: 5.0
       z: 0.0
-      yaw: 1.5708
+      yaw: 0.0
 
   - waypoint_id: farm_01_lane_04_north
     display_name: West Center North
@@ -136,10 +136,10 @@ waypoints:
     observe_here: false
     description: North start for the west-center aisle.
     pose:
-      x: -3.0
-      y: 6.8
+      x: 8.6
+      y: 3.0
       z: 0.0
-      yaw: -1.5708
+      yaw: 3.1416
   - waypoint_id: farm_01_lane_04_south
     display_name: West Center South
     purpose: inspect
@@ -148,10 +148,10 @@ waypoints:
     observe_here: false
     description: South end for the west-center aisle.
     pose:
-      x: -3.0
-      y: -6.8
+      x: -8.6
+      y: 3.0
       z: 0.0
-      yaw: -1.5708
+      yaw: 3.1416
 
   - waypoint_id: farm_01_lane_05_south
     display_name: Center South
@@ -161,10 +161,10 @@ waypoints:
     observe_here: false
     description: South start for the center aisle.
     pose:
-      x: 0.0
-      y: -6.8
+      x: -8.6
+      y: 0.0
       z: 0.0
-      yaw: 1.5708
+      yaw: 0.0
   - waypoint_id: farm_01_lane_05_north
     display_name: Center North
     purpose: inspect
@@ -173,10 +173,10 @@ waypoints:
     observe_here: false
     description: North end for the center aisle.
     pose:
-      x: 0.0
-      y: 6.8
+      x: 8.6
+      y: 0.0
       z: 0.0
-      yaw: 1.5708
+      yaw: 0.0
 
   - waypoint_id: farm_01_lane_06_north
     display_name: East Center North
@@ -186,10 +186,10 @@ waypoints:
     observe_here: false
     description: North start for the east-center aisle.
     pose:
-      x: 3.0
-      y: 6.8
+      x: 8.6
+      y: -3.0
       z: 0.0
-      yaw: -1.5708
+      yaw: 3.1416
   - waypoint_id: farm_01_lane_06_south
     display_name: East Center South
     purpose: inspect
@@ -198,10 +198,10 @@ waypoints:
     observe_here: false
     description: South end for the east-center aisle.
     pose:
-      x: 3.0
-      y: -6.8
+      x: -8.6
+      y: -3.0
       z: 0.0
-      yaw: -1.5708
+      yaw: 3.1416
 
   - waypoint_id: farm_01_lane_07_south
     display_name: East Mid South
@@ -211,10 +211,10 @@ waypoints:
     observe_here: false
     description: South start for the east mid aisle.
     pose:
-      x: 5.0
-      y: -6.8
+      x: -8.6
+      y: -5.0
       z: 0.0
-      yaw: 1.5708
+      yaw: 0.0
   - waypoint_id: farm_01_lane_07_north
     display_name: East Mid North
     purpose: inspect
@@ -223,10 +223,10 @@ waypoints:
     observe_here: false
     description: North end for the east mid aisle.
     pose:
-      x: 5.0
-      y: 6.8
+      x: 8.6
+      y: -5.0
       z: 0.0
-      yaw: 1.5708
+      yaw: 0.0
 
   - waypoint_id: farm_01_lane_08_north
     display_name: East Inner North
@@ -236,10 +236,10 @@ waypoints:
     observe_here: false
     description: North start for the east inner aisle.
     pose:
-      x: 7.0
-      y: 6.8
+      x: 8.6
+      y: -7.0
       z: 0.0
-      yaw: -1.5708
+      yaw: 3.1416
   - waypoint_id: farm_01_lane_08_south
     display_name: East Inner South
     purpose: inspect
@@ -248,10 +248,10 @@ waypoints:
     observe_here: false
     description: South end for the east inner aisle.
     pose:
-      x: 7.0
-      y: -6.8
+      x: -8.6
+      y: -7.0
       z: 0.0
-      yaw: -1.5708
+      yaw: 3.1416
 
   - waypoint_id: farm_01_lane_09_south
     display_name: East Outer South
@@ -261,10 +261,10 @@ waypoints:
     observe_here: false
     description: South start for the east outer aisle.
     pose:
-      x: 9.0
-      y: -6.8
+      x: -8.6
+      y: -9.0
       z: 0.0
-      yaw: 1.5708
+      yaw: 0.0
   - waypoint_id: farm_01_lane_09_north
     display_name: East Outer North
     purpose: inspect
@@ -273,58 +273,64 @@ waypoints:
     observe_here: false
     description: North end for the east outer aisle.
     pose:
-      x: 9.0
-      y: 6.8
+      x: 8.6
+      y: -9.0
       z: 0.0
-      yaw: 1.5708
+      yaw: 0.0
 
 routes:
   - route_id: farm_01_serpentine_sweep
     display_name: Rectangular Farm Center-Start Sweep
     zone_id: farm_01
     lane_side: full
-    description: Start on the center aisle, clear the east block with straight passes, cross once, then finish the west block before frontier hole-fill.
+    description: Start on the center aisle, hand off between adjacent lanes on the open north or south connector, then finish with the lower center pass.
     entry_pose_id: farm_01_lane_05_north
     inspect_pose_ids:
-      - farm_01_lane_05_south
-      - farm_01_lane_06_south
       - farm_01_lane_06_north
-      - farm_01_lane_07_north
+      - farm_01_lane_06_south
       - farm_01_lane_07_south
-      - farm_01_lane_08_south
+      - farm_01_lane_07_north
       - farm_01_lane_08_north
-      - farm_01_lane_09_north
+      - farm_01_lane_08_south
       - farm_01_lane_09_south
-      - farm_01_lane_04_south
+      - farm_01_lane_09_north
+      - farm_01_lane_05_north
       - farm_01_lane_04_north
-      - farm_01_lane_03_north
+      - farm_01_lane_04_south
       - farm_01_lane_03_south
-      - farm_01_lane_02_south
+      - farm_01_lane_03_north
       - farm_01_lane_02_north
-      - farm_01_lane_01_north
+      - farm_01_lane_02_south
       - farm_01_lane_01_south
-    turn_pose_id: farm_01_lane_09_south
-    exit_pose_id: farm_01_lane_01_south
+      - farm_01_lane_01_north
+      - farm_01_lane_05_north
+      - farm_01_home
+      - farm_01_lane_05_south
+    turn_pose_id: farm_01_lane_09_north
+    exit_pose_id: farm_01_lane_05_south
     observed_plant_ids: []
     observed_tomato_ids: []
 
 default_patrol_sequence:
   - farm_01_home
   - farm_01_lane_05_north
-  - farm_01_lane_05_south
-  - farm_01_lane_06_south
   - farm_01_lane_06_north
-  - farm_01_lane_07_north
+  - farm_01_lane_06_south
   - farm_01_lane_07_south
-  - farm_01_lane_08_south
+  - farm_01_lane_07_north
   - farm_01_lane_08_north
-  - farm_01_lane_09_north
+  - farm_01_lane_08_south
   - farm_01_lane_09_south
-  - farm_01_lane_04_south
+  - farm_01_lane_09_north
+  - farm_01_lane_05_north
   - farm_01_lane_04_north
-  - farm_01_lane_03_north
+  - farm_01_lane_04_south
   - farm_01_lane_03_south
-  - farm_01_lane_02_south
+  - farm_01_lane_03_north
   - farm_01_lane_02_north
-  - farm_01_lane_01_north
+  - farm_01_lane_02_south
   - farm_01_lane_01_south
+  - farm_01_lane_01_north
+  - farm_01_lane_05_north
+  - farm_01_home
+  - farm_01_lane_05_south

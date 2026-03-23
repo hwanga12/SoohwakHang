@@ -154,6 +154,24 @@ def is_pose_within_xy_tolerance(
     ) <= xy_tolerance_m
 
 
+def should_treat_soft_completed_navigation_as_success(
+    current_pose: Pose2D | None,
+    target_pose: Pose2D | None,
+    *,
+    goal_soft_completed: bool,
+    xy_tolerance_m: float,
+) -> bool:
+    """Accept a soft-complete result only while the robot is still near the target."""
+    if not goal_soft_completed or target_pose is None:
+        return False
+
+    return is_pose_within_xy_tolerance(
+        current_pose,
+        target_pose,
+        xy_tolerance_m=xy_tolerance_m,
+    )
+
+
 class PatrolNode(Node):
     """Visit the configured waypoint list in order and expose patrol controls."""
 
@@ -181,6 +199,7 @@ class PatrolNode(Node):
         self.declare_parameter('max_lane_segment_length_m', 24.0)
         self.declare_parameter('prefer_lane_heading_on_inspect_waypoints', False)
         self.declare_parameter('already_reached_xy_tolerance_m', 0.45)
+        self.declare_parameter('robot_pose_topic', '/odometry/filtered')
         self.declare_parameter('completion_action', 'none')
         self.declare_parameter('completion_start_service', 'mapping_explorer/start')
         self.declare_parameter('completion_service_wait_sec', 2.0)
@@ -225,6 +244,7 @@ class PatrolNode(Node):
         start_service = str(self.get_parameter('start_service').value)
         stop_service = str(self.get_parameter('stop_service').value)
         resume_service = str(self.get_parameter('resume_service').value)
+        robot_pose_topic = str(self.get_parameter('robot_pose_topic').value)
         self._completion_action = str(self.get_parameter('completion_action').value).strip()
         self._completion_start_service = str(
             self.get_parameter('completion_start_service').value
@@ -244,7 +264,7 @@ class PatrolNode(Node):
         self._status_publisher = self.create_publisher(String, status_topic, 10)
         self._odom_subscription = self.create_subscription(
             Odometry,
-            '/odom',
+            robot_pose_topic,
             self._handle_odom,
             10,
         )
@@ -672,10 +692,7 @@ class PatrolNode(Node):
             not self._active_goal_soft_completed
             and self._active_navigation_kind in {'single', 'segment'}
             and self._active_target_pose is not None
-            and (
-                self._last_distance_remaining_m <= self._already_reached_xy_tolerance_m
-                or self._is_pose_already_reached(self._active_target_pose)
-            )
+            and self._is_pose_already_reached(self._active_target_pose)
         ):
             self._active_goal_soft_completed = True
         self._publish_status()
@@ -727,10 +744,11 @@ class PatrolNode(Node):
             self._handle_successful_waypoint(end_index)
             return
 
-        if (
-            active_goal_soft_completed
-            and kind in {'single', 'segment'}
-            and active_target_pose is not None
+        if kind in {'single', 'segment'} and should_treat_soft_completed_navigation_as_success(
+            self._latest_robot_pose,
+            active_target_pose,
+            goal_soft_completed=active_goal_soft_completed,
+            xy_tolerance_m=self._already_reached_xy_tolerance_m,
         ):
             self.get_logger().warning(
                 'Treating near-complete navigation as success for '

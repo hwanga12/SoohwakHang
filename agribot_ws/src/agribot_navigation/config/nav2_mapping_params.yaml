@@ -35,37 +35,37 @@ controller_server:
     use_realtime_priority: false
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.15
-      movement_time_allowance: 10.0
+      required_movement_radius: 0.12
+      movement_time_allowance: 18.0
     general_goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
       stateful: false
-      xy_goal_tolerance: 0.90
+      xy_goal_tolerance: 0.50
       yaw_goal_tolerance: 0.70
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.42
-      lookahead_dist: 0.95
-      min_lookahead_dist: 0.45
-      max_lookahead_dist: 1.80
+      desired_linear_vel: 0.32
+      lookahead_dist: 0.70
+      min_lookahead_dist: 0.30
+      max_lookahead_dist: 1.10
       lookahead_time: 1.0
       use_velocity_scaled_lookahead_dist: true
-      min_approach_linear_velocity: 0.10
-      approach_velocity_scaling_dist: 1.20
+      min_approach_linear_velocity: 0.08
+      approach_velocity_scaling_dist: 2.00
       use_fixed_curvature_lookahead: false
       curvature_lookahead_dist: 0.80
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: false
       regulated_linear_scaling_min_radius: 1.20
-      regulated_linear_scaling_min_speed: 0.12
+      regulated_linear_scaling_min_speed: 0.10
       use_rotate_to_heading: false
-      rotate_to_heading_angular_vel: 0.90
-      rotate_to_heading_min_angle: 0.90
-      max_angular_accel: 1.80
+      rotate_to_heading_angular_vel: 0.55
+      rotate_to_heading_min_angle: 0.45
+      max_angular_accel: 1.20
       allow_reversing: false
       use_collision_detection: true
-      max_allowed_time_to_collision_up_to_carrot: 0.25
-      transform_tolerance: 0.25
+      max_allowed_time_to_collision_up_to_carrot: 0.20
+      transform_tolerance: 0.40
       max_robot_pose_search_dist: 6.0
       interpolate_curvature_after_goal: false
       use_cancel_deceleration: true
@@ -88,9 +88,9 @@ local_costmap:
       origin_x: -3.0
       origin_y: -3.0
       resolution: 0.07
-      footprint: "[[0.20, 0.15], [0.20, -0.15], [-0.20, -0.15], [-0.20, 0.15]]"
+      footprint: "[[0.17, 0.13], [0.17, -0.13], [-0.17, -0.13], [-0.17, 0.13]]"
       footprint_padding: 0.0
-      transform_tolerance: 0.20
+      transform_tolerance: 0.50
       plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -110,7 +110,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 4.0
-        inflation_radius: 0.32
+        inflation_radius: 0.36
       always_send_full_costmap: false
 
 global_costmap:
@@ -127,9 +127,9 @@ global_costmap:
       origin_y: -12.0
       resolution: 0.10
       track_unknown_space: true
-      footprint: "[[0.20, 0.15], [0.20, -0.15], [-0.20, -0.15], [-0.20, 0.15]]"
+      footprint: "[[0.17, 0.13], [0.17, -0.13], [-0.17, -0.13], [-0.17, 0.13]]"
       footprint_padding: 0.0
-      transform_tolerance: 0.30
+      transform_tolerance: 0.50
       plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -149,7 +149,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 4.0
-        inflation_radius: 0.32
+        inflation_radius: 0.36
       always_send_full_costmap: false
 
 planner_server:
@@ -206,7 +206,7 @@ behavior_server:
     local_frame: odom
     global_frame: odom
     robot_base_frame: base_link
-    transform_tolerance: 0.20
+    transform_tolerance: 0.50
     simulate_ahead_time: 0.5
     max_rotational_vel: 0.90
     min_rotational_vel: 0.25

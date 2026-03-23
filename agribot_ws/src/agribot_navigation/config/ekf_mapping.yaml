@@ -1,11 +1,12 @@
 mapping_ekf_filter:
   ros__parameters:
-    frequency: 30.0
+    frequency: 20.0
     sensor_timeout: 0.1
     two_d_mode: true
     transform_time_offset: 0.0
     transform_timeout: 0.1
-    publish_tf: false
+    predict_to_current_time: true
+    publish_tf: true
     publish_acceleration: false
     print_diagnostics: true
     debug: false
