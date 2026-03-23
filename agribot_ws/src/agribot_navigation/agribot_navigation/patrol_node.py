@@ -35,6 +35,7 @@ def collect_batch_goal_end_index(
     *,
     observe_on_waypoints: bool,
     inspect_dwell_sec: float,
+    max_batch_path_length_m: float = 0.0,
 ) -> int:
     """Return the last consecutive waypoint index that can be sent as one batch goal."""
     if start_index >= len(waypoint_ids):
@@ -48,6 +49,8 @@ def collect_batch_goal_end_index(
         return start_index
 
     end_index = start_index
+    cumulative_path_length_m = 0.0
+    previous_waypoint = current
     for index in range(start_index + 1, len(waypoint_ids)):
         waypoint = waypoints[waypoint_ids[index]]
         if (
@@ -56,7 +59,18 @@ def collect_batch_goal_end_index(
             or waypoint.lane_id != current.lane_id
         ):
             break
+        leg_length_m = math.hypot(
+            waypoint.pose.x - previous_waypoint.pose.x,
+            waypoint.pose.y - previous_waypoint.pose.y,
+        )
+        if (
+            max_batch_path_length_m > 0.0
+            and cumulative_path_length_m + leg_length_m > max_batch_path_length_m
+        ):
+            break
+        cumulative_path_length_m += leg_length_m
         end_index = index
+        previous_waypoint = waypoint
     return end_index
 
 
@@ -163,6 +177,7 @@ class PatrolNode(Node):
         self.declare_parameter('goal_reject_retry_sec', 0.0)
         self.declare_parameter('goal_reject_retry_limit', 0)
         self.declare_parameter('enable_batch_navigation', True)
+        self.declare_parameter('max_batch_path_length_m', 0.0)
         self.declare_parameter('max_lane_segment_length_m', 24.0)
         self.declare_parameter('prefer_lane_heading_on_inspect_waypoints', False)
         self.declare_parameter('already_reached_xy_tolerance_m', 0.45)
@@ -180,6 +195,10 @@ class PatrolNode(Node):
         )
         self._enable_batch_navigation = bool(
             self.get_parameter('enable_batch_navigation').value
+        )
+        self._max_batch_path_length_m = max(
+            0.0,
+            float(self.get_parameter('max_batch_path_length_m').value),
         )
         self._max_lane_segment_length_m = max(
             0.0,
@@ -280,13 +299,20 @@ class PatrolNode(Node):
         return load_patrol_plan(self._plan_path)
 
     def _auto_start_once(self) -> None:
+        if self._state != 'idle':
+            if self._auto_start_timer is not None:
+                self._auto_start_timer.cancel()
+                self.destroy_timer(self._auto_start_timer)
+                self._auto_start_timer = None
+            return
+
+        if self._latest_robot_pose is None:
+            return
+
         if self._auto_start_timer is not None:
             self._auto_start_timer.cancel()
             self.destroy_timer(self._auto_start_timer)
             self._auto_start_timer = None
-
-        if self._state != 'idle':
-            return
 
         if self._start_patrol(reset_progress=True):
             self.get_logger().info('Auto-started patrol sequence.')
@@ -418,6 +444,7 @@ class PatrolNode(Node):
             waypoint_index,
             observe_on_waypoints=self._observe_on_inspect_waypoints,
             inspect_dwell_sec=self._inspect_dwell_sec,
+            max_batch_path_length_m=self._max_batch_path_length_m,
         )
         if (
             self._enable_batch_navigation

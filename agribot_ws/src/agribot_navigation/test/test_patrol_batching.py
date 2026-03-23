@@ -166,6 +166,43 @@ def test_collect_batch_goal_end_index_stops_when_lane_id_is_missing() -> None:
     assert end_index == 0
 
 
+def test_collect_batch_goal_end_index_respects_max_batch_path_length() -> None:
+    waypoint_ids = ('lane_south', 'lane_north')
+    waypoints = {
+        'lane_south': Waypoint(
+            waypoint_id='lane_south',
+            display_name='Lane South',
+            purpose='entry',
+            description='entry',
+            pose=Pose2D(x=-9.0, y=-8.9, z=0.0, yaw=1.5708),
+            lane_id='sweep_01',
+            batchable=True,
+            observe_here=False,
+        ),
+        'lane_north': Waypoint(
+            waypoint_id='lane_north',
+            display_name='Lane North',
+            purpose='inspect',
+            description='inspect',
+            pose=Pose2D(x=-9.0, y=8.9, z=0.0, yaw=1.5708),
+            lane_id='sweep_01',
+            batchable=True,
+            observe_here=False,
+        ),
+    }
+
+    end_index = collect_batch_goal_end_index(
+        waypoint_ids,
+        waypoints,
+        0,
+        observe_on_waypoints=True,
+        inspect_dwell_sec=0.0,
+        max_batch_path_length_m=6.0,
+    )
+
+    assert end_index == 0
+
+
 def test_build_intermediate_segment_poses_returns_no_pose_for_short_hops() -> None:
     start = Pose2D(x=-10.0, y=14.0, z=0.0, yaw=3.1416)
     end = Pose2D(x=-10.0, y=30.0, z=0.0, yaw=3.1416)
