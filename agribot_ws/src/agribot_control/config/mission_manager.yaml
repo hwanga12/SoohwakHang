@@ -12,3 +12,7 @@ mission_manager:
     patrol_stop_service: /patrol/stop
     patrol_resume_service: /patrol/resume
     patrol_service_wait_sec: 1.0
+    plant_observation_topic: /plant_observation
+    observation_duplicate_window_sec: 120.0
+    max_pending_observations: 16
+    interrupt_patrol_on_observation: true
