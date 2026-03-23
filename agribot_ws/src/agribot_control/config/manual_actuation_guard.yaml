@@ -1,0 +1,10 @@
+manual_actuation_guard_node:
+  ros__parameters:
+    manual_command_topic: /iot/commands/manual
+    auto_command_topic: /iot/commands/auto
+    dispatch_topic: /iot/commands/dispatch
+    manual_override_seconds: 15.0
+    duplicate_window_seconds: 2.0
+    execution_lock_seconds: 4.0
+    conflict_groups:
+      - watering,nutrient
