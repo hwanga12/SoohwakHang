@@ -1,1 +1,0 @@
-# AgriBot Description Package
