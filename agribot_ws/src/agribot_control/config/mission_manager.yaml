@@ -1,0 +1,9 @@
+mission_manager:
+  ros__parameters:
+    robot_id: agribot_01
+    zone_id: farm_01
+    odometry_topic: /odometry/filtered
+    command_topic: /mission/command
+    mission_status_topic: /mission/status
+    robot_status_topic: /robot/status
+    status_publish_hz: 2.0

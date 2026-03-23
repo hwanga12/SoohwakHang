@@ -26,6 +26,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'mission_manager = agribot_control.mission_manager:main',
         ],
     },
 )
