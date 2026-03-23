@@ -9,6 +9,19 @@ import zlib
 from pathlib import Path
 
 
+MANIFEST_FIELDNAMES = [
+    "image_path",
+    "image_rel_path",
+    "json_path",
+    "json_rel_path",
+    "disease_code",
+    "is_negative_sample",
+    "use_for_detection",
+    "top_level_bbox_count",
+    "source_split",
+]
+
+
 def write_png(path: Path, width: int, height: int) -> None:
     raw_rows = [b"\x00" + (b"\xff\xff\xff" * width) for _ in range(height)]
     raw_image = b"".join(raw_rows)
@@ -33,90 +46,55 @@ def write_json(path: Path, payload: dict[str, object]) -> None:
 def manifest_row(
     image_path: Path,
     image_rel_path: str,
-    json_path: Path,
-    json_rel_path: str,
     disease_code: str,
     *,
+    json_path: Path | None = None,
+    json_rel_path: str = "",
     is_negative_sample: bool,
     use_for_detection: bool,
     top_level_bbox_count: int,
+    source_split: str,
 ) -> dict[str, str]:
     return {
         "image_path": str(image_path),
         "image_rel_path": image_rel_path,
-        "json_path": str(json_path),
+        "json_path": "" if json_path is None else str(json_path),
         "json_rel_path": json_rel_path,
         "disease_code": disease_code,
         "is_negative_sample": "true" if is_negative_sample else "false",
         "use_for_detection": "true" if use_for_detection else "false",
         "top_level_bbox_count": str(top_level_bbox_count),
+        "source_split": source_split,
     }
 
 
-def test_manifest_to_yolo_conversion(tmp_path: Path) -> None:
+def test_manifest_to_yolo_conversion_handles_negative_rows_and_bbox_clipping(
+    tmp_path: Path,
+) -> None:
     dataset_root = tmp_path / "dataset"
     positive_train_image = (
-        dataset_root
-        / "raw"
-        / "train"
-        / "extracted"
-        / "source"
-        / "tomato"
-        / "disease"
-        / "positive_train.png"
+        dataset_root / "train_positive" / "source" / "토마토" / "병해" / "positive_train.png"
     )
-    positive_val_image = (
-        dataset_root
-        / "raw"
-        / "val"
-        / "extracted"
-        / "source"
-        / "tomato"
-        / "physiology"
-        / "positive_val.png"
+    clipped_val_image = (
+        dataset_root / "val" / "source" / "토마토" / "생리장해" / "clipped_val.png"
     )
-    negative_val_image = (
-        dataset_root
-        / "raw"
-        / "val"
-        / "extracted"
-        / "source"
-        / "tomato"
-        / "normal"
-        / "negative_val.png"
+    collapsed_val_image = (
+        dataset_root / "val" / "source" / "토마토" / "병해" / "collapsed_val.png"
+    )
+    negative_train_image = (
+        dataset_root / "train_normal" / "source" / "토마토" / "정상" / "negative_train.png"
     )
 
     positive_train_json = (
-        dataset_root
-        / "raw"
-        / "train"
-        / "extracted"
-        / "label"
-        / "disease"
-        / "positive_train.json"
+        dataset_root / "train_positive" / "label" / "병해" / "positive_train.json"
     )
-    positive_val_json = (
-        dataset_root
-        / "raw"
-        / "val"
-        / "extracted"
-        / "label"
-        / "physiology"
-        / "positive_val.json"
-    )
-    negative_val_json = (
-        dataset_root
-        / "raw"
-        / "val"
-        / "extracted"
-        / "label"
-        / "normal"
-        / "negative_val.json"
-    )
+    clipped_val_json = dataset_root / "val" / "label" / "생리장해" / "clipped_val.json"
+    collapsed_val_json = dataset_root / "val" / "label" / "병해" / "collapsed_val.json"
 
     write_png(positive_train_image, width=100, height=200)
-    write_png(positive_val_image, width=50, height=100)
-    write_png(negative_val_image, width=40, height=40)
+    write_png(clipped_val_image, width=100, height=100)
+    write_png(collapsed_val_image, width=50, height=50)
+    write_png(negative_train_image, width=40, height=40)
 
     write_json(
         positive_train_json,
@@ -126,112 +104,96 @@ def test_manifest_to_yolo_conversion(tmp_path: Path) -> None:
                 "crop": "2",
                 "disease": "a5",
                 "risk": "1",
-                "area": "3",
-                "grow": "12",
                 "bbox": {"x": 10, "y": 20, "w": 30, "h": 40},
             },
         },
     )
     write_json(
-        positive_val_json,
+        clipped_val_json,
         {
-            "description": {"image": positive_val_image.name, "task": "detection"},
+            "description": {"image": clipped_val_image.name, "task": "detection"},
             "annotation": [
                 {
                     "crop": "2",
                     "disease": "b2",
                     "risk": "2",
-                    "area": "1",
-                    "grow": "13",
-                    "bbox": {"x1": 5, "y1": 10, "x2": 25, "y2": 40},
+                    "bbox": {"x": 80, "y": 90, "w": 40, "h": 20},
                 }
             ],
         },
     )
     write_json(
-        negative_val_json,
+        collapsed_val_json,
         {
-            "description": {"image": negative_val_image.name, "task": "detection"},
+            "description": {"image": collapsed_val_image.name, "task": "detection"},
             "annotations": {
                 "crop": "2",
-                "disease": "00",
-                "risk": "0",
-                "area": "3",
-                "grow": "12",
-                "bbox": [],
+                "disease": "a6",
+                "risk": "3",
+                "bbox": {"x": 70, "y": 70, "w": 15, "h": 20},
             },
         },
     )
 
     manifest_path = tmp_path / "tomato_manifest.csv"
     with manifest_path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=[
-                "image_path",
-                "image_rel_path",
-                "json_path",
-                "json_rel_path",
-                "disease_code",
-                "is_negative_sample",
-                "use_for_detection",
-                "top_level_bbox_count",
-            ],
-        )
+        writer = csv.DictWriter(handle, fieldnames=MANIFEST_FIELDNAMES)
         writer.writeheader()
         writer.writerow(
             manifest_row(
                 positive_train_image,
-                "raw/train/extracted/source/tomato/disease/positive_train.png",
-                positive_train_json,
-                "raw/train/extracted/label/disease/positive_train.json",
+                "source/토마토/병해/positive_train.png",
                 "a5",
+                json_path=positive_train_json,
+                json_rel_path="label/병해/positive_train.json",
                 is_negative_sample=False,
                 use_for_detection=True,
                 top_level_bbox_count=1,
+                source_split="train",
             )
         )
         writer.writerow(
             manifest_row(
-                positive_val_image,
-                "raw/val/extracted/source/tomato/physiology/positive_val.png",
-                positive_val_json,
-                "raw/val/extracted/label/physiology/positive_val.json",
+                clipped_val_image,
+                "source/토마토/생리장해/clipped_val.png",
                 "b2",
+                json_path=clipped_val_json,
+                json_rel_path="label/생리장해/clipped_val.json",
                 is_negative_sample=False,
                 use_for_detection=True,
                 top_level_bbox_count=1,
+                source_split="val",
             )
         )
         writer.writerow(
             manifest_row(
-                negative_val_image,
-                "raw/val/extracted/source/tomato/normal/negative_val.png",
-                negative_val_json,
-                "raw/val/extracted/label/normal/negative_val.json",
+                collapsed_val_image,
+                "source/토마토/병해/collapsed_val.png",
+                "a6",
+                json_path=collapsed_val_json,
+                json_rel_path="label/병해/collapsed_val.json",
+                is_negative_sample=False,
+                use_for_detection=True,
+                top_level_bbox_count=1,
+                source_split="val",
+            )
+        )
+        writer.writerow(
+            manifest_row(
+                negative_train_image,
+                "source/토마토/정상/negative_train.png",
                 "00",
+                json_path=None,
+                json_rel_path="",
                 is_negative_sample=True,
                 use_for_detection=True,
                 top_level_bbox_count=0,
-            )
-        )
-        writer.writerow(
-            manifest_row(
-                tmp_path / "skip" / "missing.png",
-                "raw/train/extracted/source/tomato/skip/missing.png",
-                tmp_path / "skip" / "missing.json",
-                "raw/train/extracted/label/tomato/skip/missing.json",
-                "a6",
-                is_negative_sample=False,
-                use_for_detection=False,
-                top_level_bbox_count=1,
+                source_split="train",
             )
         )
 
     output_root = tmp_path / "yolo" / "tomato_det_v1"
-    script_path = (
-        Path(__file__).resolve().parents[1] / "scripts" / "json_to_yolo_det.py"
-    )
+    script_path = Path(__file__).resolve().parents[1] / "scripts" / "json_to_yolo_det.py"
     result = subprocess.run(
         [
             sys.executable,
@@ -246,59 +208,37 @@ def test_manifest_to_yolo_conversion(tmp_path: Path) -> None:
         text=True,
     )
 
+    assert "Rows selected: 4" in result.stdout
     assert "Rows converted: 3" in result.stdout
+    assert "Rows skipped: 1" in result.stdout
     assert "Positive samples: 2" in result.stdout
     assert "Negative samples: 1" in result.stdout
+    assert "Clipped bboxes: 1" in result.stdout
+    assert "Collapsed bboxes skipped: 1" in result.stdout
+    assert "Clipped bbox" in result.stderr
+    assert "Skipped collapsed bbox" in result.stderr
 
-    train_image_out = (
-        output_root
-        / "images"
-        / "train"
-        / "extracted"
-        / "source"
-        / "tomato"
-        / "disease"
-        / "positive_train.png"
-    )
     train_label_out = (
-        output_root
-        / "labels"
-        / "train"
-        / "extracted"
-        / "source"
-        / "tomato"
-        / "disease"
-        / "positive_train.txt"
+        output_root / "labels" / "train" / "source" / "토마토" / "병해" / "positive_train.txt"
     )
     val_positive_label_out = (
-        output_root
-        / "labels"
-        / "val"
-        / "extracted"
-        / "source"
-        / "tomato"
-        / "physiology"
-        / "positive_val.txt"
+        output_root / "labels" / "val" / "source" / "토마토" / "생리장해" / "clipped_val.txt"
     )
-    val_negative_label_out = (
-        output_root
-        / "labels"
-        / "val"
-        / "extracted"
-        / "source"
-        / "tomato"
-        / "normal"
-        / "negative_val.txt"
+    negative_label_out = (
+        output_root / "labels" / "train" / "source" / "토마토" / "정상" / "negative_train.txt"
+    )
+    collapsed_image_out = (
+        output_root / "images" / "val" / "source" / "토마토" / "병해" / "collapsed_val.png"
     )
 
-    assert train_image_out.exists()
     assert train_label_out.read_text(encoding="utf-8").strip() == (
         "0 0.250000 0.200000 0.300000 0.200000"
     )
     assert val_positive_label_out.read_text(encoding="utf-8").strip() == (
-        "2 0.300000 0.250000 0.400000 0.300000"
+        "2 0.900000 0.950000 0.200000 0.100000"
     )
-    assert val_negative_label_out.read_text(encoding="utf-8") == ""
+    assert negative_label_out.read_text(encoding="utf-8") == ""
+    assert not collapsed_image_out.exists()
 
     dataset_yaml = (output_root / "dataset.yaml").read_text(encoding="utf-8")
     assert f"path: {output_root}" in dataset_yaml
@@ -308,3 +248,23 @@ def test_manifest_to_yolo_conversion(tmp_path: Path) -> None:
     assert "  - tomato_gray_mold" in dataset_yaml
     assert "  - tomato_crack" in dataset_yaml
     assert "  - tomato_calcium_deficiency" in dataset_yaml
+
+    stats = json.loads((output_root / "stats.json").read_text(encoding="utf-8"))
+    assert stats["selected_rows"] == 4
+    assert stats["converted_rows"] == 3
+    assert stats["skipped_rows"] == 1
+    assert stats["positive_samples"] == 2
+    assert stats["negative_samples"] == 1
+    assert stats["clipped_bbox_count"] == 1
+    assert stats["collapsed_bbox_count"] == 1
+    assert stats["skipped_by_reason"] == {"no_valid_bbox_after_clipping": 1}
+
+    with (output_root / "skipped.csv").open("r", encoding="utf-8-sig", newline="") as handle:
+        skipped_rows = list(csv.DictReader(handle))
+
+    assert [row["issue_type"] for row in skipped_rows] == [
+        "collapsed_bbox",
+        "row_skipped",
+    ]
+    assert skipped_rows[0]["disease_code"] == "a6"
+    assert skipped_rows[1]["detail"] == "no_valid_bbox_after_clipping"
