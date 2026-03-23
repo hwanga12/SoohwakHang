@@ -19,8 +19,8 @@ coordinate_rationale:
   source_bounds:
     left_bed_edge_x: -8.25
     right_bed_edge_x: 8.25
-    front_connector_y: -7.60
-    rear_connector_y: 7.60
+    front_connector_y: -6.80
+    rear_connector_y: 6.80
 
 robot_constraints:
   recommended_travel_speed_mps: 0.40
@@ -62,7 +62,7 @@ waypoints:
     description: South start for the west outer aisle.
     pose:
       x: -9.0
-      y: -7.6
+      y: -6.8
       z: 0.0
       yaw: 1.5708
   - waypoint_id: farm_01_lane_01_north
@@ -74,7 +74,7 @@ waypoints:
     description: North end for the west outer aisle.
     pose:
       x: -9.0
-      y: 7.6
+      y: 6.8
       z: 0.0
       yaw: 1.5708
 
@@ -87,7 +87,7 @@ waypoints:
     description: North start for the west inner aisle.
     pose:
       x: -7.0
-      y: 7.6
+      y: 6.8
       z: 0.0
       yaw: -1.5708
   - waypoint_id: farm_01_lane_02_south
@@ -99,7 +99,7 @@ waypoints:
     description: South end for the west inner aisle.
     pose:
       x: -7.0
-      y: -7.6
+      y: -6.8
       z: 0.0
       yaw: -1.5708
 
@@ -112,7 +112,7 @@ waypoints:
     description: South start for the west mid aisle.
     pose:
       x: -5.0
-      y: -7.6
+      y: -6.8
       z: 0.0
       yaw: 1.5708
   - waypoint_id: farm_01_lane_03_north
@@ -124,7 +124,7 @@ waypoints:
     description: North end for the west mid aisle.
     pose:
       x: -5.0
-      y: 7.6
+      y: 6.8
       z: 0.0
       yaw: 1.5708
 
@@ -137,7 +137,7 @@ waypoints:
     description: North start for the west-center aisle.
     pose:
       x: -3.0
-      y: 7.6
+      y: 6.8
       z: 0.0
       yaw: -1.5708
   - waypoint_id: farm_01_lane_04_south
@@ -149,7 +149,7 @@ waypoints:
     description: South end for the west-center aisle.
     pose:
       x: -3.0
-      y: -7.6
+      y: -6.8
       z: 0.0
       yaw: -1.5708
 
@@ -162,7 +162,7 @@ waypoints:
     description: South start for the center aisle.
     pose:
       x: 0.0
-      y: -7.6
+      y: -6.8
       z: 0.0
       yaw: 1.5708
   - waypoint_id: farm_01_lane_05_north
@@ -174,7 +174,7 @@ waypoints:
     description: North end for the center aisle.
     pose:
       x: 0.0
-      y: 7.6
+      y: 6.8
       z: 0.0
       yaw: 1.5708
 
@@ -187,7 +187,7 @@ waypoints:
     description: North start for the east-center aisle.
     pose:
       x: 3.0
-      y: 7.6
+      y: 6.8
       z: 0.0
       yaw: -1.5708
   - waypoint_id: farm_01_lane_06_south
@@ -199,7 +199,7 @@ waypoints:
     description: South end for the east-center aisle.
     pose:
       x: 3.0
-      y: -7.6
+      y: -6.8
       z: 0.0
       yaw: -1.5708
 
@@ -212,7 +212,7 @@ waypoints:
     description: South start for the east mid aisle.
     pose:
       x: 5.0
-      y: -7.6
+      y: -6.8
       z: 0.0
       yaw: 1.5708
   - waypoint_id: farm_01_lane_07_north
@@ -224,7 +224,7 @@ waypoints:
     description: North end for the east mid aisle.
     pose:
       x: 5.0
-      y: 7.6
+      y: 6.8
       z: 0.0
       yaw: 1.5708
 
@@ -237,7 +237,7 @@ waypoints:
     description: North start for the east inner aisle.
     pose:
       x: 7.0
-      y: 7.6
+      y: 6.8
       z: 0.0
       yaw: -1.5708
   - waypoint_id: farm_01_lane_08_south
@@ -249,7 +249,7 @@ waypoints:
     description: South end for the east inner aisle.
     pose:
       x: 7.0
-      y: -7.6
+      y: -6.8
       z: 0.0
       yaw: -1.5708
 
@@ -262,7 +262,7 @@ waypoints:
     description: South start for the east outer aisle.
     pose:
       x: 9.0
-      y: -7.6
+      y: -6.8
       z: 0.0
       yaw: 1.5708
   - waypoint_id: farm_01_lane_09_north
@@ -274,7 +274,7 @@ waypoints:
     description: North end for the east outer aisle.
     pose:
       x: 9.0
-      y: 7.6
+      y: 6.8
       z: 0.0
       yaw: 1.5708
 
