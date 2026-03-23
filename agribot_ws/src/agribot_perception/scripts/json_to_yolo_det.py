@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Convert a tomato detection manifest into a YOLO-style dataset tree.
 
-The converter consumes the CSV produced by ``build_tomato_manifest.py`` and
-only processes rows where ``use_for_detection`` is true.
+The converter consumes the CSV produced by ``build_tomato_manifest.py`` or the
+subset-aware builder and only processes rows where ``use_for_detection`` is
+true.
 
 Positive samples are converted from top-level raw JSON bbox annotations into
 YOLO ``.txt`` labels. Normal images (disease code ``00``) remain negative
@@ -14,10 +15,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import logging
 import os
 import shutil
 import struct
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -72,6 +75,19 @@ JPEG_SOF_MARKERS = {
     0xCF,
 }
 
+SKIPPED_FIELDNAMES = [
+    "line_number",
+    "split",
+    "image_path",
+    "json_path",
+    "disease_code",
+    "issue_type",
+    "detail",
+    "annotation_index",
+    "bbox_index",
+    "bbox_raw",
+]
+
 
 @dataclass(frozen=True, slots=True)
 class ManifestRecord:
@@ -80,11 +96,22 @@ class ManifestRecord:
     line_number: int
     image_path: Path
     image_rel_path: str
-    json_path: Path
+    json_path: Path | None
     json_rel_path: str
     disease_code: str
     is_negative_sample: bool
     top_level_bbox_count: int
+    source_split: str
+
+
+@dataclass(frozen=True, slots=True)
+class LabelBuildResult:
+    label_lines: list[str]
+    raw_bbox_count: int
+    clipped_bbox_count: int
+    collapsed_bbox_count: int
+    skipped_entries: list[dict[str, str]]
+    row_skip_reason: str | None
 
 
 def parse_args() -> argparse.Namespace:
@@ -176,26 +203,35 @@ def load_manifest_records(manifest_path: Path) -> tuple[list[ManifestRecord], in
             image_path_text = str(row.get("image_path", "")).strip()
             json_path_text = str(row.get("json_path", "")).strip()
             disease_code = normalize_code(row.get("disease_code"))
+            is_negative_sample = parse_bool_text(row.get("is_negative_sample", "")) or (
+                is_negative_sample_disease(disease_code)
+            )
+
             if not image_path_text:
                 raise SystemExit(f"Manifest row {line_number} has an empty image_path.")
-            if not json_path_text:
-                raise SystemExit(f"Manifest row {line_number} has an empty json_path.")
             if not disease_code:
                 raise SystemExit(f"Manifest row {line_number} has an empty disease_code.")
+            if not is_negative_sample and not json_path_text:
+                raise SystemExit(
+                    f"Manifest row {line_number} has an empty json_path for a positive sample."
+                )
 
             selected_records.append(
                 ManifestRecord(
                     line_number=line_number,
                     image_path=resolve_manifest_path(image_path_text, manifest_path),
                     image_rel_path=str(row.get("image_rel_path", "")).strip(),
-                    json_path=resolve_manifest_path(json_path_text, manifest_path),
+                    json_path=resolve_manifest_path(json_path_text, manifest_path)
+                    if json_path_text
+                    else None,
                     json_rel_path=str(row.get("json_rel_path", "")).strip(),
                     disease_code=disease_code,
-                    is_negative_sample=parse_bool_text(row.get("is_negative_sample", ""))
-                    or is_negative_sample_disease(disease_code),
+                    is_negative_sample=is_negative_sample,
                     top_level_bbox_count=parse_int_text(
-                        row.get("top_level_bbox_count", ""), default=0
+                        row.get("top_level_bbox_count", ""),
+                        default=0,
                     ),
+                    source_split=str(row.get("source_split", "")).strip(),
                 )
             )
 
@@ -211,12 +247,31 @@ def path_parts(path_text: str) -> list[str]:
     return [part for part in raw_path.parts if part not in {"", raw_path.anchor}]
 
 
+def relative_tail_from_path(path_text: str, fallback_name: str) -> Path:
+    if not path_text:
+        return Path(fallback_name)
+
+    parts = path_parts(path_text)
+    if not parts:
+        return Path(fallback_name)
+
+    normalized_first = normalize_split_name(parts[0])
+    if normalized_first is not None:
+        parts = parts[1:] or [fallback_name]
+
+    return Path(*parts) if parts else Path(fallback_name)
+
+
 def infer_split_and_tail(record: ManifestRecord, default_split: str) -> tuple[str, Path]:
+    explicit_split = normalize_split_name(record.source_split)
+    if explicit_split is not None:
+        return explicit_split, relative_tail_from_path(record.image_rel_path, record.image_path.name)
+
     source_candidates = [
         record.image_rel_path,
         record.json_rel_path,
         str(record.image_path),
-        str(record.json_path),
+        str(record.json_path) if record.json_path else "",
     ]
 
     for candidate in source_candidates:
@@ -462,7 +517,7 @@ def clip_bbox_to_image(
     height: float,
     image_width: int,
     image_height: int,
-) -> tuple[float, float, float, float]:
+) -> tuple[tuple[float, float, float, float] | None, bool]:
     if image_width <= 0 or image_height <= 0:
         raise ValueError("Image size must be positive.")
 
@@ -471,15 +526,16 @@ def clip_bbox_to_image(
     x2 = max(0.0, min(x + width, float(image_width)))
     y2 = max(0.0, min(y + height, float(image_height)))
 
+    clipped = any(
+        abs(before - after) > 1e-9
+        for before, after in ((x, x1), (y, y1), (x + width, x2), (y + height, y2))
+    )
     clipped_width = x2 - x1
     clipped_height = y2 - y1
     if clipped_width <= 0 or clipped_height <= 0:
-        raise ValueError(
-            f"BBox collapses outside the image: {(x, y, width, height)} for "
-            f"{image_width}x{image_height}"
-        )
+        return None, clipped
 
-    return x1, y1, clipped_width, clipped_height
+    return (x1, y1, clipped_width, clipped_height), clipped
 
 
 def to_yolo_line(
@@ -488,9 +544,7 @@ def to_yolo_line(
     image_width: int,
     image_height: int,
 ) -> str:
-    x, y, width, height = clip_bbox_to_image(
-        bbox[0], bbox[1], bbox[2], bbox[3], image_width, image_height
-    )
+    x, y, width, height = bbox
     center_x = (x + (width / 2.0)) / image_width
     center_y = (y + (height / 2.0)) / image_height
     norm_width = width / image_width
@@ -501,17 +555,44 @@ def to_yolo_line(
     )
 
 
+def make_skipped_entry(
+    record: ManifestRecord,
+    split_name: str,
+    *,
+    issue_type: str,
+    detail: str,
+    annotation_index: int | None = None,
+    bbox_index: int | None = None,
+    bbox_raw: str = "",
+) -> dict[str, str]:
+    return {
+        "line_number": str(record.line_number),
+        "split": split_name,
+        "image_path": str(record.image_path),
+        "json_path": str(record.json_path) if record.json_path else "",
+        "disease_code": record.disease_code,
+        "issue_type": issue_type,
+        "detail": detail,
+        "annotation_index": "" if annotation_index is None else str(annotation_index),
+        "bbox_index": "" if bbox_index is None else str(bbox_index),
+        "bbox_raw": bbox_raw,
+    }
+
+
 def build_positive_label_lines(
     record: ManifestRecord,
     image_width: int,
     image_height: int,
-) -> list[str]:
+    split_name: str,
+) -> LabelBuildResult:
     class_index = get_detection_class_index(record.disease_code)
     if class_index is None:
         raise ValueError(
             f"Manifest row {record.line_number} has non-target disease code "
             f"{record.disease_code!r} marked for detection."
         )
+    if record.json_path is None:
+        raise ValueError(f"Manifest row {record.line_number} is missing json_path.")
 
     data = load_json(record.json_path)
     annotations = extract_annotations(data)
@@ -519,7 +600,12 @@ def build_positive_label_lines(
         raise ValueError(f"No annotations found in {record.json_path}.")
 
     label_lines: list[str] = []
-    for annotation in annotations:
+    raw_bbox_count = 0
+    clipped_bbox_count = 0
+    collapsed_bbox_count = 0
+    skipped_entries: list[dict[str, str]] = []
+
+    for annotation_index, annotation in enumerate(annotations):
         annotation_disease = normalize_code(annotation.get("disease"))
         if annotation_disease and annotation_disease != record.disease_code:
             raise ValueError(
@@ -527,22 +613,68 @@ def build_positive_label_lines(
                 f"{record.disease_code!r}, annotation has {annotation_disease!r}."
             )
 
-        for bbox_item in iter_bbox_items(annotation.get("bbox")):
+        for bbox_index, bbox_item in enumerate(iter_bbox_items(annotation.get("bbox"))):
+            raw_bbox_count += 1
             parsed_bbox = parse_bbox_dict(bbox_item)
+            clipped_bbox, was_clipped = clip_bbox_to_image(
+                parsed_bbox[0],
+                parsed_bbox[1],
+                parsed_bbox[2],
+                parsed_bbox[3],
+                image_width,
+                image_height,
+            )
+            if clipped_bbox is None:
+                collapsed_bbox_count += 1
+                bbox_raw = json.dumps(bbox_item, ensure_ascii=False, sort_keys=True)
+                logging.warning(
+                    "Skipped collapsed bbox for row %s (%s).",
+                    record.line_number,
+                    record.image_path.name,
+                )
+                skipped_entries.append(
+                    make_skipped_entry(
+                        record,
+                        split_name,
+                        issue_type="collapsed_bbox",
+                        detail="bbox_collapsed_after_clipping",
+                        annotation_index=annotation_index,
+                        bbox_index=bbox_index,
+                        bbox_raw=bbox_raw,
+                    )
+                )
+                continue
+
+            if was_clipped:
+                clipped_bbox_count += 1
+                logging.warning(
+                    "Clipped bbox for row %s (%s) to image bounds.",
+                    record.line_number,
+                    record.image_path.name,
+                )
+
             label_lines.append(
-                to_yolo_line(class_index, parsed_bbox, image_width, image_height)
+                to_yolo_line(class_index, clipped_bbox, image_width, image_height)
             )
 
-    if not label_lines:
+    if raw_bbox_count == 0:
         raise ValueError(f"No top-level bbox entries found in {record.json_path}.")
 
-    if record.top_level_bbox_count > 0 and len(label_lines) != record.top_level_bbox_count:
+    if record.top_level_bbox_count > 0 and raw_bbox_count != record.top_level_bbox_count:
         raise ValueError(
             f"Manifest row {record.line_number} expected {record.top_level_bbox_count} "
-            f"bbox entries but converted {len(label_lines)}."
+            f"bbox entries but parsed {raw_bbox_count}."
         )
 
-    return label_lines
+    row_skip_reason = None if label_lines else "no_valid_bbox_after_clipping"
+    return LabelBuildResult(
+        label_lines=label_lines,
+        raw_bbox_count=raw_bbox_count,
+        clipped_bbox_count=clipped_bbox_count,
+        collapsed_bbox_count=collapsed_bbox_count,
+        skipped_entries=skipped_entries,
+        row_skip_reason=row_skip_reason,
+    )
 
 
 def write_label_file(label_path: Path, label_lines: list[str]) -> None:
@@ -572,24 +704,54 @@ def write_dataset_yaml(output_root: Path, split_counts: dict[str, int]) -> Path:
     return dataset_yaml_path
 
 
+def write_skipped_csv(skipped_entries: list[dict[str, str]], output_path: Path) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=SKIPPED_FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(skipped_entries)
+    return output_path
+
+
+def write_stats_json(output_path: Path, payload: dict[str, Any]) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return output_path
+
+
 def print_summary(
     output_root: Path,
     dataset_yaml_path: Path,
+    stats_path: Path,
+    skipped_csv_path: Path,
     *,
     total_rows: int,
     selected_rows: int,
+    converted_rows: int,
+    skipped_rows: int,
     positive_samples: int,
     negative_samples: int,
     boxes_written: int,
+    clipped_bbox_count: int,
+    collapsed_bbox_count: int,
     split_counts: dict[str, int],
 ) -> None:
     print(f"Output root: {output_root}")
     print(f"Dataset YAML: {dataset_yaml_path}")
+    print(f"Stats JSON: {stats_path}")
+    print(f"Skipped CSV: {skipped_csv_path}")
     print(f"Manifest rows read: {total_rows}")
-    print(f"Rows converted: {selected_rows}")
+    print(f"Rows selected: {selected_rows}")
+    print(f"Rows converted: {converted_rows}")
+    print(f"Rows skipped: {skipped_rows}")
     print(f"Positive samples: {positive_samples}")
     print(f"Negative samples: {negative_samples}")
     print(f"BBox labels written: {boxes_written}")
+    print(f"Clipped bboxes: {clipped_bbox_count}")
+    print(f"Collapsed bboxes skipped: {collapsed_bbox_count}")
 
     for split_name in ("train", "val", "test"):
         count = split_counts.get(split_name, 0)
@@ -615,9 +777,16 @@ def convert_manifest(
 
     output_root.mkdir(parents=True, exist_ok=True)
     split_counts = {"train": 0, "val": 0, "test": 0}
+    selected_by_disease = Counter(record.disease_code for record in records)
+    converted_by_disease: Counter[str] = Counter()
+    skipped_by_reason: Counter[str] = Counter()
     positive_samples = 0
     negative_samples = 0
     boxes_written = 0
+    clipped_bbox_count = 0
+    collapsed_bbox_count = 0
+    skipped_rows = 0
+    skipped_entries: list[dict[str, str]] = []
     destination_sources: dict[Path, Path] = {}
 
     for record in records:
@@ -626,61 +795,128 @@ def convert_manifest(
                 f"Manifest row {record.line_number} points to a missing image: "
                 f"{record.image_path}"
             )
-
-        split_name, relative_tail = infer_split_and_tail(record, default_split)
         if record.image_path.suffix.lower() not in IMAGE_SUFFIXES:
             raise SystemExit(
                 f"Manifest row {record.line_number} uses an unsupported image suffix: "
                 f"{record.image_path}"
             )
+        if not record.is_negative_sample:
+            if record.json_path is None:
+                raise SystemExit(
+                    f"Manifest row {record.line_number} is missing json_path for a positive sample."
+                )
+            if not record.json_path.exists():
+                raise SystemExit(
+                    f"Manifest row {record.line_number} points to a missing JSON: "
+                    f"{record.json_path}"
+                )
 
+        split_name, relative_tail = infer_split_and_tail(record, default_split)
         destination_image_path = output_root / "images" / split_name / relative_tail
         destination_label_path = (
             output_root / "labels" / split_name / relative_tail.with_suffix(".txt")
         )
-
-        previous_source = destination_sources.get(destination_image_path)
-        if previous_source is not None and previous_source != record.image_path:
-            raise SystemExit(
-                f"Multiple source images map to the same output path: "
-                f"{destination_image_path}"
-            )
-        destination_sources[destination_image_path] = record.image_path
-
-        materialize_image(record.image_path, destination_image_path, image_mode)
         image_width, image_height = read_image_size(record.image_path)
 
+        label_lines: list[str]
         if record.is_negative_sample:
-            label_lines: list[str] = []
+            label_lines = []
+        else:
+            try:
+                label_result = build_positive_label_lines(
+                    record,
+                    image_width,
+                    image_height,
+                    split_name,
+                )
+            except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+                raise SystemExit(str(exc)) from exc
+
+            boxes_written += len(label_result.label_lines)
+            clipped_bbox_count += label_result.clipped_bbox_count
+            collapsed_bbox_count += label_result.collapsed_bbox_count
+            skipped_entries.extend(label_result.skipped_entries)
+            if label_result.row_skip_reason is not None:
+                skipped_rows += 1
+                skipped_by_reason[label_result.row_skip_reason] += 1
+                skipped_entries.append(
+                    make_skipped_entry(
+                        record,
+                        split_name,
+                        issue_type="row_skipped",
+                        detail=label_result.row_skip_reason,
+                    )
+                )
+                logging.warning(
+                    "Skipped row %s (%s) because no valid bbox remained after clipping.",
+                    record.line_number,
+                    record.image_path.name,
+                )
+                continue
+
+            label_lines = label_result.label_lines
+
+        existing_source = destination_sources.get(destination_image_path)
+        if existing_source is not None and existing_source != record.image_path:
+            raise SystemExit(
+                f"Destination collision at {destination_image_path}: "
+                f"{existing_source} vs {record.image_path}"
+            )
+
+        materialize_image(record.image_path, destination_image_path, image_mode)
+        write_label_file(destination_label_path, label_lines)
+        destination_sources[destination_image_path] = record.image_path
+
+        split_counts[split_name] = split_counts.get(split_name, 0) + 1
+        converted_by_disease[record.disease_code] += 1
+        if record.is_negative_sample:
             negative_samples += 1
         else:
-            if not record.json_path.exists():
-                raise SystemExit(
-                    f"Manifest row {record.line_number} points to a missing JSON label: "
-                    f"{record.json_path}"
-                )
-            label_lines = build_positive_label_lines(record, image_width, image_height)
             positive_samples += 1
-            boxes_written += len(label_lines)
-
-        write_label_file(destination_label_path, label_lines)
-        split_counts[split_name] = split_counts.get(split_name, 0) + 1
 
     dataset_yaml_path = write_dataset_yaml(output_root, split_counts)
+    skipped_csv_path = write_skipped_csv(skipped_entries, output_root / "skipped.csv")
+    stats_payload = {
+        "manifest_path": str(manifest_path),
+        "output_root": str(output_root),
+        "total_rows": total_rows,
+        "selected_rows": len(records),
+        "converted_rows": positive_samples + negative_samples,
+        "skipped_rows": skipped_rows,
+        "positive_samples": positive_samples,
+        "negative_samples": negative_samples,
+        "boxes_written": boxes_written,
+        "clipped_bbox_count": clipped_bbox_count,
+        "collapsed_bbox_count": collapsed_bbox_count,
+        "split_counts": split_counts,
+        "selected_by_disease_code": dict(sorted(selected_by_disease.items())),
+        "converted_by_disease_code": dict(sorted(converted_by_disease.items())),
+        "skipped_by_reason": dict(sorted(skipped_by_reason.items())),
+        "class_names": [target.class_name for target in DETECTION_TARGETS],
+    }
+    stats_path = write_stats_json(output_root / "stats.json", stats_payload)
+
     print_summary(
         output_root,
         dataset_yaml_path,
+        stats_path,
+        skipped_csv_path,
         total_rows=total_rows,
         selected_rows=len(records),
+        converted_rows=positive_samples + negative_samples,
+        skipped_rows=skipped_rows,
         positive_samples=positive_samples,
         negative_samples=negative_samples,
         boxes_written=boxes_written,
+        clipped_bbox_count=clipped_bbox_count,
+        collapsed_bbox_count=collapsed_bbox_count,
         split_counts=split_counts,
     )
     return 0
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = parse_args()
     manifest_path = Path(args.manifest).expanduser().resolve()
     output_root = Path(args.output_root).expanduser().resolve()
