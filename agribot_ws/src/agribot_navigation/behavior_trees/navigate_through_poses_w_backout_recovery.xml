@@ -1,10 +1,11 @@
 <!--
   Nav2 navigate-through-poses tree tuned for tight-space recovery.
-  Backup recovery is attempted before spin / wait to escape narrow aisles.
+  Turn-around and drive-out are attempted before backing out so the robot
+  stays in a forward-driving posture unless the aisle is truly blocked.
 -->
 <root BTCPP_format="4" main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-    <RecoveryNode number_of_retries="8" name="NavigateRecovery">
+    <RecoveryNode number_of_retries="3" name="NavigateRecovery">
       <PipelineSequence name="NavigateWithReplanning">
         <ControllerSelector
           selected_controller="{selected_controller}"
@@ -53,6 +54,18 @@
         <ReactiveFallback name="RecoveryFallback">
           <GoalUpdated/>
           <RoundRobin name="RecoveryActions">
+            <Sequence name="TurnAroundAndDriveOut">
+              <ClearEntireCostmap
+                name="ClearLocalCostmap-TurnAround"
+                service_name="local_costmap/clear_entirely_local_costmap"/>
+              <Spin spin_dist="1.20" error_code_id="{spin_error_code}"/>
+              <DriveOnHeading
+                dist_to_travel="0.45"
+                speed="0.14"
+                time_allowance="8.0"
+                error_code_id="{drive_on_heading_error_code}"/>
+            </Sequence>
+            <Spin spin_dist="1.20" error_code_id="{spin_error_code}"/>
             <Sequence name="ClearAndBackOutShort">
               <ClearEntireCostmap
                 name="ClearLocalCostmap-ShortBackout"
@@ -68,16 +81,15 @@
             </Sequence>
             <Sequence name="BackOutLong">
               <BackUp
-                backup_dist="0.80"
+                backup_dist="0.90"
                 backup_speed="0.08"
-                time_allowance="10.0"
+                time_allowance="12.0"
                 error_code_id="{backup_error_code}"/>
               <ClearEntireCostmap
                 name="ClearLocalCostmap-LongBackout"
                 service_name="local_costmap/clear_entirely_local_costmap"/>
             </Sequence>
-            <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
-            <Wait wait_duration="2.0"/>
+            <Wait wait_duration="1.0"/>
           </RoundRobin>
         </ReactiveFallback>
       </Sequence>

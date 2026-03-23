@@ -5,19 +5,101 @@ from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     IncludeLaunchDescription,
+    LogInfo,
+    OpaqueFunction,
+    SetLaunchConfiguration,
     SetEnvironmentVariable,
     TimerAction,
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
+
+
+_TRUE_VALUES = ('true', '1', 'yes', 'on')
+
+
+def _bool_expr(name: str) -> PythonExpression:
+    return PythonExpression([
+        "'",
+        LaunchConfiguration(name),
+        "'.lower() in ['true', '1', 'yes', 'on']",
+    ])
+
+
+def _all_true_expr(*names: str) -> PythonExpression:
+    expression = []
+    for index, name in enumerate(names):
+        if index:
+            expression.append(' and ')
+        expression.extend([
+            "'",
+            LaunchConfiguration(name),
+            "'.lower() in ['true', '1', 'yes', 'on']",
+        ])
+    return PythonExpression(expression)
+
+
+def _bool_value(context, name: str) -> bool:
+    return LaunchConfiguration(name).perform(context).strip().lower() in _TRUE_VALUES
+
+
+def _configure_mapping_strategy(context, *_args, **_kwargs):
+    strategy = LaunchConfiguration('mapping_strategy').perform(context).strip().lower()
+    if strategy not in {'sweep_hybrid', 'patrol_only', 'frontier_only'}:
+        raise RuntimeError(
+            'mapping_strategy must be one of sweep_hybrid, patrol_only, frontier_only.'
+        )
+
+    actions = [LogInfo(msg=f'autonomous_mapping strategy: {strategy}')]
+    if strategy == 'sweep_hybrid':
+        actions.extend(
+            [
+                SetLaunchConfiguration('use_patrol', 'true'),
+                SetLaunchConfiguration('patrol_autostart', 'true'),
+                SetLaunchConfiguration('patrol_completion_action', 'start_frontier_explorer'),
+                SetLaunchConfiguration('use_frontier_explorer', 'true'),
+                SetLaunchConfiguration('frontier_autostart', 'false'),
+                SetLaunchConfiguration('use_boundary_map', 'true'),
+            ]
+        )
+    elif strategy == 'patrol_only':
+        actions.extend(
+            [
+                SetLaunchConfiguration('use_patrol', 'true'),
+                SetLaunchConfiguration('patrol_autostart', 'true'),
+                SetLaunchConfiguration('patrol_completion_action', 'none'),
+                SetLaunchConfiguration('use_frontier_explorer', 'false'),
+                SetLaunchConfiguration('frontier_autostart', 'false'),
+                SetLaunchConfiguration('use_boundary_map', 'false'),
+            ]
+        )
+    else:
+        actions.extend(
+            [
+                SetLaunchConfiguration('use_patrol', 'false'),
+                SetLaunchConfiguration('patrol_autostart', 'false'),
+                SetLaunchConfiguration('patrol_completion_action', 'none'),
+                SetLaunchConfiguration('use_frontier_explorer', 'true'),
+                SetLaunchConfiguration('frontier_autostart', 'true'),
+                SetLaunchConfiguration('use_boundary_map', 'true'),
+            ]
+        )
+    return actions
 
 
 def generate_launch_description():
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_agribot_navigation = get_package_share_directory('agribot_navigation')
     pkg_slam_toolbox = get_package_share_directory('slam_toolbox')
+    gpu_env_actions = []
+    if os.path.exists('/usr/bin/nvidia-smi'):
+        gpu_env_actions = [
+            SetEnvironmentVariable('DRI_PRIME', '1'),
+            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
+            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
+        ]
 
     default_world = os.path.join(
         pkg_agribot_description,
@@ -43,6 +125,16 @@ def generate_launch_description():
         pkg_agribot_navigation,
         'config',
         'frontier_explorer.yaml',
+    )
+    default_ekf_params = os.path.join(
+        pkg_agribot_navigation,
+        'config',
+        'ekf_mapping.yaml',
+    )
+    default_collision_monitor_params = os.path.join(
+        pkg_agribot_navigation,
+        'config',
+        'collision_monitor_mapping.yaml',
     )
     default_patrol_waypoints = os.path.join(
         pkg_agribot_navigation,
@@ -82,8 +174,8 @@ def generate_launch_description():
     )
     use_boundary_map_arg = DeclareLaunchArgument(
         'use_boundary_map',
-        default_value='false',
-        description='Enable the optional exploration boundary map.',
+        default_value='true',
+        description='Enable the optional exploration boundary map when frontier mode is active.',
     )
     slam_params_arg = DeclareLaunchArgument(
         'slam_params_file',
@@ -99,6 +191,16 @@ def generate_launch_description():
         'frontier_params_file',
         default_value=default_frontier_params,
         description='Frontier explorer parameter file for generic autonomous mapping.',
+    )
+    ekf_params_arg = DeclareLaunchArgument(
+        'ekf_params_file',
+        default_value=default_ekf_params,
+        description='robot_localization EKF parameter file for mapping sessions.',
+    )
+    collision_monitor_params_arg = DeclareLaunchArgument(
+        'collision_monitor_params_file',
+        default_value=default_collision_monitor_params,
+        description='Collision monitor parameter file for mapping sessions.',
     )
     patrol_waypoints_arg = DeclareLaunchArgument(
         'patrol_waypoints_file',
@@ -125,6 +227,11 @@ def generate_launch_description():
         default_value='false',
         description='Respawn Nav2 nodes if they crash.',
     )
+    mapping_strategy_arg = DeclareLaunchArgument(
+        'mapping_strategy',
+        default_value='sweep_hybrid',
+        description='Mapping strategy: sweep_hybrid, patrol_only, or frontier_only.',
+    )
     log_level_arg = DeclareLaunchArgument(
         'log_level',
         default_value='info',
@@ -132,7 +239,7 @@ def generate_launch_description():
     )
     use_frontier_explorer_arg = DeclareLaunchArgument(
         'use_frontier_explorer',
-        default_value='true',
+        default_value='false',
         description='Launch the generic frontier explorer for map completion.',
     )
     frontier_autostart_arg = DeclareLaunchArgument(
@@ -142,37 +249,42 @@ def generate_launch_description():
     )
     frontier_start_delay_arg = DeclareLaunchArgument(
         'frontier_start_delay_sec',
-        default_value='5.0',
-        description='Delay before the frontier explorer starts after Nav2 activation.',
+        default_value='12.0',
+        description='Delay before the frontier explorer starts, after SLAM and Nav2 are active.',
     )
     use_patrol_arg = DeclareLaunchArgument(
         'use_patrol',
-        default_value='false',
+        default_value='true',
         description='Launch the greenhouse-specific waypoint patrol mapper.',
     )
     patrol_autostart_arg = DeclareLaunchArgument(
         'patrol_autostart',
-        default_value='false',
+        default_value='true',
         description='Start the mapping patrol automatically.',
+    )
+    patrol_completion_action_arg = DeclareLaunchArgument(
+        'patrol_completion_action',
+        default_value='none',
+        description='Optional action to trigger after patrol completion.',
     )
     patrol_start_delay_arg = DeclareLaunchArgument(
         'patrol_start_delay_sec',
-        default_value='1.0',
-        description='Delay before the autonomous mapping patrol starts.',
+        default_value='18.0',
+        description='Delay before the autonomous mapping patrol starts, after Nav2 activation.',
     )
     nav_start_delay_arg = DeclareLaunchArgument(
         'nav_start_delay_sec',
-        default_value='4.0',
-        description='Delay before Nav2 lifecycle activation begins.',
+        default_value='10.0',
+        description='Delay before Nav2 lifecycle activation begins after bootstrap motion.',
     )
     inspect_dwell_arg = DeclareLaunchArgument(
         'inspect_dwell_sec',
-        default_value='1.5',
+        default_value='0.5',
         description='Pause duration at inspection waypoints to densify SLAM scans.',
     )
     stack_start_delay_arg = DeclareLaunchArgument(
         'stack_start_delay_sec',
-        default_value='2.0',
+        default_value='3.0',
         description='Delay before starting SLAM, boundary map, and Nav2 nodes.',
     )
     boundary_lifecycle_delay_arg = DeclareLaunchArgument(
@@ -184,6 +296,12 @@ def generate_launch_description():
         'use_slam_lifecycle_manager',
         default_value='false',
         description='Enable slam_toolbox lifecycle manager integration.',
+    )
+    configure_mapping_strategy = OpaqueFunction(function=_configure_mapping_strategy)
+    frontier_enabled_condition = IfCondition(_bool_expr('use_frontier_explorer'))
+    patrol_enabled_condition = IfCondition(_bool_expr('use_patrol'))
+    frontier_boundary_condition = IfCondition(
+        _all_true_expr('use_frontier_explorer', 'use_boundary_map')
     )
 
     simulation = IncludeLaunchDescription(
@@ -197,7 +315,25 @@ def generate_launch_description():
         launch_arguments={
             'world': LaunchConfiguration('world'),
             'publish_map_to_odom_tf': 'false',
+            'publish_odom_tf': 'true',
+            'cmd_vel_input_topic': '/cmd_vel_checked',
+            'use_camera_bridges': 'false',
         }.items(),
+    )
+
+    ekf_filter = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='mapping_ekf_filter',
+        output='screen',
+        parameters=[
+            LaunchConfiguration('ekf_params_file'),
+            {'use_sim_time': LaunchConfiguration('use_sim_time')},
+        ],
+    )
+    delayed_ekf_filter = TimerAction(
+        period=0.5,
+        actions=[ekf_filter],
     )
 
     slam_toolbox = IncludeLaunchDescription(
@@ -205,7 +341,7 @@ def generate_launch_description():
             os.path.join(
                 pkg_slam_toolbox,
                 'launch',
-                'online_async_launch.py',
+                'online_sync_launch.py',
             )
         ),
         launch_arguments={
@@ -218,6 +354,37 @@ def generate_launch_description():
     delayed_slam_toolbox = TimerAction(
         period=LaunchConfiguration('stack_start_delay_sec'),
         actions=[slam_toolbox],
+    )
+
+    collision_monitor = Node(
+        package='nav2_collision_monitor',
+        executable='collision_monitor',
+        name='mapping_collision_monitor',
+        output='screen',
+        parameters=[
+            LaunchConfiguration('collision_monitor_params_file'),
+            {'use_sim_time': LaunchConfiguration('use_sim_time')},
+        ],
+        arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')],
+    )
+    delayed_collision_monitor = TimerAction(
+        period=LaunchConfiguration('stack_start_delay_sec'),
+        actions=[collision_monitor],
+    )
+    collision_monitor_lifecycle_manager = Node(
+        package='nav2_lifecycle_manager',
+        executable='lifecycle_manager',
+        name='lifecycle_manager_mapping_collision_monitor',
+        output='screen',
+        parameters=[{
+            'autostart': LaunchConfiguration('autostart'),
+            'node_names': ['mapping_collision_monitor'],
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+        }],
+    )
+    delayed_collision_monitor_lifecycle_manager = TimerAction(
+        period=LaunchConfiguration('stack_start_delay_sec'),
+        actions=[collision_monitor_lifecycle_manager],
     )
 
     exploration_boundary_map_server = Node(
@@ -234,7 +401,7 @@ def generate_launch_description():
             ('/map', '/exploration_boundary_map'),
             ('/map_metadata', '/exploration_boundary_map_metadata'),
         ],
-        condition=IfCondition(LaunchConfiguration('use_boundary_map')),
+        condition=frontier_boundary_condition,
     )
     delayed_exploration_boundary_map_server = TimerAction(
         period=LaunchConfiguration('stack_start_delay_sec'),
@@ -251,7 +418,7 @@ def generate_launch_description():
             'node_names': ['exploration_boundary_map_server'],
             'use_sim_time': LaunchConfiguration('use_sim_time'),
         }],
-        condition=IfCondition(LaunchConfiguration('use_boundary_map')),
+        condition=frontier_boundary_condition,
     )
     delayed_exploration_boundary_lifecycle_manager = TimerAction(
         period=LaunchConfiguration('boundary_lifecycle_delay_sec'),
@@ -381,7 +548,7 @@ def generate_launch_description():
                 'boundary_map_topic': '/exploration_boundary_map',
             },
         ],
-        condition=IfCondition(LaunchConfiguration('use_frontier_explorer')),
+        condition=frontier_enabled_condition,
     )
 
     delayed_frontier_explorer = TimerAction(
@@ -402,12 +569,17 @@ def generate_launch_description():
             'nav_server_wait_sec': 60.0,
             'goal_reject_retry_sec': 1.0,
             'goal_reject_retry_limit': 30,
+            'max_lane_segment_length_m': 10.0,
+            'already_reached_xy_tolerance_m': 0.70,
             'status_topic': 'mapping_patrol/status',
             'start_service': 'mapping_patrol/start',
             'stop_service': 'mapping_patrol/stop',
             'resume_service': 'mapping_patrol/resume',
+            'prefer_lane_heading_on_inspect_waypoints': True,
+            'completion_action': LaunchConfiguration('patrol_completion_action'),
+            'completion_start_service': 'mapping_explorer/start',
         }],
-        condition=IfCondition(LaunchConfiguration('use_patrol')),
+        condition=patrol_enabled_condition,
     )
 
     delayed_mapping_patrol = TimerAction(
@@ -426,6 +598,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        *gpu_env_actions,
         use_sim_time_arg,
         world_arg,
         boundary_map_arg,
@@ -433,27 +606,35 @@ def generate_launch_description():
         slam_params_arg,
         nav2_params_arg,
         frontier_params_arg,
+        ekf_params_arg,
+        collision_monitor_params_arg,
         patrol_waypoints_arg,
         use_rviz_arg,
         rviz_config_arg,
         autostart_arg,
         use_respawn_arg,
+        mapping_strategy_arg,
         log_level_arg,
         use_frontier_explorer_arg,
         frontier_autostart_arg,
         frontier_start_delay_arg,
         use_patrol_arg,
         patrol_autostart_arg,
+        patrol_completion_action_arg,
         patrol_start_delay_arg,
         nav_start_delay_arg,
         inspect_dwell_arg,
         stack_start_delay_arg,
         boundary_lifecycle_delay_arg,
         slam_lifecycle_manager_arg,
+        configure_mapping_strategy,
         simulation,
+        delayed_ekf_filter,
         delayed_slam_toolbox,
         delayed_exploration_boundary_map_server,
         delayed_exploration_boundary_lifecycle_manager,
+        delayed_collision_monitor,
+        delayed_collision_monitor_lifecycle_manager,
         delayed_navigation_nodes,
         delayed_navigation_lifecycle_manager,
         delayed_frontier_explorer,

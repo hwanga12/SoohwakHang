@@ -64,6 +64,29 @@ def generate_launch_description():
             'Disable this when SLAM or localization provides map -> odom.'
         ),
     )
+    publish_odom_tf_arg = DeclareLaunchArgument(
+        'publish_odom_tf',
+        default_value='true',
+        description=(
+            'Publish odom -> base_link from bridged /odom. '
+            'Disable this when an EKF or another estimator owns odom -> base_link.'
+        ),
+    )
+    cmd_vel_input_topic_arg = DeclareLaunchArgument(
+        'cmd_vel_input_topic',
+        default_value='/cmd_vel',
+        description='Input command velocity topic consumed by the watchdog.',
+    )
+    cmd_vel_output_topic_arg = DeclareLaunchArgument(
+        'cmd_vel_output_topic',
+        default_value='/cmd_vel_safe',
+        description='Output command velocity topic published by the watchdog.',
+    )
+    use_camera_bridges_arg = DeclareLaunchArgument(
+        'use_camera_bridges',
+        default_value='true',
+        description='Launch RGB-D camera bridges. Disable during LiDAR-only mapping to reduce load.',
+    )
 
     # Gazebo Harmonic simulation
     gz_sim = IncludeLaunchDescription(
@@ -108,6 +131,11 @@ def generate_launch_description():
         package='agribot_description',
         executable='cmd_vel_watchdog',
         name='cmd_vel_watchdog',
+        parameters=[{
+            'use_sim_time': True,
+            'input_topic': LaunchConfiguration('cmd_vel_input_topic'),
+            'output_topic': LaunchConfiguration('cmd_vel_output_topic'),
+        }],
         output='screen',
     )
 
@@ -118,6 +146,7 @@ def generate_launch_description():
         arguments=[
             '/agribot/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
         ],
+        condition=IfCondition(LaunchConfiguration('use_camera_bridges')),
         output='screen',
     )
 
@@ -138,6 +167,7 @@ def generate_launch_description():
         executable='image_bridge',
         name='ros_gz_camera_image_bridge',
         arguments=['/agribot/camera/image'],
+        condition=IfCondition(LaunchConfiguration('use_camera_bridges')),
         output='screen',
     )
 
@@ -146,6 +176,7 @@ def generate_launch_description():
         executable='image_bridge',
         name='ros_gz_camera_depth_bridge',
         arguments=['/agribot/camera/depth_image'],
+        condition=IfCondition(LaunchConfiguration('use_camera_bridges')),
         output='screen',
     )
 
@@ -155,6 +186,11 @@ def generate_launch_description():
         package='agribot_description',
         executable='odom_tf_broadcaster',
         name='odom_tf_broadcaster',
+        parameters=[{
+            'use_sim_time': True,
+            'reset_on_time_jump_sec': 1.0,
+        }],
+        condition=IfCondition(LaunchConfiguration('publish_odom_tf')),
         output='screen',
     )
 
@@ -173,57 +209,7 @@ def generate_launch_description():
             '--child-frame-id', 'odom',
         ],
         condition=IfCondition(LaunchConfiguration('publish_map_to_odom_tf')),
-        output='screen',
-    )
-
-    base_to_camera_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='base_link_to_camera_link_tf',
-        arguments=[
-            '--x', '0.2',
-            '--y', '0',
-            '--z', '0.3',
-            '--roll', '0',
-            '--pitch', '0',
-            '--yaw', '0',
-            '--frame-id', 'base_link',
-            '--child-frame-id', 'camera_link',
-        ],
-        output='screen',
-    )
-
-    base_to_lidar_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='base_link_to_lidar_link_tf',
-        arguments=[
-            '--x', '0',
-            '--y', '0',
-            '--z', '0.35',
-            '--roll', '0',
-            '--pitch', '0',
-            '--yaw', '0',
-            '--frame-id', 'base_link',
-            '--child-frame-id', 'lidar_link',
-        ],
-        output='screen',
-    )
-
-    base_to_imu_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='base_link_to_imu_link_tf',
-        arguments=[
-            '--x', '0',
-            '--y', '0',
-            '--z', '0.25',
-            '--roll', '0',
-            '--pitch', '0',
-            '--yaw', '0',
-            '--frame-id', 'base_link',
-            '--child-frame-id', 'imu_link',
-        ],
+        parameters=[{'use_sim_time': True}],
         output='screen',
     )
 
@@ -249,6 +235,10 @@ def generate_launch_description():
         gz_partition_env,
         world_arg,
         publish_map_to_odom_tf_arg,
+        publish_odom_tf_arg,
+        cmd_vel_input_topic_arg,
+        cmd_vel_output_topic_arg,
+        use_camera_bridges_arg,
         gz_sim,
         robot_state_publisher,
         cmd_vel_watchdog,
@@ -259,7 +249,4 @@ def generate_launch_description():
         camera_depth_bridge,
         odom_tf_broadcaster,
         map_to_odom_tf,
-        base_to_camera_tf,
-        base_to_lidar_tf,
-        base_to_imu_tf,
     ])

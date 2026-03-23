@@ -2,7 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -31,6 +31,11 @@ def generate_launch_description():
         'config',
         'slam_mapping.yaml',
     )
+    default_ekf_params = os.path.join(
+        pkg_agribot_navigation,
+        'config',
+        'ekf_mapping.yaml',
+    )
     default_rviz_config = os.path.join(
         pkg_agribot_navigation,
         'rviz',
@@ -52,6 +57,11 @@ def generate_launch_description():
         default_value=default_slam_params,
         description='SLAM Toolbox parameter file for greenhouse mapping.',
     )
+    ekf_params_arg = DeclareLaunchArgument(
+        'ekf_params_file',
+        default_value=default_ekf_params,
+        description='robot_localization EKF parameter file for manual mapping.',
+    )
     use_rviz_arg = DeclareLaunchArgument(
         'use_rviz',
         default_value='true',
@@ -66,6 +76,11 @@ def generate_launch_description():
         'autostart',
         default_value='true',
         description='Automatically configure and activate slam_toolbox.',
+    )
+    stack_start_delay_arg = DeclareLaunchArgument(
+        'stack_start_delay_sec',
+        default_value='2.5',
+        description='Delay before starting EKF and SLAM so sim time and /odom settle first.',
     )
     lifecycle_manager_arg = DeclareLaunchArgument(
         'use_lifecycle_manager',
@@ -84,7 +99,24 @@ def generate_launch_description():
         launch_arguments={
             'world': LaunchConfiguration('world'),
             'publish_map_to_odom_tf': 'false',
+            'publish_odom_tf': 'true',
+            'use_camera_bridges': 'false',
         }.items(),
+    )
+
+    ekf_filter = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='mapping_ekf_filter',
+        output='screen',
+        parameters=[
+            LaunchConfiguration('ekf_params_file'),
+            {'use_sim_time': LaunchConfiguration('use_sim_time')},
+        ],
+    )
+    delayed_ekf_filter = TimerAction(
+        period=0.5,
+        actions=[ekf_filter],
     )
 
     slam_toolbox = IncludeLaunchDescription(
@@ -92,7 +124,7 @@ def generate_launch_description():
             os.path.join(
                 pkg_slam_toolbox,
                 'launch',
-                'online_async_launch.py',
+                'online_sync_launch.py',
             )
         ),
         launch_arguments={
@@ -101,6 +133,10 @@ def generate_launch_description():
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'slam_params_file': LaunchConfiguration('slam_params_file'),
         }.items(),
+    )
+    delayed_slam_toolbox = TimerAction(
+        period=LaunchConfiguration('stack_start_delay_sec'),
+        actions=[slam_toolbox],
     )
 
     rviz = Node(
@@ -118,11 +154,14 @@ def generate_launch_description():
         use_sim_time_arg,
         world_arg,
         slam_params_arg,
+        ekf_params_arg,
         use_rviz_arg,
         rviz_config_arg,
         autostart_arg,
+        stack_start_delay_arg,
         lifecycle_manager_arg,
         simulation,
-        slam_toolbox,
+        delayed_ekf_filter,
+        delayed_slam_toolbox,
         rviz,
     ])

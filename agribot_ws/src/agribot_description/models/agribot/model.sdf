@@ -205,7 +205,7 @@
       </visual>
       <sensor name="rgbd_camera" type="rgbd_camera">
         <topic>agribot/camera</topic>
-        <update_rate>15</update_rate>
+        <update_rate>5</update_rate>
         <camera>
           <horizontal_fov>1.047</horizontal_fov>
           <image>
@@ -218,8 +218,8 @@
             <far>25.0</far>
           </clip>
         </camera>
-        <always_on>true</always_on>
-        <visualize>true</visualize>
+        <always_on>false</always_on>
+        <visualize>false</visualize>
       </sensor>
     </link>
 
@@ -253,7 +253,7 @@
         <pose>0 0 0 0 0 0</pose>
         <topic>agribot/lidar</topic>
         <gz_frame_id>lidar_link</gz_frame_id>
-        <update_rate>20</update_rate>
+        <update_rate>15</update_rate>
         <ray>
           <scan>
             <horizontal>
@@ -276,7 +276,7 @@
           </range>
         </ray>
         <always_on>true</always_on>
-        <visualize>true</visualize>
+        <visualize>false</visualize>
       </sensor>
     </link>
 
@@ -296,9 +296,9 @@
       </inertial>
       <sensor name="imu_sensor" type="imu">
         <topic>agribot/imu</topic>
-        <update_rate>100</update_rate>
+        <update_rate>50</update_rate>
         <always_on>true</always_on>
-        <visualize>true</visualize>
+        <visualize>false</visualize>
       </sensor>
     </link>
 
@@ -380,7 +380,7 @@
       <tf_topic>tf</tf_topic>
       <frame_id>odom</frame_id>
       <child_frame_id>base_link</child_frame_id>
-      <odom_publish_frequency>50</odom_publish_frequency>
+      <odom_publish_frequency>30</odom_publish_frequency>
     </plugin>
 
     <!-- IMU Sensor System -->
