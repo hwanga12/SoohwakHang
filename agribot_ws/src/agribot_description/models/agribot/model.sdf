@@ -31,18 +31,18 @@
         <pose>0 0 0.2 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.4 0.3 0.15</size>
+            <size>0.28 0.21 0.105</size>
           </box>
         </geometry>
       </collision>
 
       <!-- 3D model visual (rotated to stand upright) -->
       <visual name="visual">
-        <pose>0 0 1.5 1.5708 0 1.5708</pose>
+        <pose>0 0 0.25 1.5708 0 1.5708</pose>
         <geometry>
           <mesh>
             <uri>meshes/cute_robot_-_hand-paint_fixed.glb</uri>
-            <scale>1.25 1.25 1.25</scale>
+            <scale>0.14 0.14 0.14</scale>
           </mesh>
         </geometry>
       </visual>
@@ -50,7 +50,7 @@
 
     <!-- ==================== LEFT WHEEL ==================== -->
     <link name="left_wheel">
-      <pose relative_to="base_link">-0.1 0.175 0.06 -1.5708 0 0</pose>
+      <pose relative_to="base_link">-0.07 0.1225 0.042 -1.5708 0 0</pose>
       <inertial>
         <mass>0.5</mass>
         <inertia>
@@ -65,8 +65,8 @@
       <collision name="collision">
         <geometry>
           <cylinder>
-            <radius>0.06</radius>
-            <length>0.03</length>
+            <radius>0.042</radius>
+            <length>0.021</length>
           </cylinder>
         </geometry>
         <surface>
@@ -81,8 +81,8 @@
       <visual name="visual">
         <geometry>
           <cylinder>
-            <radius>0.06</radius>
-            <length>0.03</length>
+            <radius>0.042</radius>
+            <length>0.021</length>
           </cylinder>
         </geometry>
         <material>
@@ -94,7 +94,7 @@
 
     <!-- ==================== RIGHT WHEEL ==================== -->
     <link name="right_wheel">
-      <pose relative_to="base_link">-0.1 -0.175 0.06 -1.5708 0 0</pose>
+      <pose relative_to="base_link">-0.07 -0.1225 0.042 -1.5708 0 0</pose>
       <inertial>
         <mass>0.5</mass>
         <inertia>
@@ -109,8 +109,8 @@
       <collision name="collision">
         <geometry>
           <cylinder>
-            <radius>0.06</radius>
-            <length>0.03</length>
+            <radius>0.042</radius>
+            <length>0.021</length>
           </cylinder>
         </geometry>
         <surface>
@@ -125,8 +125,8 @@
       <visual name="visual">
         <geometry>
           <cylinder>
-            <radius>0.06</radius>
-            <length>0.03</length>
+            <radius>0.042</radius>
+            <length>0.021</length>
           </cylinder>
         </geometry>
         <material>
@@ -153,7 +153,7 @@
       <collision name="collision">
         <geometry>
           <sphere>
-            <radius>0.03</radius>
+            <radius>0.042</radius>
           </sphere>
         </geometry>
         <surface>
@@ -168,7 +168,7 @@
       <visual name="visual">
         <geometry>
           <sphere>
-            <radius>0.03</radius>
+            <radius>0.042</radius>
           </sphere>
         </geometry>
         <material>
@@ -225,7 +225,7 @@
 
     <!-- ==================== LIDAR LINK (2D) ==================== -->
     <link name="lidar_link">
-      <pose relative_to="base_link">0 0 0.35 0 0 0</pose>
+      <pose relative_to="base_link">0 0 0.245 0 0 0</pose>
       <inertial>
         <mass>0.2</mass>
         <inertia>
@@ -270,8 +270,8 @@
             </vertical>
           </scan>
           <range>
-            <min>0.12</min>
-            <max>25.0</max>
+            <min>0.35</min>
+            <max>7.0</max>
             <resolution>0.01</resolution>
           </range>
         </ray>
@@ -359,8 +359,8 @@
             name="gz::sim::systems::DiffDrive">
       <left_joint>left_wheel_joint</left_joint>
       <right_joint>right_wheel_joint</right_joint>
-      <wheel_separation>0.35</wheel_separation>
-      <wheel_radius>0.06</wheel_radius>
+      <wheel_separation>0.245</wheel_separation>
+      <wheel_radius>0.042</wheel_radius>
       <!-- Raise the drivetrain ceiling to support 1.6 m/s cruise while
            keeping acceleration and jerk bounded enough for Nav2 tracking. -->
       <max_linear_velocity>1.60</max_linear_velocity>
