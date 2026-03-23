@@ -1,0 +1,11 @@
+# SetHumidity.srv
+# 비닐하우스 습도 설정 서비스
+
+# Request
+string zone_id          # 구역 ID
+float32 target_humidity # 목표 습도 (%)
+---
+# Response
+bool success            # 성공 여부
+string message          # 결과 메시지
+float32 current_humidity # 현재 습도 (%)
