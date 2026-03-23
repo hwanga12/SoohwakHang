@@ -541,6 +541,7 @@ def build_frontier_candidates(
     robot_pose: RobotPose,
     minimum_cluster_size: int,
     minimum_goal_distance_m: float,
+    maximum_goal_distance_m: float,
     cluster_size_weight: float,
     maximum_distance_score_m: float,
     support_area_weight: float,
@@ -598,6 +599,8 @@ def build_frontier_candidates(
 
         distance_m = math.hypot(world_x - robot_pose.x, world_y - robot_pose.y)
         if distance_m < minimum_goal_distance_m:
+            continue
+        if maximum_goal_distance_m > 0.0 and distance_m > maximum_goal_distance_m:
             continue
 
         heading = math.atan2(world_y - robot_pose.y, world_x - robot_pose.x)
@@ -724,6 +727,7 @@ class FrontierExplorerNode(Node):
 
         self.declare_parameter('minimum_frontier_cluster_size', 10)
         self.declare_parameter('minimum_goal_distance_m', 1.2)
+        self.declare_parameter('maximum_goal_distance_m', 18.0)
         self.declare_parameter('cluster_size_weight', 2.5)
         self.declare_parameter('maximum_distance_score_m', 8.0)
         self.declare_parameter('support_area_weight', 0.18)
@@ -798,6 +802,9 @@ class FrontierExplorerNode(Node):
             self.get_parameter('minimum_frontier_cluster_size').value
         )
         self._minimum_goal_distance_m = float(self.get_parameter('minimum_goal_distance_m').value)
+        self._maximum_goal_distance_m = float(
+            self.get_parameter('maximum_goal_distance_m').value
+        )
         self._cluster_size_weight = float(self.get_parameter('cluster_size_weight').value)
         self._maximum_distance_score_m = float(
             self.get_parameter('maximum_distance_score_m').value
@@ -941,6 +948,7 @@ class FrontierExplorerNode(Node):
 
         now = self.get_clock().now()
         self._map: OccupancyGrid | None = None
+        self._map_frame = ''
         self._boundary_map: OccupancyGrid | None = None
         self._boundary_map_frame = ''
         self._boundary_map_qos_durability = boundary_map_qos_durability
@@ -980,6 +988,7 @@ class FrontierExplorerNode(Node):
         self._active_goal_handle = None
         self._active_goal_source = ''
         self._active_goal_point: tuple[float, float] | None = None
+        self._active_nav_goal_point: tuple[float, float] | None = None
         self._active_goal_pose: PoseStamped | None = None
         self._cancel_reason = ''
 
@@ -1058,10 +1067,11 @@ class FrontierExplorerNode(Node):
 
     def _handle_map(self, msg: OccupancyGrid) -> None:
         self._map = msg
+        self._map_frame = msg.header.frame_id or self._goal_frame
 
     def _handle_boundary_map(self, msg: OccupancyGrid) -> None:
         self._boundary_map = msg
-        self._boundary_map_frame = msg.header.frame_id
+        self._boundary_map_frame = msg.header.frame_id or self._goal_frame
 
     def _handle_scan(self, msg: LaserScan) -> None:
         self._latest_scan = msg
@@ -1149,11 +1159,14 @@ class FrontierExplorerNode(Node):
         if self._fresh_scan() is None:
             self._set_mode(MODE_STARTING, f'Waiting for LiDAR scan on {self._scan_topic}.')
             return
+        if self._mode not in {MODE_BOOTSTRAP, MODE_BOUNDARY} and self._map is None:
+            self._set_mode(MODE_STARTING, f'Waiting for map data on {self._map_topic}.')
+            return
 
         pose_frame = (
             self._bootstrap_pose_frame
             if self._mode in {MODE_BOOTSTRAP, MODE_BOUNDARY}
-            else self._goal_frame
+            else self._map_frame_id()
         )
         robot_pose = self._lookup_robot_pose(frame_id=pose_frame)
         if robot_pose is None:
@@ -1161,9 +1174,6 @@ class FrontierExplorerNode(Node):
                 MODE_STARTING,
                 f'Waiting for transform {pose_frame} -> {self._robot_base_frame}.',
             )
-            return
-        if self._mode not in {MODE_BOOTSTRAP, MODE_BOUNDARY} and self._map is None:
-            self._set_mode(MODE_STARTING, f'Waiting for map data on {self._map_topic}.')
             return
         if (
             self._mode not in {MODE_BOOTSTRAP, MODE_BOUNDARY}
@@ -1234,17 +1244,133 @@ class FrontierExplorerNode(Node):
         self._last_robot_pose_time = self.get_clock().now()
         return pose
 
+    def _map_frame_id(self) -> str:
+        if self._map_frame:
+            return self._map_frame
+        if self._map is not None and self._map.header.frame_id:
+            return self._map.header.frame_id
+        return self._goal_frame
+
+    @staticmethod
+    def _yaw_from_quaternion(quaternion: Any) -> float:
+        return math.atan2(
+            2.0 * (quaternion.w * quaternion.z + quaternion.x * quaternion.y),
+            1.0 - 2.0 * (quaternion.y * quaternion.y + quaternion.z * quaternion.z),
+        )
+
+    def _lookup_frame_transform(self, *, target_frame: str, source_frame: str):
+        if not target_frame or not source_frame or target_frame == source_frame:
+            return None
+        return self._tf_buffer.lookup_transform(
+            target_frame,
+            source_frame,
+            rclpy.time.Time(),
+            timeout=Duration(seconds=0.08),
+        )
+
+    def _transform_xy(
+        self,
+        x: float,
+        y: float,
+        *,
+        source_frame: str,
+        target_frame: str,
+    ) -> tuple[float, float] | None:
+        if not source_frame or not target_frame or source_frame == target_frame:
+            return x, y
+        try:
+            transform = self._lookup_frame_transform(
+                target_frame=target_frame,
+                source_frame=source_frame,
+            )
+        except TransformException:
+            return None
+        if transform is None:
+            return x, y
+        yaw = self._yaw_from_quaternion(transform.transform.rotation)
+        translation = transform.transform.translation
+        rotated_x = math.cos(yaw) * x - math.sin(yaw) * y
+        rotated_y = math.sin(yaw) * x + math.cos(yaw) * y
+        return (
+            float(translation.x + rotated_x),
+            float(translation.y + rotated_y),
+        )
+
+    def _transform_heading(
+        self,
+        yaw: float,
+        *,
+        source_frame: str,
+        target_frame: str,
+    ) -> float | None:
+        if not source_frame or not target_frame or source_frame == target_frame:
+            return yaw
+        try:
+            transform = self._lookup_frame_transform(
+                target_frame=target_frame,
+                source_frame=source_frame,
+            )
+        except TransformException:
+            return None
+        if transform is None:
+            return yaw
+        return normalize_angle(yaw + self._yaw_from_quaternion(transform.transform.rotation))
+
+    def _transform_robot_pose(
+        self,
+        pose: RobotPose,
+        *,
+        source_frame: str,
+        target_frame: str,
+    ) -> RobotPose | None:
+        transformed_xy = self._transform_xy(
+            pose.x,
+            pose.y,
+            source_frame=source_frame,
+            target_frame=target_frame,
+        )
+        if transformed_xy is None:
+            return None
+        transformed_yaw = self._transform_heading(
+            pose.yaw,
+            source_frame=source_frame,
+            target_frame=target_frame,
+        )
+        if transformed_yaw is None:
+            return None
+        return RobotPose(x=transformed_xy[0], y=transformed_xy[1], yaw=transformed_yaw)
+
+    def _boundary_allows_candidate_point(self, world_x: float, world_y: float) -> bool:
+        if not self._use_boundary_map or self._boundary_map is None:
+            return True
+        boundary_frame = self._boundary_map_frame or self._goal_frame
+        point = self._transform_xy(
+            world_x,
+            world_y,
+            source_frame=self._map_frame_id(),
+            target_frame=boundary_frame,
+        )
+        if point is None:
+            return False
+        return boundary_allows(self._boundary_map, point[0], point[1])
+
     def _known_ratio(self) -> float:
         return compute_known_ratio(self._map)
 
     def _candidate_points(self, robot_pose: RobotPose) -> list[FrontierCandidate]:
         if self._map is None:
             return []
-        return build_frontier_candidates(
+        use_boundary_map_directly = (
+            self._use_boundary_map
+            and self._boundary_map is not None
+            and (self._boundary_map_frame or self._map_frame_id()) == self._map_frame_id()
+        )
+        candidates = build_frontier_candidates(
             self._map,
             robot_pose=robot_pose,
             minimum_cluster_size=self._minimum_frontier_cluster_size,
             minimum_goal_distance_m=self._minimum_goal_distance_m,
+            maximum_goal_distance_m=self._maximum_goal_distance_m,
             cluster_size_weight=self._cluster_size_weight,
             maximum_distance_score_m=self._maximum_distance_score_m,
             support_area_weight=self._support_area_weight,
@@ -1256,8 +1382,15 @@ class FrontierExplorerNode(Node):
             blacklist_radius_m=self._blacklist_radius_m,
             recent_goal_points=self._recent_goal_points(),
             recent_goal_radius_m=self._recent_goal_radius_m,
-            boundary_map=self._boundary_map if self._use_boundary_map else None,
+            boundary_map=self._boundary_map if use_boundary_map_directly else None,
         )
+        if self._use_boundary_map and self._boundary_map is not None and not use_boundary_map_directly:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if self._boundary_allows_candidate_point(candidate.world_x, candidate.world_y)
+            ]
+        return candidates
 
     def _blacklisted_points(self) -> list[tuple[float, float]]:
         return [(region.x, region.y) for region in self._blacklisted_regions]
@@ -1562,8 +1695,22 @@ class FrontierExplorerNode(Node):
             robot_pose=robot_pose,
             lane_spacing_m=self._coverage_lane_spacing_m,
             minimum_segment_length_m=self._coverage_min_segment_length_m,
-            boundary_map=self._boundary_map if self._use_boundary_map else None,
+            boundary_map=(
+                self._boundary_map
+                if (
+                    self._use_boundary_map
+                    and self._boundary_map is not None
+                    and (self._boundary_map_frame or self._map_frame_id()) == self._map_frame_id()
+                )
+                else None
+            ),
         )
+        if self._use_boundary_map and self._boundary_map is not None:
+            goals = [
+                goal
+                for goal in goals
+                if self._boundary_allows_candidate_point(goal.world_x, goal.world_y)
+            ]
         if not goals:
             self._active = False
             self._set_mode(MODE_COMPLETED, 'No coverage fill lanes available; mapping completed.')
@@ -1603,37 +1750,77 @@ class FrontierExplorerNode(Node):
         source: str,
         robot_pose: RobotPose,
     ) -> None:
+        source_frame = self._map_frame_id()
         if isinstance(target, FrontierCandidate):
-            goal_x = target.world_x
-            goal_y = target.world_y
-            yaw = math.atan2(goal_y - robot_pose.y, goal_x - robot_pose.x)
+            candidate_goal_x = target.world_x
+            candidate_goal_y = target.world_y
+        else:
+            candidate_goal_x = target.world_x
+            candidate_goal_y = target.world_y
+
+        nav_goal_x = candidate_goal_x
+        nav_goal_y = candidate_goal_y
+        nav_robot_pose = robot_pose
+        if source_frame != self._goal_frame:
+            transformed_goal = self._transform_xy(
+                candidate_goal_x,
+                candidate_goal_y,
+                source_frame=source_frame,
+                target_frame=self._goal_frame,
+            )
+            nav_robot_pose = self._transform_robot_pose(
+                robot_pose,
+                source_frame=source_frame,
+                target_frame=self._goal_frame,
+            )
+            if transformed_goal is None or nav_robot_pose is None:
+                self._set_mode(
+                    MODE_STARTING,
+                    f'Waiting for transform {source_frame} -> {self._goal_frame}.',
+                )
+                return
+            nav_goal_x, nav_goal_y = transformed_goal
+
+        if isinstance(target, FrontierCandidate):
+            yaw = math.atan2(nav_goal_y - nav_robot_pose.y, nav_goal_x - nav_robot_pose.x)
             message = (
-                f'Navigating to frontier goal ({goal_x:.2f}, {goal_y:.2f}) '
+                f'Navigating to frontier goal nav=({nav_goal_x:.2f}, {nav_goal_y:.2f}) '
+                f'map=({candidate_goal_x:.2f}, {candidate_goal_y:.2f}) '
                 f'size={target.size} score={target.score:.2f}.'
             )
         else:
-            goal_x = target.world_x
-            goal_y = target.world_y
-            yaw = target.heading
+            yaw = self._transform_heading(
+                target.heading,
+                source_frame=source_frame,
+                target_frame=self._goal_frame,
+            )
+            if yaw is None:
+                self._set_mode(
+                    MODE_STARTING,
+                    f'Waiting for transform {source_frame} -> {self._goal_frame}.',
+                )
+                return
             message = (
                 f'Navigating to coverage fill goal {self._coverage_goal_index + 1}/'
-                f'{len(self._coverage_goals)} at ({goal_x:.2f}, {goal_y:.2f}).'
+                f'{len(self._coverage_goals)} nav=({nav_goal_x:.2f}, {nav_goal_y:.2f}) '
+                f'map=({candidate_goal_x:.2f}, {candidate_goal_y:.2f}).'
             )
 
         goal = NavigateToPose.Goal()
         goal.pose = PoseStamped()
         goal.pose.header.stamp = self.get_clock().now().to_msg()
         goal.pose.header.frame_id = self._goal_frame
-        goal.pose.pose.position.x = goal_x
-        goal.pose.pose.position.y = goal_y
+        goal.pose.pose.position.x = nav_goal_x
+        goal.pose.pose.position.y = nav_goal_y
         goal.pose.pose.orientation.z = math.sin(yaw / 2.0)
         goal.pose.pose.orientation.w = math.cos(yaw / 2.0)
 
         self._active_goal_source = source
         self._active_goal_pose = goal.pose
-        self._active_goal_point = (goal_x, goal_y)
+        self._active_goal_point = (candidate_goal_x, candidate_goal_y)
+        self._active_nav_goal_point = (nav_goal_x, nav_goal_y)
         if source == 'frontier':
-            self._remember_recent_goal(goal_x, goal_y)
+            self._remember_recent_goal(candidate_goal_x, candidate_goal_y)
         self._last_distance_remaining_m = None
         self._last_progress_distance_remaining_m = None
         self._last_progress_time = self.get_clock().now()
@@ -1695,6 +1882,7 @@ class FrontierExplorerNode(Node):
 
         if status == GoalStatus.STATUS_SUCCEEDED:
             self._active_goal_point = None
+            self._active_nav_goal_point = None
             self._active_goal_pose = None
             if self._active_goal_source == 'coverage':
                 self._coverage_goal_index += 1
@@ -1707,6 +1895,7 @@ class FrontierExplorerNode(Node):
         if status == GoalStatus.STATUS_CANCELED:
             if self._cancel_reason == 'stop':
                 self._active_goal_point = None
+                self._active_nav_goal_point = None
                 self._active_goal_pose = None
                 self._active_goal_source = ''
                 self._cancel_reason = ''
@@ -1972,6 +2161,7 @@ class FrontierExplorerNode(Node):
                 )
             )
         self._active_goal_point = None
+        self._active_nav_goal_point = None
         self._active_goal_pose = None
         self._active_goal_source = ''
         self._cancel_reason = ''
@@ -2026,6 +2216,7 @@ class FrontierExplorerNode(Node):
             'mode': self._mode,
             'message': self._state_message,
             'frame_id': self._goal_frame,
+            'map_frame': self._map_frame or None,
             'bootstrap_pose_frame': self._bootstrap_pose_frame,
             'map_topic': self._map_topic,
             'boundary_map_topic': self._boundary_map_topic,
@@ -2035,7 +2226,8 @@ class FrontierExplorerNode(Node):
             'boundary_map_qos_reliability': self._boundary_map_qos_reliability,
             'scan_topic': self._scan_topic,
             'use_boundary_map': self._use_boundary_map,
-            'active_goal': self._active_goal_point,
+            'active_goal': self._active_nav_goal_point,
+            'active_goal_candidate': self._active_goal_point,
             'active_goal_source': self._active_goal_source or None,
             'distance_remaining_m': self._last_distance_remaining_m,
             'known_ratio': round(self._known_ratio(), 4),

@@ -80,6 +80,7 @@ def test_build_frontier_candidates_uses_standoff_goal_before_frontier_tip() -> N
         robot_pose=RobotPose(x=1.5, y=2.5, yaw=0.0),
         minimum_cluster_size=3,
         minimum_goal_distance_m=0.5,
+        maximum_goal_distance_m=0.0,
         cluster_size_weight=2.5,
         maximum_distance_score_m=8.0,
         support_area_weight=0.18,
@@ -115,6 +116,7 @@ def test_build_frontier_candidates_skips_blacklisted_goals() -> None:
         robot_pose=RobotPose(x=1.5, y=2.5, yaw=0.0),
         minimum_cluster_size=3,
         minimum_goal_distance_m=0.5,
+        maximum_goal_distance_m=0.0,
         cluster_size_weight=2.5,
         maximum_distance_score_m=8.0,
         support_area_weight=0.18,
@@ -147,6 +149,7 @@ def test_build_frontier_candidates_skips_recent_goal_revisits() -> None:
         robot_pose=RobotPose(x=1.5, y=2.5, yaw=0.0),
         minimum_cluster_size=3,
         minimum_goal_distance_m=0.5,
+        maximum_goal_distance_m=0.0,
         cluster_size_weight=2.5,
         maximum_distance_score_m=8.0,
         support_area_weight=0.18,
@@ -158,6 +161,39 @@ def test_build_frontier_candidates_skips_recent_goal_revisits() -> None:
         blacklist_radius_m=1.0,
         recent_goal_points=[(6.5, 2.5)],
         recent_goal_radius_m=1.0,
+    )
+
+    assert candidates == []
+
+
+def test_build_frontier_candidates_skips_goals_beyond_maximum_distance() -> None:
+    grid = make_map(
+        20,
+        5,
+        [
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+            -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1,
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        ],
+    )
+
+    candidates = build_frontier_candidates(
+        grid,
+        robot_pose=RobotPose(x=1.5, y=2.5, yaw=0.0),
+        minimum_cluster_size=3,
+        minimum_goal_distance_m=0.5,
+        maximum_goal_distance_m=5.0,
+        cluster_size_weight=2.5,
+        maximum_distance_score_m=8.0,
+        support_area_weight=0.18,
+        forward_preference_weight=1.5,
+        frontier_standoff_m=2.0,
+        staging_search_radius_m=1.0,
+        staging_support_radius_m=1.0,
+        blacklisted_points=[],
+        blacklist_radius_m=1.0,
     )
 
     assert candidates == []

@@ -5,7 +5,7 @@
     scan_topic: /agribot/lidar
     cmd_vel_topic: /cmd_vel_checked
     use_boundary_map: true
-    goal_frame: map
+    goal_frame: odom
     bootstrap_pose_frame: odom
     robot_base_frame: base_link
     navigate_to_pose_action: navigate_to_pose
@@ -21,7 +21,8 @@
 
     minimum_frontier_cluster_size: 10
     minimum_goal_distance_m: 1.6
-    cluster_size_weight: 2.5
+    maximum_goal_distance_m: 12.0
+    cluster_size_weight: 1.2
     maximum_distance_score_m: 8.0
     support_area_weight: 0.18
     forward_preference_weight: 2.4
@@ -32,8 +33,8 @@
     blacklist_duration_sec: 45.0
     recent_goal_radius_m: 1.0
     recent_goal_ttl_sec: 120.0
-    progress_timeout_sec: 22.0
-    progress_required_distance_m: 0.22
+    progress_timeout_sec: 40.0
+    progress_required_distance_m: 0.10
     no_frontier_confirmations: 3
     scan_timeout_sec: 1.0
     pose_reuse_timeout_sec: 1.0
