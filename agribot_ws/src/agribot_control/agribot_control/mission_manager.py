@@ -5,7 +5,7 @@ from enum import Enum
 import json
 import uuid
 
-from agribot_interfaces.msg import MissionStatus, RobotStatus
+from agribot_interfaces.msg import MissionStatus, PlantObservation, RobotStatus
 from geometry_msgs.msg import Pose, Vector3
 from nav_msgs.msg import Odometry
 import rclpy
@@ -14,6 +14,12 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
+
+from .observation_priority import (
+    ObservationInput,
+    ObservationPriorityArbiter,
+    ObservationTaskCandidate,
+)
 
 
 class RobotMode(str, Enum):
@@ -311,6 +317,10 @@ class MissionManagerNode(Node):
         self.declare_parameter('patrol_stop_service', '/patrol/stop')
         self.declare_parameter('patrol_resume_service', '/patrol/resume')
         self.declare_parameter('patrol_service_wait_sec', 1.0)
+        self.declare_parameter('plant_observation_topic', '/plant_observation')
+        self.declare_parameter('observation_duplicate_window_sec', 120.0)
+        self.declare_parameter('max_pending_observations', 16)
+        self.declare_parameter('interrupt_patrol_on_observation', True)
 
         self._robot_id = str(self.get_parameter('robot_id').value)
         self._zone_id = str(self.get_parameter('zone_id').value)
@@ -322,6 +332,20 @@ class MissionManagerNode(Node):
             0.1,
             float(self.get_parameter('patrol_service_wait_sec').value),
         )
+        self._interrupt_patrol_on_observation = bool(
+            self.get_parameter('interrupt_patrol_on_observation').value
+        )
+        self._observation_arbiter = ObservationPriorityArbiter(
+            duplicate_window_sec=max(
+                1.0,
+                float(self.get_parameter('observation_duplicate_window_sec').value),
+            ),
+            max_pending_events=max(
+                1,
+                int(self.get_parameter('max_pending_observations').value),
+            ),
+        )
+        self._pending_observation_activation_requested = False
 
         mission_status_topic = str(self.get_parameter('mission_status_topic').value)
         robot_status_topic = str(self.get_parameter('robot_status_topic').value)
@@ -332,6 +356,7 @@ class MissionManagerNode(Node):
         patrol_start_service = str(self.get_parameter('patrol_start_service').value)
         patrol_stop_service = str(self.get_parameter('patrol_stop_service').value)
         patrol_resume_service = str(self.get_parameter('patrol_resume_service').value)
+        plant_observation_topic = str(self.get_parameter('plant_observation_topic').value)
 
         self._mission_status_publisher = self.create_publisher(
             MissionStatus,
@@ -361,6 +386,12 @@ class MissionManagerNode(Node):
             self._handle_patrol_status,
             20,
         )
+        self._plant_observation_subscription = self.create_subscription(
+            PlantObservation,
+            plant_observation_topic,
+            self._handle_plant_observation,
+            20,
+        )
         self._patrol_start_client = self.create_client(Trigger, patrol_start_service)
         self._patrol_stop_client = self.create_client(Trigger, patrol_stop_service)
         self._patrol_resume_client = self.create_client(Trigger, patrol_resume_service)
@@ -374,7 +405,8 @@ class MissionManagerNode(Node):
             f'command_topic={command_topic}, '
             f'mission_status_topic={mission_status_topic}, '
             f'robot_status_topic={robot_status_topic}, '
-            f'patrol_status_topic={patrol_status_topic}'
+            f'patrol_status_topic={patrol_status_topic}, '
+            f'plant_observation_topic={plant_observation_topic}'
         )
         self._publish_status()
 
@@ -469,12 +501,23 @@ class MissionManagerNode(Node):
                 self._mission_machine.resume()
             elif normalized_command == 'complete':
                 self._mission_machine.mark_complete()
+                self._finish_active_observation_candidate()
+                self._activate_best_pending_observation(
+                    'Queued observation activated after the previous mission completed.'
+                )
             elif normalized_command == 'cancel':
                 self._mission_machine.cancel()
+                self._finish_active_observation_candidate()
+                self._activate_best_pending_observation(
+                    'Queued observation activated after the previous mission was canceled.'
+                )
             elif normalized_command == 'fail':
                 self._mission_machine.fail(detail_message=argument or 'Mission failed.')
+                self._finish_active_observation_candidate()
             elif normalized_command == 'reset':
                 self._mission_machine.reset()
+                self._observation_arbiter.clear()
+                self._pending_observation_activation_requested = False
             else:
                 self.get_logger().warning(f'Unsupported mission command: {raw_command}')
                 return
@@ -500,7 +543,144 @@ class MissionManagerNode(Node):
             return
 
         apply_patrol_status_snapshot(self._mission_machine, snapshot)
+        if snapshot.state == 'completed':
+            self._activate_best_pending_observation(
+                'Priority observation activated after patrol completion.'
+            )
         self._publish_status()
+
+    def _handle_plant_observation(self, msg: PlantObservation) -> None:
+        observation = ObservationInput(
+            observation_id=msg.observation_id,
+            zone_id=msg.zone_id,
+            plant_id=msg.plant_id,
+            fruit_id=msg.fruit_id,
+            class_name=msg.class_name,
+            confidence=float(msg.confidence),
+            health_score=float(msg.health_score),
+            ready_to_harvest=bool(msg.ready_to_harvest),
+            image_path=msg.image_path,
+        )
+        selection = self._observation_arbiter.register_observation(
+            observation,
+            now_ns=self.get_clock().now().nanoseconds,
+        )
+        candidate = selection.selected_candidate
+
+        if candidate is None:
+            if selection.reason:
+                self.get_logger().warning(selection.reason)
+            return
+
+        if selection.is_duplicate:
+            self.get_logger().info(
+                'Observation duplicate ignored: '
+                f'class={candidate.event_kind}, target={candidate.target_id}, '
+                f'reason={selection.reason}'
+            )
+            return
+
+        if not selection.accepted:
+            self.get_logger().warning(selection.reason)
+            return
+
+        self.get_logger().info(
+            'Observation candidate updated: '
+            f'class={candidate.event_kind}, target={candidate.target_id}, '
+            f'priority={candidate.priority}, pending={selection.pending_count}, '
+            f'reason={selection.reason}'
+        )
+        self._maybe_activate_observation_candidate(candidate)
+
+    def _maybe_activate_observation_candidate(
+        self,
+        candidate: ObservationTaskCandidate,
+    ) -> None:
+        active_candidate = self._observation_arbiter.active_candidate
+        if (
+            active_candidate is not None
+            and active_candidate.dedup_key == candidate.dedup_key
+        ):
+            self._mission_machine.note(
+                active_candidate.detail_message,
+                target_id=active_candidate.target_id,
+            )
+            self._publish_status()
+            return
+
+        if active_candidate is not None:
+            self._mission_machine.note(
+                f'Queued {candidate.event_kind} while {active_candidate.event_kind} is active.',
+                target_id=active_candidate.target_id,
+            )
+            self._publish_status()
+            return
+
+        if (
+            self._mission_machine.mission_type == MissionType.PATROL.value
+            and self._mission_machine.mission_state == MissionState.RUNNING.value
+        ):
+            self._mission_machine.note(
+                f'Queued {candidate.event_kind}; requesting patrol stop.',
+                target_id=candidate.target_id,
+            )
+            self._publish_status()
+            if self._interrupt_patrol_on_observation:
+                if not self._pending_observation_activation_requested:
+                    self._pending_observation_activation_requested = True
+                    self._request_patrol_control('stop')
+            return
+
+        if (
+            self._mission_machine.mission_type == MissionType.PATROL.value
+            and self._mission_machine.mission_state == MissionState.PAUSED.value
+        ):
+            self._activate_best_pending_observation(
+                'Priority observation activated while patrol is paused.'
+            )
+            return
+
+        self._activate_best_pending_observation(
+            'Priority observation activated from the pending queue.'
+        )
+
+    def _activate_best_pending_observation(self, detail_message: str) -> bool:
+        candidate = self._observation_arbiter.peek_best_candidate()
+        if candidate is None:
+            self._pending_observation_activation_requested = False
+            return False
+
+        active_candidate = self._observation_arbiter.activate_candidate(
+            candidate,
+            now_ns=self.get_clock().now().nanoseconds,
+        )
+        self._pending_observation_activation_requested = False
+        self._mission_machine.start_mission(
+            active_candidate.mission_type,
+            target_id=active_candidate.target_id,
+            detail_message=(
+                f'{detail_message} '
+                f'event={active_candidate.event_kind}, target={active_candidate.target_id}.'
+            ),
+        )
+        self.get_logger().info(
+            'Activated observation candidate: '
+            f'event={active_candidate.event_kind}, target={active_candidate.target_id}, '
+            f'pending={self._observation_arbiter.pending_count()}'
+        )
+        self._publish_status()
+        return True
+
+    def _finish_active_observation_candidate(self) -> None:
+        candidate = self._observation_arbiter.complete_active_candidate(
+            now_ns=self.get_clock().now().nanoseconds,
+        )
+        if candidate is None:
+            return
+        self.get_logger().info(
+            'Resolved active observation candidate: '
+            f'event={candidate.event_kind}, target={candidate.target_id}'
+        )
 
     def _request_patrol_control(self, operation: str, *, target_id: str = '') -> bool:
         operation = operation.lower()
@@ -520,6 +700,8 @@ class MissionManagerNode(Node):
                 f'Patrol {operation} service is unavailable.',
                 target_id=target_id or None,
             )
+            if operation == 'stop':
+                self._pending_observation_activation_requested = False
             self._publish_status()
             self.get_logger().warning(
                 f'Patrol {operation} service is unavailable.'
@@ -544,6 +726,8 @@ class MissionManagerNode(Node):
                 f'Patrol {operation} request failed: {exc}',
                 target_id=target_id or None,
             )
+            if operation == 'stop':
+                self._pending_observation_activation_requested = False
             self.get_logger().warning(
                 f'Patrol {operation} request failed: {exc}'
             )
@@ -555,6 +739,8 @@ class MissionManagerNode(Node):
                 response.message or f'Patrol {operation} request was rejected.',
                 target_id=target_id or None,
             )
+            if operation == 'stop':
+                self._pending_observation_activation_requested = False
             self.get_logger().warning(
                 response.message or f'Patrol {operation} request was rejected.'
             )
@@ -574,6 +760,10 @@ class MissionManagerNode(Node):
                 self._mission_machine.pause(detail_message=detail_message)
             else:
                 self._mission_machine.note(detail_message, target_id=target_id or None)
+            if self._pending_observation_activation_requested:
+                self._activate_best_pending_observation(
+                    'Priority observation activated after patrol stop.'
+                )
         elif operation == 'resume':
             if self._mission_machine.mission_type == MissionType.PATROL.value:
                 if self._mission_machine.mission_state == MissionState.PAUSED.value:
