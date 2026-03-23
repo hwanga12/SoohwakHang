@@ -39,7 +39,7 @@ plants:
     pose:
       x: 24.113802
       y: 38.034698
-      z: -0.633620
+      z: 0.75
       yaw: 0.0
   - plant_id: gh01_plant_03
     crop_id: gh01_plant_03
