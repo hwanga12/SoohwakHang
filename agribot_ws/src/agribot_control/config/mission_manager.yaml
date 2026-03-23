@@ -7,3 +7,8 @@ mission_manager:
     mission_status_topic: /mission/status
     robot_status_topic: /robot/status
     status_publish_hz: 2.0
+    patrol_status_topic: /patrol/status
+    patrol_start_service: /patrol/start
+    patrol_stop_service: /patrol/stop
+    patrol_resume_service: /patrol/resume
+    patrol_service_wait_sec: 1.0

@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import json
 import uuid
 
 from agribot_interfaces.msg import MissionStatus, RobotStatus
 from geometry_msgs.msg import Pose, Vector3
 from nav_msgs.msg import Odometry
 import rclpy
+from rclpy.client import Client
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 
 
 class RobotMode(str, Enum):
@@ -52,6 +55,60 @@ class MissionSnapshot:
     progress_pct: float
     retry_count: int
     detail_message: str
+
+
+@dataclass(slots=True)
+class PatrolStatusSnapshot:
+    state: str
+    message: str
+    current_waypoint_id: str
+    next_waypoint_id: str
+    current_waypoint_index: int | None
+    next_waypoint_index: int | None
+    total_waypoints: int
+    progress_pct: float
+
+
+def parse_patrol_status(raw_data: str) -> PatrolStatusSnapshot | None:
+    try:
+        payload = json.loads(raw_data)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    try:
+        total_waypoints = max(0, int(payload.get('total_waypoints', 0) or 0))
+    except (TypeError, ValueError):
+        return None
+    next_waypoint_index = payload.get('next_waypoint_index')
+    current_waypoint_index = payload.get('current_waypoint_index')
+    try:
+        if next_waypoint_index is not None:
+            next_waypoint_index = int(next_waypoint_index)
+        if current_waypoint_index is not None:
+            current_waypoint_index = int(current_waypoint_index)
+    except (TypeError, ValueError):
+        return None
+
+    progress_pct = 0.0
+    if total_waypoints > 0 and next_waypoint_index is not None:
+        completed_waypoints = min(max(next_waypoint_index, 0), total_waypoints)
+        progress_pct = (completed_waypoints / total_waypoints) * 100.0
+    if str(payload.get('state', '')).lower() == 'completed':
+        progress_pct = 100.0
+
+    return PatrolStatusSnapshot(
+        state=str(payload.get('state', '')).lower(),
+        message=str(payload.get('message', '')),
+        current_waypoint_id=str(payload.get('current_waypoint_id') or ''),
+        next_waypoint_id=str(payload.get('next_waypoint_id') or ''),
+        current_waypoint_index=current_waypoint_index,
+        next_waypoint_index=next_waypoint_index,
+        total_waypoints=total_waypoints,
+        progress_pct=max(0.0, min(100.0, progress_pct)),
+    )
 
 
 class MissionStateMachine:
@@ -115,6 +172,11 @@ class MissionStateMachine:
         if detail_message:
             self.detail_message = detail_message
 
+    def note(self, detail_message: str, *, target_id: str | None = None) -> None:
+        self.detail_message = detail_message
+        if target_id is not None:
+            self.target_id = target_id
+
     def pause(self, *, detail_message: str = 'Mission paused by operator.') -> None:
         if self.mission_state != MissionState.RUNNING.value:
             return
@@ -171,6 +233,67 @@ class MissionStateMachine:
         )
 
 
+def apply_patrol_status_snapshot(
+    machine: MissionStateMachine,
+    patrol_status: PatrolStatusSnapshot,
+) -> None:
+    patrol_active = machine.mission_type == MissionType.PATROL.value
+    mission_terminal = machine.mission_state in {
+        MissionState.COMPLETED.value,
+        MissionState.CANCELED.value,
+        MissionState.FAILED.value,
+    }
+
+    if not patrol_active and mission_terminal and patrol_status.state not in {'starting', 'running'}:
+        return
+
+    target_id = patrol_status.next_waypoint_id or patrol_status.current_waypoint_id
+    detail_message = patrol_status.message or 'Patrol status synchronized.'
+
+    if patrol_status.state in {'starting', 'running', 'observing'}:
+        if not patrol_active or machine.mission_state in {
+            MissionState.COMPLETED.value,
+            MissionState.CANCELED.value,
+            MissionState.FAILED.value,
+        }:
+            machine.start_mission(
+                MissionType.PATROL.value,
+                target_id=target_id,
+                detail_message=detail_message,
+            )
+        elif machine.mission_state == MissionState.PAUSED.value:
+            machine.resume(detail_message=detail_message)
+            machine.note(detail_message, target_id=target_id)
+        else:
+            machine.transition_phase(RobotMode.PATROL.value, detail_message=detail_message)
+            machine.note(detail_message, target_id=target_id)
+        machine.update_progress(patrol_status.progress_pct)
+        return
+
+    if not patrol_active:
+        return
+
+    if patrol_status.state == 'stopped':
+        machine.pause(detail_message=detail_message)
+        machine.note(detail_message, target_id=target_id)
+        machine.update_progress(patrol_status.progress_pct)
+        return
+
+    if patrol_status.state == 'completed':
+        machine.update_progress(100.0)
+        machine.mark_complete(detail_message=detail_message)
+        return
+
+    if patrol_status.state == 'error':
+        machine.fail(detail_message=detail_message)
+        machine.note(detail_message, target_id=target_id)
+        return
+
+    if target_id or detail_message:
+        machine.note(detail_message, target_id=target_id or None)
+        machine.update_progress(patrol_status.progress_pct)
+
+
 class MissionManagerNode(Node):
     """Mission manager skeleton for state, phase, and command handling."""
 
@@ -183,6 +306,11 @@ class MissionManagerNode(Node):
         self.declare_parameter('mission_status_topic', '/mission/status')
         self.declare_parameter('robot_status_topic', '/robot/status')
         self.declare_parameter('status_publish_hz', 2.0)
+        self.declare_parameter('patrol_status_topic', '/patrol/status')
+        self.declare_parameter('patrol_start_service', '/patrol/start')
+        self.declare_parameter('patrol_stop_service', '/patrol/stop')
+        self.declare_parameter('patrol_resume_service', '/patrol/resume')
+        self.declare_parameter('patrol_service_wait_sec', 1.0)
 
         self._robot_id = str(self.get_parameter('robot_id').value)
         self._zone_id = str(self.get_parameter('zone_id').value)
@@ -190,12 +318,20 @@ class MissionManagerNode(Node):
         self._last_pose = Pose()
         self._last_linear_velocity = Vector3()
         self._last_angular_velocity = Vector3()
+        self._patrol_service_wait_sec = max(
+            0.1,
+            float(self.get_parameter('patrol_service_wait_sec').value),
+        )
 
         mission_status_topic = str(self.get_parameter('mission_status_topic').value)
         robot_status_topic = str(self.get_parameter('robot_status_topic').value)
         odometry_topic = str(self.get_parameter('odometry_topic').value)
         command_topic = str(self.get_parameter('command_topic').value)
         status_publish_hz = max(0.5, float(self.get_parameter('status_publish_hz').value))
+        patrol_status_topic = str(self.get_parameter('patrol_status_topic').value)
+        patrol_start_service = str(self.get_parameter('patrol_start_service').value)
+        patrol_stop_service = str(self.get_parameter('patrol_stop_service').value)
+        patrol_resume_service = str(self.get_parameter('patrol_resume_service').value)
 
         self._mission_status_publisher = self.create_publisher(
             MissionStatus,
@@ -219,6 +355,15 @@ class MissionManagerNode(Node):
             self._handle_command,
             20,
         )
+        self._patrol_status_subscription = self.create_subscription(
+            String,
+            patrol_status_topic,
+            self._handle_patrol_status,
+            20,
+        )
+        self._patrol_start_client = self.create_client(Trigger, patrol_start_service)
+        self._patrol_stop_client = self.create_client(Trigger, patrol_stop_service)
+        self._patrol_resume_client = self.create_client(Trigger, patrol_resume_service)
         self._publish_timer = self.create_timer(
             1.0 / status_publish_hz,
             self._publish_status,
@@ -228,7 +373,8 @@ class MissionManagerNode(Node):
             'Mission manager skeleton ready. '
             f'command_topic={command_topic}, '
             f'mission_status_topic={mission_status_topic}, '
-            f'robot_status_topic={robot_status_topic}'
+            f'robot_status_topic={robot_status_topic}, '
+            f'patrol_status_topic={patrol_status_topic}'
         )
         self._publish_status()
 
@@ -251,12 +397,12 @@ class MissionManagerNode(Node):
         argument = argument.strip()
 
         try:
-            if normalized_command == 'patrol_start':
-                self._mission_machine.start_mission(
-                    MissionType.PATROL.value,
-                    target_id=argument,
-                    detail_message='Patrol mission started.',
-                )
+            if normalized_command in {'patrol_start', 'start_patrol'}:
+                if self._request_patrol_control('start', target_id=argument):
+                    self.get_logger().info(
+                        'Patrol start requested via mission command handler.'
+                    )
+                return
             elif normalized_command == 'observe_start':
                 self._mission_machine.start_mission(
                     MissionType.OBSERVE.value,
@@ -293,9 +439,33 @@ class MissionManagerNode(Node):
                     progress_value,
                     detail_message=f'Progress updated to {progress_value:.1f}%.',
                 )
+            elif normalized_command in {'patrol_stop', 'stop_patrol'}:
+                if self._request_patrol_control('stop'):
+                    self.get_logger().info(
+                        'Patrol stop requested via mission command handler.'
+                    )
+                return
+            elif normalized_command in {'patrol_resume', 'resume_patrol'}:
+                if self._request_patrol_control('resume'):
+                    self.get_logger().info(
+                        'Patrol resume requested via mission command handler.'
+                    )
+                return
             elif normalized_command == 'pause':
+                if self._mission_machine.mission_type == MissionType.PATROL.value:
+                    if self._request_patrol_control('stop'):
+                        self.get_logger().info(
+                            'Patrol pause requested via mission command handler.'
+                        )
+                    return
                 self._mission_machine.pause()
             elif normalized_command == 'resume':
+                if self._mission_machine.mission_type == MissionType.PATROL.value:
+                    if self._request_patrol_control('resume'):
+                        self.get_logger().info(
+                            'Patrol resume requested via mission command handler.'
+                        )
+                    return
                 self._mission_machine.resume()
             elif normalized_command == 'complete':
                 self._mission_machine.mark_complete()
@@ -320,6 +490,105 @@ class MissionManagerNode(Node):
             f'state={snapshot.state}, '
             f'phase={snapshot.current_phase}, '
             f'target={snapshot.target_id or "NONE"}'
+        )
+        self._publish_status()
+
+    def _handle_patrol_status(self, msg: String) -> None:
+        snapshot = parse_patrol_status(msg.data)
+        if snapshot is None:
+            self.get_logger().warning('Ignored invalid patrol status payload.')
+            return
+
+        apply_patrol_status_snapshot(self._mission_machine, snapshot)
+        self._publish_status()
+
+    def _request_patrol_control(self, operation: str, *, target_id: str = '') -> bool:
+        operation = operation.lower()
+        client: Client
+        if operation == 'start':
+            client = self._patrol_start_client
+        elif operation == 'stop':
+            client = self._patrol_stop_client
+        elif operation == 'resume':
+            client = self._patrol_resume_client
+        else:
+            self.get_logger().warning(f'Unsupported patrol control operation: {operation}')
+            return False
+
+        if not client.wait_for_service(timeout_sec=self._patrol_service_wait_sec):
+            self._mission_machine.note(
+                f'Patrol {operation} service is unavailable.',
+                target_id=target_id or None,
+            )
+            self._publish_status()
+            self.get_logger().warning(
+                f'Patrol {operation} service is unavailable.'
+            )
+            return False
+
+        future = client.call_async(Trigger.Request())
+        future.add_done_callback(
+            lambda result_future, op=operation, target=target_id: self._handle_patrol_control_response(
+                result_future,
+                op,
+                target,
+            )
+        )
+        return True
+
+    def _handle_patrol_control_response(self, future, operation: str, target_id: str) -> None:
+        try:
+            response = future.result()
+        except Exception as exc:
+            self._mission_machine.note(
+                f'Patrol {operation} request failed: {exc}',
+                target_id=target_id or None,
+            )
+            self.get_logger().warning(
+                f'Patrol {operation} request failed: {exc}'
+            )
+            self._publish_status()
+            return
+
+        if not response.success:
+            self._mission_machine.note(
+                response.message or f'Patrol {operation} request was rejected.',
+                target_id=target_id or None,
+            )
+            self.get_logger().warning(
+                response.message or f'Patrol {operation} request was rejected.'
+            )
+            self._publish_status()
+            return
+
+        detail_message = response.message or f'Patrol {operation} request accepted.'
+
+        if operation == 'start':
+            self._mission_machine.start_mission(
+                MissionType.PATROL.value,
+                target_id=target_id,
+                detail_message=detail_message,
+            )
+        elif operation == 'stop':
+            if self._mission_machine.mission_type == MissionType.PATROL.value:
+                self._mission_machine.pause(detail_message=detail_message)
+            else:
+                self._mission_machine.note(detail_message, target_id=target_id or None)
+        elif operation == 'resume':
+            if self._mission_machine.mission_type == MissionType.PATROL.value:
+                if self._mission_machine.mission_state == MissionState.PAUSED.value:
+                    self._mission_machine.resume(detail_message=detail_message)
+                else:
+                    self._mission_machine.start_mission(
+                        MissionType.PATROL.value,
+                        target_id=target_id,
+                        detail_message=detail_message,
+                    )
+            else:
+                self._mission_machine.note(detail_message, target_id=target_id or None)
+
+        self.get_logger().info(
+            f'Patrol {operation} request accepted: {detail_message}'
         )
         self._publish_status()
 
