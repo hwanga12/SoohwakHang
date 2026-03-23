@@ -1,0 +1,151 @@
+<?xml version="1.0"?>
+<robot name="agribot">
+
+  <!-- ==================== BASE LINK ==================== -->
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://agribot_description/models/agribot/meshes/agribot_gazebo.obj" scale="0.14 0.14 0.14"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.4 0.3 0.15"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="5.0"/>
+      <inertia ixx="0.042" ixy="0.0" ixz="0.0" iyy="0.058" iyz="0.0" izz="0.067"/>
+    </inertial>
+  </link>
+
+  <!-- ==================== LEFT WHEEL ==================== -->
+  <link name="left_wheel">
+    <visual>
+      <geometry>
+        <cylinder radius="0.06" length="0.03"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.2 0.2 0.2 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.06" length="0.03"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.5"/>
+      <inertia ixx="0.0005" ixy="0.0" ixz="0.0" iyy="0.0005" iyz="0.0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <joint name="left_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="left_wheel"/>
+    <origin xyz="-0.1 0.175 -0.14" rpy="-1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <!-- ==================== RIGHT WHEEL ==================== -->
+  <link name="right_wheel">
+    <visual>
+      <geometry>
+        <cylinder radius="0.06" length="0.03"/>
+      </geometry>
+      <material name="dark_grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.06" length="0.03"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.5"/>
+      <inertia ixx="0.0005" ixy="0.0" ixz="0.0" iyy="0.0005" iyz="0.0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <joint name="right_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="right_wheel"/>
+    <origin xyz="-0.1 -0.175 -0.14" rpy="-1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <!-- ==================== CASTER WHEEL ==================== -->
+  <link name="caster">
+    <visual>
+      <geometry>
+        <sphere radius="0.03"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.03"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.2"/>
+      <inertia ixx="0.00007" ixy="0.0" ixz="0.0" iyy="0.00007" iyz="0.0" izz="0.00007"/>
+    </inertial>
+  </link>
+
+  <joint name="caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="caster"/>
+    <origin xyz="0.15 0 -0.17" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ==================== CAMERA LINK ==================== -->
+  <link name="camera_link">
+    <visual>
+      <geometry>
+        <box size="0.03 0.06 0.03"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0.0 0.0 0.8 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+    <origin xyz="0.2 0 0.3" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ==================== LIDAR LINK ==================== -->
+  <link name="lidar_link">
+    <visual>
+      <geometry>
+        <cylinder radius="0.04" length="0.04"/>
+      </geometry>
+      <material name="red">
+        <color rgba="0.8 0.0 0.0 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0 0 0.35" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ==================== IMU LINK ==================== -->
+  <link name="imu_link">
+  </link>
+
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="0 0 0.25" rpy="0 0 0"/>
+  </joint>
+
+</robot>
