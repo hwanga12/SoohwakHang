@@ -84,6 +84,13 @@ class CoverageGoal:
     heading: float
 
 
+def frontier_distance_reward(distance_m: float, maximum_distance_score_m: float) -> float:
+    """Favor nearby frontier continuations over long jump goals."""
+    if maximum_distance_score_m <= 0.0:
+        return 0.0
+    return max(0.0, maximum_distance_score_m - min(distance_m, maximum_distance_score_m))
+
+
 def build_recovery_commands(
     *,
     front_clearance: float,
@@ -607,7 +614,7 @@ def build_frontier_candidates(
         forward_score = (math.cos(normalize_angle(heading - robot_pose.yaw)) + 1.0) * 0.5
         cluster_span_m = len(cluster) * resolution
         score = (
-            min(distance_m, maximum_distance_score_m)
+            frontier_distance_reward(distance_m, maximum_distance_score_m)
             + cluster_size_weight * cluster_span_m
             + support_area_weight * support_score
             + forward_preference_weight * forward_score
@@ -629,12 +636,11 @@ def build_frontier_candidates(
     return sorted(
         candidates,
         key=lambda candidate: (
-            candidate.score,
-            candidate.support_score,
-            candidate.forward_score,
+            -candidate.score,
+            -candidate.support_score,
+            -candidate.forward_score,
             candidate.distance_m,
         ),
-        reverse=True,
     )
 
 
@@ -721,6 +727,7 @@ class FrontierExplorerNode(Node):
         self.declare_parameter('resume_service', 'mapping_explorer/resume')
         self.declare_parameter('auto_start', True)
         self.declare_parameter('planning_period_sec', 0.60)
+        self.declare_parameter('start_frontier_known_ratio', 0.0)
         self.declare_parameter('boundary_map_qos_durability', 'transient_local')
         self.declare_parameter('boundary_map_qos_reliability', 'reliable')
         self.declare_parameter('boundary_map_qos_depth', 1)
@@ -791,6 +798,10 @@ class FrontierExplorerNode(Node):
         self._bootstrap_pose_frame = str(self.get_parameter('bootstrap_pose_frame').value)
         self._robot_base_frame = str(self.get_parameter('robot_base_frame').value)
         self._planning_period_sec = float(self.get_parameter('planning_period_sec').value)
+        self._start_frontier_known_ratio = max(
+            0.0,
+            float(self.get_parameter('start_frontier_known_ratio').value),
+        )
         boundary_map_qos_durability = str(
             self.get_parameter('boundary_map_qos_durability').value
         ).strip().lower()
@@ -1086,7 +1097,13 @@ class FrontierExplorerNode(Node):
 
         self._reset_for_restart()
         self._active = True
-        self._set_mode(MODE_BOOTSTRAP, 'Hybrid exploration start requested.')
+        if self._should_start_in_frontier_mode():
+            self._set_mode(
+                MODE_FRONTIER,
+                'Exploration start requested; skipping bootstrap on the partially known map.',
+            )
+        else:
+            self._set_mode(MODE_BOOTSTRAP, 'Hybrid exploration start requested.')
         response.success = True
         response.message = self._state_message
         return response
@@ -1124,7 +1141,13 @@ class FrontierExplorerNode(Node):
 
         self._active = True
         if self._mode in {MODE_STOPPED, MODE_IDLE, MODE_COMPLETED}:
-            self._set_mode(MODE_BOOTSTRAP, 'Hybrid exploration resumed.')
+            if self._should_start_in_frontier_mode():
+                self._set_mode(
+                    MODE_FRONTIER,
+                    'Hybrid exploration resumed on the partially known map.',
+                )
+            else:
+                self._set_mode(MODE_BOOTSTRAP, 'Hybrid exploration resumed.')
         else:
             self._set_mode(MODE_FRONTIER, 'Hybrid exploration resumed.')
         response.success = True
@@ -1356,6 +1379,13 @@ class FrontierExplorerNode(Node):
 
     def _known_ratio(self) -> float:
         return compute_known_ratio(self._map)
+
+    def _should_start_in_frontier_mode(self) -> bool:
+        return (
+            self._map is not None
+            and self._start_frontier_known_ratio > 0.0
+            and self._known_ratio() >= self._start_frontier_known_ratio
+        )
 
     def _candidate_points(self, robot_pose: RobotPose) -> list[FrontierCandidate]:
         if self._map is None:

@@ -109,7 +109,7 @@ def generate_launch_description():
     default_boundary_map = os.path.join(
         pkg_agribot_navigation,
         'maps',
-        'greenhouse_exploration_boundary.yaml',
+        'farm_exploration_boundary.yaml',
     )
     default_slam_params = os.path.join(
         pkg_agribot_navigation,
@@ -139,7 +139,7 @@ def generate_launch_description():
     default_patrol_waypoints = os.path.join(
         pkg_agribot_navigation,
         'config',
-        'patrol_waypoints.yaml',
+        'farm_mapping_patrol_waypoints.yaml',
     )
     default_rviz_config = os.path.join(
         pkg_agribot_navigation,
@@ -315,7 +315,7 @@ def generate_launch_description():
         launch_arguments={
             'world': LaunchConfiguration('world'),
             'publish_map_to_odom_tf': 'false',
-            'publish_odom_tf': 'true',
+            'publish_odom_tf': 'false',
             'cmd_vel_input_topic': '/cmd_vel_checked',
             'use_camera_bridges': 'false',
         }.items(),
@@ -569,8 +569,9 @@ def generate_launch_description():
             'nav_server_wait_sec': 60.0,
             'goal_reject_retry_sec': 1.0,
             'goal_reject_retry_limit': 30,
-            'max_lane_segment_length_m': 10.0,
-            'already_reached_xy_tolerance_m': 0.70,
+            'max_batch_path_length_m': 6.0,
+            'max_lane_segment_length_m': 4.5,
+            'already_reached_xy_tolerance_m': 0.45,
             'status_topic': 'mapping_patrol/status',
             'start_service': 'mapping_patrol/start',
             'stop_service': 'mapping_patrol/stop',

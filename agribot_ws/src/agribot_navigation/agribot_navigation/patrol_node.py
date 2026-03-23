@@ -35,6 +35,7 @@ def collect_batch_goal_end_index(
     *,
     observe_on_waypoints: bool,
     inspect_dwell_sec: float,
+    max_batch_path_length_m: float = 0.0,
 ) -> int:
     """Return the last consecutive waypoint index that can be sent as one batch goal."""
     if start_index >= len(waypoint_ids):
@@ -48,6 +49,8 @@ def collect_batch_goal_end_index(
         return start_index
 
     end_index = start_index
+    cumulative_path_length_m = 0.0
+    previous_waypoint = current
     for index in range(start_index + 1, len(waypoint_ids)):
         waypoint = waypoints[waypoint_ids[index]]
         if (
@@ -56,7 +59,18 @@ def collect_batch_goal_end_index(
             or waypoint.lane_id != current.lane_id
         ):
             break
+        leg_length_m = math.hypot(
+            waypoint.pose.x - previous_waypoint.pose.x,
+            waypoint.pose.y - previous_waypoint.pose.y,
+        )
+        if (
+            max_batch_path_length_m > 0.0
+            and cumulative_path_length_m + leg_length_m > max_batch_path_length_m
+        ):
+            break
+        cumulative_path_length_m += leg_length_m
         end_index = index
+        previous_waypoint = waypoint
     return end_index
 
 
@@ -140,6 +154,24 @@ def is_pose_within_xy_tolerance(
     ) <= xy_tolerance_m
 
 
+def should_treat_soft_completed_navigation_as_success(
+    current_pose: Pose2D | None,
+    target_pose: Pose2D | None,
+    *,
+    goal_soft_completed: bool,
+    xy_tolerance_m: float,
+) -> bool:
+    """Accept a soft-complete result only while the robot is still near the target."""
+    if not goal_soft_completed or target_pose is None:
+        return False
+
+    return is_pose_within_xy_tolerance(
+        current_pose,
+        target_pose,
+        xy_tolerance_m=xy_tolerance_m,
+    )
+
+
 class PatrolNode(Node):
     """Visit the configured waypoint list in order and expose patrol controls."""
 
@@ -163,9 +195,11 @@ class PatrolNode(Node):
         self.declare_parameter('goal_reject_retry_sec', 0.0)
         self.declare_parameter('goal_reject_retry_limit', 0)
         self.declare_parameter('enable_batch_navigation', True)
+        self.declare_parameter('max_batch_path_length_m', 0.0)
         self.declare_parameter('max_lane_segment_length_m', 24.0)
         self.declare_parameter('prefer_lane_heading_on_inspect_waypoints', False)
         self.declare_parameter('already_reached_xy_tolerance_m', 0.45)
+        self.declare_parameter('robot_pose_topic', '/odometry/filtered')
         self.declare_parameter('completion_action', 'none')
         self.declare_parameter('completion_start_service', 'mapping_explorer/start')
         self.declare_parameter('completion_service_wait_sec', 2.0)
@@ -180,6 +214,10 @@ class PatrolNode(Node):
         )
         self._enable_batch_navigation = bool(
             self.get_parameter('enable_batch_navigation').value
+        )
+        self._max_batch_path_length_m = max(
+            0.0,
+            float(self.get_parameter('max_batch_path_length_m').value),
         )
         self._max_lane_segment_length_m = max(
             0.0,
@@ -206,6 +244,7 @@ class PatrolNode(Node):
         start_service = str(self.get_parameter('start_service').value)
         stop_service = str(self.get_parameter('stop_service').value)
         resume_service = str(self.get_parameter('resume_service').value)
+        robot_pose_topic = str(self.get_parameter('robot_pose_topic').value)
         self._completion_action = str(self.get_parameter('completion_action').value).strip()
         self._completion_start_service = str(
             self.get_parameter('completion_start_service').value
@@ -225,7 +264,7 @@ class PatrolNode(Node):
         self._status_publisher = self.create_publisher(String, status_topic, 10)
         self._odom_subscription = self.create_subscription(
             Odometry,
-            '/odom',
+            robot_pose_topic,
             self._handle_odom,
             10,
         )
@@ -280,13 +319,20 @@ class PatrolNode(Node):
         return load_patrol_plan(self._plan_path)
 
     def _auto_start_once(self) -> None:
+        if self._state != 'idle':
+            if self._auto_start_timer is not None:
+                self._auto_start_timer.cancel()
+                self.destroy_timer(self._auto_start_timer)
+                self._auto_start_timer = None
+            return
+
+        if self._latest_robot_pose is None:
+            return
+
         if self._auto_start_timer is not None:
             self._auto_start_timer.cancel()
             self.destroy_timer(self._auto_start_timer)
             self._auto_start_timer = None
-
-        if self._state != 'idle':
-            return
 
         if self._start_patrol(reset_progress=True):
             self.get_logger().info('Auto-started patrol sequence.')
@@ -418,6 +464,7 @@ class PatrolNode(Node):
             waypoint_index,
             observe_on_waypoints=self._observe_on_inspect_waypoints,
             inspect_dwell_sec=self._inspect_dwell_sec,
+            max_batch_path_length_m=self._max_batch_path_length_m,
         )
         if (
             self._enable_batch_navigation
@@ -645,10 +692,7 @@ class PatrolNode(Node):
             not self._active_goal_soft_completed
             and self._active_navigation_kind in {'single', 'segment'}
             and self._active_target_pose is not None
-            and (
-                self._last_distance_remaining_m <= self._already_reached_xy_tolerance_m
-                or self._is_pose_already_reached(self._active_target_pose)
-            )
+            and self._is_pose_already_reached(self._active_target_pose)
         ):
             self._active_goal_soft_completed = True
         self._publish_status()
@@ -700,10 +744,11 @@ class PatrolNode(Node):
             self._handle_successful_waypoint(end_index)
             return
 
-        if (
-            active_goal_soft_completed
-            and kind in {'single', 'segment'}
-            and active_target_pose is not None
+        if kind in {'single', 'segment'} and should_treat_soft_completed_navigation_as_success(
+            self._latest_robot_pose,
+            active_target_pose,
+            goal_soft_completed=active_goal_soft_completed,
+            xy_tolerance_m=self._already_reached_xy_tolerance_m,
         ):
             self.get_logger().warning(
                 'Treating near-complete navigation as success for '

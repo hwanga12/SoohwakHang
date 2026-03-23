@@ -4,6 +4,7 @@ from agribot_navigation.patrol_node import (
     collect_batch_goal_end_index,
     is_pose_within_xy_tolerance,
     resolve_effective_waypoint_pose,
+    should_treat_soft_completed_navigation_as_success,
 )
 
 
@@ -166,6 +167,43 @@ def test_collect_batch_goal_end_index_stops_when_lane_id_is_missing() -> None:
     assert end_index == 0
 
 
+def test_collect_batch_goal_end_index_respects_max_batch_path_length() -> None:
+    waypoint_ids = ('lane_south', 'lane_north')
+    waypoints = {
+        'lane_south': Waypoint(
+            waypoint_id='lane_south',
+            display_name='Lane South',
+            purpose='entry',
+            description='entry',
+            pose=Pose2D(x=-9.0, y=-8.9, z=0.0, yaw=1.5708),
+            lane_id='sweep_01',
+            batchable=True,
+            observe_here=False,
+        ),
+        'lane_north': Waypoint(
+            waypoint_id='lane_north',
+            display_name='Lane North',
+            purpose='inspect',
+            description='inspect',
+            pose=Pose2D(x=-9.0, y=8.9, z=0.0, yaw=1.5708),
+            lane_id='sweep_01',
+            batchable=True,
+            observe_here=False,
+        ),
+    }
+
+    end_index = collect_batch_goal_end_index(
+        waypoint_ids,
+        waypoints,
+        0,
+        observe_on_waypoints=True,
+        inspect_dwell_sec=0.0,
+        max_batch_path_length_m=6.0,
+    )
+
+    assert end_index == 0
+
+
 def test_build_intermediate_segment_poses_returns_no_pose_for_short_hops() -> None:
     start = Pose2D(x=-10.0, y=14.0, z=0.0, yaw=3.1416)
     end = Pose2D(x=-10.0, y=30.0, z=0.0, yaw=3.1416)
@@ -195,6 +233,24 @@ def test_build_intermediate_segment_poses_splits_long_lane_travel() -> None:
     assert segment_poses[1].x == -10.0
     assert segment_poses[1].y == 90.0
     assert segment_poses[0].yaw == 1.5707963267948966
+
+
+def test_should_treat_soft_completed_navigation_as_success_requires_current_pose_near_target() -> None:
+    assert not should_treat_soft_completed_navigation_as_success(
+        Pose2D(x=4.3, y=1.4, z=0.0, yaw=0.0),
+        Pose2D(x=0.0, y=6.8, z=0.0, yaw=0.0),
+        goal_soft_completed=True,
+        xy_tolerance_m=0.9,
+    )
+
+
+def test_should_treat_soft_completed_navigation_as_success_accepts_nearby_pose() -> None:
+    assert should_treat_soft_completed_navigation_as_success(
+        Pose2D(x=0.2, y=6.2, z=0.0, yaw=0.0),
+        Pose2D(x=0.0, y=6.8, z=0.0, yaw=0.0),
+        goal_soft_completed=True,
+        xy_tolerance_m=0.9,
+    )
 
 
 def test_resolve_effective_waypoint_pose_keeps_lane_heading_for_inspect_waypoint() -> None:
