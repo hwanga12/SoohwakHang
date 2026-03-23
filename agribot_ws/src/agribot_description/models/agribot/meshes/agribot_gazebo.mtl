@@ -1,0 +1,16 @@
+newmtl lambert1_001
+Ka 0.200000 0.200000 0.200000
+Kd 0.800000 0.800000 0.800000
+Ks 0.000000 0.000000 0.000000
+d 1.0
+illum 2
+map_Kd agribot_gazebo_texture.jpg
+
+newmtl Cube_006__0
+Ka 0.200000 0.200000 0.200000
+Kd 0.800000 0.800000 0.800000
+Ks 0.000000 0.000000 0.000000
+d 1.0
+illum 2
+map_Kd agribot_gazebo_texture.jpg
+
