@@ -66,6 +66,7 @@ class HarvestRoutePlan:
     inspect_waypoint_id: str
     inspect_waypoint_name: str
     approach_pose: Pose2D
+    align_pose: Pose2D
     return_mode: str
     return_waypoint_id: str
     fallback_return_waypoint_id: str
@@ -166,6 +167,13 @@ def _route_bounds(plan: PatrolPlan, route: PatrolRoute) -> tuple[float, float, f
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(value, maximum))
+
+
+def _normalize_vector(delta_x: float, delta_y: float) -> tuple[float, float] | None:
+    magnitude = math.hypot(delta_x, delta_y)
+    if magnitude <= 1e-6:
+        return None
+    return delta_x / magnitude, delta_y / magnitude
 
 
 def _find_observation_context(
@@ -296,6 +304,75 @@ def _compute_approach_pose(
     )
 
 
+def _compute_align_pose(
+    plan: PatrolPlan,
+    route: PatrolRoute,
+    inspect_waypoint: Waypoint,
+    tomato: TomatoInstance,
+    approach_pose: Pose2D,
+) -> Pose2D:
+    align_standoff = plan.harvest_routing.align_standoff_from_crop_m
+    approach_limit = plan.harvest_routing.max_lateral_offset_from_inspect_m
+    min_route_x, max_route_x, min_route_y, max_route_y = _route_bounds(plan, route)
+
+    entry_pose = plan.waypoints[route.entry_pose_id].pose
+    turn_pose = plan.waypoints[route.turn_pose_id].pose
+    lane_heading = _normalize_vector(
+        turn_pose.x - entry_pose.x,
+        turn_pose.y - entry_pose.y,
+    )
+    if lane_heading is None:
+        lane_heading = _normalize_vector(
+            math.cos(inspect_waypoint.pose.yaw),
+            math.sin(inspect_waypoint.pose.yaw),
+        )
+    if lane_heading is None:
+        lane_heading = (0.0, 1.0)
+
+    crop_facing_direction = (-lane_heading[1], lane_heading[0])
+    inspect_to_tomato = _normalize_vector(
+        tomato.pose.x - inspect_waypoint.pose.x,
+        tomato.pose.y - inspect_waypoint.pose.y,
+    )
+    if inspect_to_tomato is not None:
+        if (
+            inspect_to_tomato[0] * crop_facing_direction[0]
+            + inspect_to_tomato[1] * crop_facing_direction[1]
+        ) < 0.0:
+            crop_facing_direction = (-crop_facing_direction[0], -crop_facing_direction[1])
+
+    approach_to_tomato = _normalize_vector(
+        tomato.pose.x - approach_pose.x,
+        tomato.pose.y - approach_pose.y,
+    )
+    if approach_to_tomato is not None:
+        if (
+            approach_to_tomato[0] * crop_facing_direction[0]
+            + approach_to_tomato[1] * crop_facing_direction[1]
+        ) < 0.0:
+            crop_facing_direction = (-crop_facing_direction[0], -crop_facing_direction[1])
+
+    align_x = tomato.pose.x - (crop_facing_direction[0] * align_standoff)
+    align_y = tomato.pose.y - (crop_facing_direction[1] * align_standoff)
+    expansion = approach_limit
+    align_x = _clamp(align_x, min_route_x - expansion, max_route_x + expansion)
+    align_y = _clamp(align_y, min_route_y - expansion, max_route_y + expansion)
+
+    facing_vector = _normalize_vector(
+        tomato.pose.x - align_x,
+        tomato.pose.y - align_y,
+    )
+    if facing_vector is None:
+        facing_vector = crop_facing_direction
+
+    return Pose2D(
+        x=align_x,
+        y=align_y,
+        z=inspect_waypoint.pose.z,
+        yaw=math.atan2(facing_vector[1], facing_vector[0]),
+    )
+
+
 def _resolve_return_waypoint_id(
     plan: PatrolPlan,
     context: HarvestObservationContext,
@@ -338,6 +415,12 @@ def compute_harvest_route(
         preferred_inspect_waypoint_id=preferred_return_waypoint_id,
     )
     requested_return_mode = return_mode or plan.harvest_routing.default_return_mode
+    approach_pose = _compute_approach_pose(
+        plan,
+        context.route,
+        context.inspect_waypoint,
+        tomato,
+    )
 
     return_waypoint_id = _resolve_return_waypoint_id(
         plan,
@@ -360,11 +443,13 @@ def compute_harvest_route(
         lane_side=context.route.lane_side,
         inspect_waypoint_id=context.inspect_waypoint.waypoint_id,
         inspect_waypoint_name=context.inspect_waypoint.display_name,
-        approach_pose=_compute_approach_pose(
+        approach_pose=approach_pose,
+        align_pose=_compute_align_pose(
             plan,
             context.route,
             context.inspect_waypoint,
             tomato,
+            approach_pose,
         ),
         return_mode=requested_return_mode,
         return_waypoint_id=return_waypoint_id,
@@ -391,6 +476,7 @@ def _route_plan_to_dict(plan: PatrolPlan, route_plan: HarvestRoutePlan) -> dict[
         'inspect_waypoint_id': route_plan.inspect_waypoint_id,
         'inspect_waypoint_name': route_plan.inspect_waypoint_name,
         'approach_pose': _pose_to_dict(route_plan.approach_pose),
+        'align_pose': _pose_to_dict(route_plan.align_pose),
         'return_mode': route_plan.return_mode,
         'return_waypoint_id': route_plan.return_waypoint_id,
         'return_pose': _pose_to_dict(plan.waypoints[route_plan.return_waypoint_id].pose),
