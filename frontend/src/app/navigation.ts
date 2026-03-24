@@ -3,37 +3,43 @@ export type NavigationItem = {
   label: string
   caption: string
   description: string
+  icon: string
 }
 
 export const navigationItems: NavigationItem[] = [
   {
     path: '/',
-    label: 'Dashboard',
+    label: '대시보드',
     caption: '운영 요약',
-    description: '로봇 상태, 실시간 알림, 환경값을 한 번에 확인합니다.',
+    description: '순찰 상태, 병해 알림, 환경값을 운영 기준으로 압축해 보여줍니다.',
+    icon: 'dashboard',
   },
   {
-    path: '/map',
-    label: 'Map Control',
+    path: '/robot',
+    label: '로봇',
     caption: '지도와 제어',
-    description: '비닐하우스 맵과 로봇 제어 액션을 배치합니다.',
+    description: '온실 맵, 현재 waypoint, 미션 진행률과 제어 액션을 함께 둡니다.',
+    icon: 'precision_manufacturing',
   },
   {
-    path: '/alerts',
-    label: 'Alert Center',
-    caption: '병해 및 장애',
-    description: '알림 타임라인과 우선순위 대응 흐름을 구성합니다.',
+    path: '/plants',
+    label: '작물',
+    caption: '작물 진단',
+    description: '생육 상태와 질병 의심 개체를 같은 흐름에서 훑어보게 구성합니다.',
+    icon: 'potted_plant',
   },
   {
-    path: '/environment',
-    label: 'Environment',
+    path: '/iot',
+    label: 'IoT',
     caption: '센서와 자동화',
-    description: '온실 센서 상태와 자동화 추천을 시각화합니다.',
+    description: '센서 값, 장치 상태, 자동 제어 추천과 승인 흐름을 배치합니다.',
+    icon: 'sensors',
   },
   {
     path: '/harvest',
-    label: 'Harvest Board',
-    caption: '수확 지표',
-    description: '수확량, 적재 현황, 작업 계획을 정리합니다.',
+    label: '수확',
+    caption: '배치와 적재',
+    description: '수확 미션, 바구니 적재 상태, 품질 지표를 운영 관점으로 정리합니다.',
+    icon: 'psychiatry',
   },
 ]

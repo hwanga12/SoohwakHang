@@ -1,43 +1,44 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AppIcon } from '@/components/app-icon'
 import { MetricCard } from '@/components/metric-card'
-import { SectionCard } from '@/components/section-card'
-
-const robotMetrics = [
-  { label: '현재 모드', value: 'Patrol', meta: 'B 루트 순찰 중', tone: 'accent' },
-  { label: '배터리', value: '74%', meta: '충전 없이 2시간 10분 예상', tone: 'warning' },
-  { label: '다음 목표', value: 'B-04', meta: '병해 확인 포인트 접근', tone: 'accent' },
-] as const
+import {
+  getRobotPageData,
+  robotFallback,
+  sendRobotControlAction,
+} from '@/lib/api/agribot'
 
 const controlActions = [
-  {
-    title: '순찰 시작',
-    detail: '오늘 배정된 waypoint 세트를 기준으로 주행을 시작합니다.',
-  },
-  {
-    title: '순찰 중지',
-    detail: '현재 구역 작업 완료 후 안전 정지 상태로 전환합니다.',
-  },
-  {
-    title: '홈 복귀',
-    detail: '충전 스테이션으로 복귀 명령을 전송합니다.',
-  },
-  {
-    title: '긴급 정지',
-    detail: '즉시 모터를 정지하고 운영자 확인을 기다립니다.',
-  },
-] as const
-
-const zones = [
-  { name: 'A Zone', copy: '병해 감시 우선 구역', state: '주의' },
-  { name: 'B Zone', copy: '현재 순찰 동선 진행 중', state: '진행 중' },
-  { name: 'C Zone', copy: '수확 예정 개체 밀집', state: '대기' },
-  { name: 'Dock', copy: '충전 및 바구니 적재 지점', state: '정상' },
+  { id: 'pause', title: '정지', icon: 'pause_circle', tone: 'soft' },
+  { id: 'resume', title: '재개', icon: 'play_circle', tone: 'soft' },
+  { id: 'home', title: '복귀', icon: 'home', tone: 'soft' },
+  { id: 'emergency', title: '비상 정지', icon: 'emergency_home', tone: 'danger' },
 ] as const
 
 export function MapControlPage() {
+  const queryClient = useQueryClient()
+  const robotQuery = useQuery({
+    queryKey: ['page', 'robot'],
+    queryFn: getRobotPageData,
+    initialData: robotFallback,
+    refetchInterval: 10_000,
+  })
+  const controlMutation = useMutation({
+    mutationFn: sendRobotControlAction,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
+    },
+  })
+  const page = robotQuery.data
+  const feedbackMessage = controlMutation.isSuccess
+    ? controlMutation.data
+    : controlMutation.isError
+      ? controlMutation.error.message
+      : null
+
   return (
-    <div className="page-grid">
-      <section className="metrics-grid">
-        {robotMetrics.map((metric) => (
+    <div className="screen">
+      <section className="metric-row metric-row--compact">
+        {page.metrics.map((metric) => (
           <MetricCard
             key={metric.label}
             label={metric.label}
@@ -48,40 +49,138 @@ export function MapControlPage() {
         ))}
       </section>
 
-      <section className="layout-two-col">
-        <SectionCard
-          description="실제 지도 이미지 또는 SVG overlay를 붙일 자리를 미리 잡아둔 상태입니다."
-          eyebrow="Map"
-          title="비닐하우스 맵"
-        >
-          <div className="map-stage">
-            <div className="map-grid">
-              {zones.map((zone) => (
-                <article className="map-zone" key={zone.name}>
-                  <strong>{zone.name}</strong>
-                  <span className="muted">{zone.copy}</span>
-                  <span className="badge badge--accent">{zone.state}</span>
-                </article>
-              ))}
-            </div>
-            <div className="robot-marker">AGR-02</div>
+      <section className="map-layout">
+        <article className="map-board panel">
+          <div className="map-floating-card">
+            <span className="panel-kicker">현재 경유지</span>
+            <strong>{page.waypoint}</strong>
+            <p>{page.zoneLabel}</p>
           </div>
-        </SectionCard>
 
-        <SectionCard
-          description="버튼 이벤트에 backend 명령 호출만 연결하면 제어 화면으로 바로 확장할 수 있습니다."
-          eyebrow="Commands"
-          title="로봇 제어"
-        >
-          <div className="control-grid">
+          <div className="camera-peek">
+            <span className="camera-live-pill">
+              <span className="live-dot" />
+              실시간
+            </span>
+            <div className="camera-frame" />
+          </div>
+
+          <svg
+            aria-hidden="true"
+            className="map-overlay"
+            preserveAspectRatio="xMidYMid slice"
+            viewBox="0 0 800 600"
+          >
+            <path d="M110 110 L300 110 L300 400 L610 400 L610 220" />
+            <circle cx="110" cy="110" r="7" />
+            <circle cx="300" cy="110" r="7" />
+            <circle cx="300" cy="400" r="7" />
+            <circle className="map-pulse" cx="610" cy="400" r="12" />
+            <circle cx="610" cy="400" r="8" />
+          </svg>
+
+          <div className="robot-marker">
+            <div className="robot-marker-box">
+              <AppIcon filled name="navigation" />
+            </div>
+          </div>
+
+          <div className="map-controls">
+            <button className="icon-button" type="button">
+              <AppIcon name="add" />
+            </button>
+            <button className="icon-button" type="button">
+              <AppIcon name="remove" />
+            </button>
+            <button className="icon-button icon-button--active" type="button">
+              <AppIcon filled name="my_location" />
+            </button>
+          </div>
+        </article>
+
+        <aside className="map-sidebar">
+          <article className="panel">
+            <div className="section-head">
+              <div>
+                <span className="section-eyebrow">Mission Progress</span>
+                <h3 className="section-title">{page.progressPct}%</h3>
+                <p className="section-description">{page.eta}</p>
+              </div>
+              <span className="table-tag table-tag--healthy">{page.missionState}</span>
+            </div>
+            <div className="progress-track">
+              <span className="progress-fill" style={{ width: `${page.progressPct}%` }} />
+            </div>
+            <div className="mini-card-grid">
+              <article className="mini-metric-card">
+                <span className="mini-metric-label">배터리</span>
+                <strong className="mini-metric-value">{page.battery}</strong>
+              </article>
+              <article className="mini-metric-card">
+                <span className="mini-metric-label">속도</span>
+                <strong className="mini-metric-value">{page.speed}</strong>
+              </article>
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="section-head">
+              <div>
+                <span className="section-eyebrow">Robot Control</span>
+                <h3 className="section-title">제어 센터</h3>
+                <p className="section-description">
+                `robots/commands`, `missions/patrol/*`, `missions/return-home` 대응 버튼 구성입니다.
+              </p>
+            </div>
+            <span className="table-tag table-tag--warning">
+              {page.source === 'live' ? 'live API' : 'fallback'}
+            </span>
+          </div>
+          <div className="control-tile-grid">
             {controlActions.map((action) => (
-              <button className="control-button" key={action.title} type="button">
-                <strong>{action.title}</strong>
-                <span className="muted">{action.detail}</span>
+              <button
+                className={`control-tile${action.tone === 'danger' ? ' control-tile--danger' : ''}`}
+                key={action.title}
+                onClick={() => {
+                  controlMutation.mutate(action.id)
+                }}
+                disabled={controlMutation.isPending}
+                type="button"
+              >
+                <AppIcon
+                    className="control-tile-icon"
+                    filled={action.tone === 'danger'}
+                    name={action.icon}
+                />
+                <span>{action.title}</span>
               </button>
             ))}
           </div>
-        </SectionCard>
+          {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
+          <button className="action-button" type="button">
+            {controlMutation.isPending ? '명령 전송 중...' : '수동 제어 모드'}
+          </button>
+        </article>
+
+          <article className="panel">
+            <div className="section-head">
+              <div>
+                <span className="section-eyebrow">Event Log</span>
+                <h3 className="section-title">이벤트 로그</h3>
+              </div>
+            </div>
+            <div className="stacked-list">
+              {page.logs.map((log) => (
+                <article className="log-item" key={log}>
+                  <span className="log-dot log-dot--accent" />
+                  <div className="log-copy">
+                    <p>{log}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </article>
+        </aside>
       </section>
     </div>
   )

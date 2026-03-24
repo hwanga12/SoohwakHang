@@ -27,6 +27,7 @@ class StartupMapTfBroadcaster(Node):
             10,
         )
         self._initial_pose_received = False
+        self._stopped = False
 
     def _publish_identity_transform(self) -> None:
         transform = TransformStamped()
@@ -44,12 +45,20 @@ class StartupMapTfBroadcaster(Node):
             )
 
     def _handle_amcl_pose(self, msg: PoseWithCovarianceStamped) -> None:
+        if self._stopped:
+            return
+
+        self._stopped = True
         self.get_logger().info(
             f'Received /amcl_pose ({msg.header.frame_id}), stopping temp broadcaster.'
         )
         self._timer.cancel()
-        # In ROS 2, it is safer to just stop the timer than to destroy subs mid-spin
-        # in some versions, but let's at least ensure we don't crash.
+        self.destroy_timer(self._timer)
+        self._timer = None
+        self.destroy_subscription(self._initial_pose_subscription)
+        self._initial_pose_subscription = None
+        self.destroy_subscription(self._amcl_pose_subscription)
+        self._amcl_pose_subscription = None
 
 
 def main(args=None) -> None:

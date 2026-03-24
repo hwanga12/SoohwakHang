@@ -1,11 +1,12 @@
-"""Generate a reproducible baseline greenhouse occupancy map."""
+"""Generate the committed hardcoded occupancy map for farm_world.sdf."""
 
 from __future__ import annotations
 
 import argparse
 import math
+import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import yaml
 
@@ -14,46 +15,79 @@ FREE = 254
 OCCUPIED = 0
 UNKNOWN = 205
 
+DEFAULT_RESOLUTION = 0.05
+GROUND_HALF_EXTENT = 10.0
+OUTER_WALL_CENTER = 10.0
+OUTER_WALL_LENGTH = 20.0
+OUTER_WALL_THICKNESS = 0.5
+CROP_ROW_SPECS = (
+    (-6.0, 14.0),
+    (-2.0, 14.0),
+    (2.0, 14.0),
+    (6.0, 14.0),
+)
+CROP_ROW_THICKNESS = 0.5
+SPRINKLER_CENTERS = (
+    (-6.0, 0.0),
+    (-2.0, 0.0),
+    (2.0, 0.0),
+    (6.0, 0.0),
+)
+SPRINKLER_SIZE = 0.1
+
+
+@dataclass(frozen=True)
+class Rect:
+    min_x: float
+    min_y: float
+    max_x: float
+    max_y: float
+
+    @classmethod
+    def from_center(
+        cls,
+        center_x: float,
+        center_y: float,
+        size_x: float,
+        size_y: float,
+    ) -> 'Rect':
+        half_x = size_x / 2.0
+        half_y = size_y / 2.0
+        return cls(
+            min_x=center_x - half_x,
+            min_y=center_y - half_y,
+            max_x=center_x + half_x,
+            max_y=center_y + half_y,
+        )
+
 
 def parse_args() -> argparse.Namespace:
     package_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(
         description=(
-            "Generate a baseline greenhouse occupancy map from the committed "
-            "zone and crop metadata."
+            'Generate the hardcoded Nav2 occupancy map that matches '
+            'agribot_description/worlds/farm_world.sdf.'
         )
-    )
-    parser.add_argument(
-        '--zones',
-        type=Path,
-        default=package_root / 'config' / 'zones.yaml',
-        help='Path to zones.yaml.',
-    )
-    parser.add_argument(
-        '--crops',
-        type=Path,
-        default=package_root.parent / 'agribot_description' / 'config' / 'crop_instances.yaml',
-        help='Path to crop_instances.yaml.',
     )
     parser.add_argument(
         '--output-prefix',
         type=Path,
-        default=package_root / 'maps' / 'greenhouse_map',
-        help='Output prefix for the generated map files.',
+        default=package_root / 'maps' / 'farm_map',
+        help='Output prefix for the farm occupancy map.',
     )
-    parser.add_argument('--resolution', type=float, default=0.10)
-    parser.add_argument('--padding', type=float, default=5.0)
-    parser.add_argument('--wall-thickness', type=float, default=0.80)
-    parser.add_argument('--crop-padding-x', type=float, default=2.50)
-    parser.add_argument('--crop-padding-y', type=float, default=4.00)
-    parser.add_argument('--plant-radius', type=float, default=1.00)
-    parser.add_argument('--entrance-half-width', type=float, default=4.00)
+    parser.add_argument(
+        '--boundary-yaml',
+        type=Path,
+        default=package_root / 'maps' / 'farm_exploration_boundary.yaml',
+        help='Optional yaml path for the exploration boundary map metadata.',
+    )
+    parser.add_argument(
+        '--resolution',
+        type=float,
+        default=DEFAULT_RESOLUTION,
+        help='Map resolution in meters per pixel.',
+    )
     return parser.parse_args()
-
-
-def load_yaml(path: Path) -> dict:
-    with path.open('r', encoding='utf-8') as stream:
-        return yaml.safe_load(stream)
 
 
 def make_grid(width: int, height: int, value: int = FREE) -> list[bytearray]:
@@ -77,98 +111,110 @@ def clamp(value: int, lower: int, upper: int) -> int:
     return max(lower, min(value, upper))
 
 
+def world_range_to_index_range(
+    lower: float,
+    upper: float,
+    origin: float,
+    resolution: float,
+    limit: int,
+) -> tuple[int, int] | None:
+    start = int(math.ceil(((lower - origin) / resolution) - 0.5))
+    end = int(math.floor(((upper - origin) / resolution) - 0.5))
+    if end < 0 or start > limit - 1 or start > end:
+        return None
+    return (
+        clamp(start, 0, limit - 1),
+        clamp(end, 0, limit - 1),
+    )
+
+
 def fill_rect(
     grid: list[bytearray],
     origin_x: float,
     origin_y: float,
     resolution: float,
-    min_x: float,
-    min_y: float,
-    max_x: float,
-    max_y: float,
+    rect: Rect,
     value: int,
 ) -> None:
     width = len(grid[0])
     height = len(grid)
-    start_x, start_y = world_to_index(min_x, min_y, origin_x, origin_y, resolution)
-    end_x, end_y = world_to_index(max_x, max_y, origin_x, origin_y, resolution)
+    x_range = world_range_to_index_range(
+        rect.min_x,
+        rect.max_x,
+        origin_x,
+        resolution,
+        width,
+    )
+    y_range = world_range_to_index_range(
+        rect.min_y,
+        rect.max_y,
+        origin_y,
+        resolution,
+        height,
+    )
+    if x_range is None or y_range is None:
+        return
 
-    start_x = clamp(start_x, 0, width - 1)
-    end_x = clamp(end_x, 0, width - 1)
-    start_y = clamp(start_y, 0, height - 1)
-    end_y = clamp(end_y, 0, height - 1)
-
+    start_x, end_x = x_range
+    start_y, end_y = y_range
     for map_y in range(start_y, end_y + 1):
         row = grid[height - 1 - map_y]
         for map_x in range(start_x, end_x + 1):
             row[map_x] = value
 
 
-def fill_circle(
-    grid: list[bytearray],
-    origin_x: float,
-    origin_y: float,
-    resolution: float,
-    center_x: float,
-    center_y: float,
-    radius: float,
-    value: int,
-) -> None:
-    width = len(grid[0])
-    height = len(grid)
-    min_x, min_y = world_to_index(
-        center_x - radius,
-        center_y - radius,
-        origin_x,
-        origin_y,
-        resolution,
+def farm_ground_bounds() -> Rect:
+    return Rect(
+        min_x=-GROUND_HALF_EXTENT,
+        min_y=-GROUND_HALF_EXTENT,
+        max_x=GROUND_HALF_EXTENT,
+        max_y=GROUND_HALF_EXTENT,
     )
-    max_x, max_y = world_to_index(
-        center_x + radius,
-        center_y + radius,
-        origin_x,
-        origin_y,
-        resolution,
+
+
+def farm_collision_rects() -> tuple[Rect, ...]:
+    outer_walls = (
+        Rect.from_center(0.0, OUTER_WALL_CENTER, OUTER_WALL_LENGTH, OUTER_WALL_THICKNESS),
+        Rect.from_center(0.0, -OUTER_WALL_CENTER, OUTER_WALL_LENGTH, OUTER_WALL_THICKNESS),
+        Rect.from_center(OUTER_WALL_CENTER, 0.0, OUTER_WALL_THICKNESS, OUTER_WALL_LENGTH),
+        Rect.from_center(-OUTER_WALL_CENTER, 0.0, OUTER_WALL_THICKNESS, OUTER_WALL_LENGTH),
     )
-    min_x = clamp(min_x, 0, width - 1)
-    max_x = clamp(max_x, 0, width - 1)
-    min_y = clamp(min_y, 0, height - 1)
-    max_y = clamp(max_y, 0, height - 1)
-
-    radius_sq = radius * radius
-    for map_y in range(min_y, max_y + 1):
-        world_y = origin_y + (map_y + 0.5) * resolution
-        row = grid[height - 1 - map_y]
-        for map_x in range(min_x, max_x + 1):
-            world_x = origin_x + (map_x + 0.5) * resolution
-            if (world_x - center_x) ** 2 + (world_y - center_y) ** 2 <= radius_sq:
-                row[map_x] = value
+    crop_rows = tuple(
+        Rect.from_center(center_x, 0.0, CROP_ROW_THICKNESS, row_length)
+        for center_x, row_length in CROP_ROW_SPECS
+    )
+    sprinklers = tuple(
+        Rect.from_center(center_x, center_y, SPRINKLER_SIZE, SPRINKLER_SIZE)
+        for center_x, center_y in SPRINKLER_CENTERS
+    )
+    return outer_walls + crop_rows + sprinklers
 
 
-def build_crop_beds(
-    plants: Iterable[dict],
-    pad_x: float,
-    pad_y: float,
-) -> list[tuple[float, float, float, float]]:
-    grouped: dict[str, list[tuple[float, float]]] = {'left': [], 'right': []}
-    for plant in plants:
-        pose = plant['pose']
-        side = 'left' if pose['x'] < 0.0 else 'right'
-        grouped[side].append((pose['x'], pose['y']))
+def collision_bounds(rects: tuple[Rect, ...]) -> Rect:
+    return Rect(
+        min_x=min(rect.min_x for rect in rects),
+        min_y=min(rect.min_y for rect in rects),
+        max_x=max(rect.max_x for rect in rects),
+        max_y=max(rect.max_y for rect in rects),
+    )
 
-    beds: list[tuple[float, float, float, float]] = []
-    for poses in grouped.values():
-        if not poses:
-            continue
-        xs = [pose[0] for pose in poses]
-        ys = [pose[1] for pose in poses]
-        beds.append((
-            min(xs) - pad_x,
-            min(ys) - pad_y,
-            max(xs) + pad_x,
-            max(ys) + pad_y,
-        ))
-    return beds
+
+def build_farm_grid(
+    resolution: float = DEFAULT_RESOLUTION,
+) -> tuple[list[bytearray], tuple[float, float], Rect]:
+    obstacles = farm_collision_rects()
+    extents = collision_bounds(obstacles)
+    width = int(math.ceil((extents.max_x - extents.min_x) / resolution))
+    height = int(math.ceil((extents.max_y - extents.min_y) / resolution))
+
+    origin_x = extents.min_x
+    origin_y = extents.min_y
+    grid = make_grid(width, height, UNKNOWN)
+    fill_rect(grid, origin_x, origin_y, resolution, farm_ground_bounds(), FREE)
+    for rect in obstacles:
+        fill_rect(grid, origin_x, origin_y, resolution, rect, OCCUPIED)
+
+    return grid, (origin_x, origin_y), extents
 
 
 def write_pgm(path: Path, grid: list[bytearray]) -> None:
@@ -194,134 +240,46 @@ def write_map_yaml(path: Path, image_name: str, resolution: float, origin: tuple
         yaml.safe_dump(payload, stream, sort_keys=False)
 
 
+def relative_image_path(image_path: Path, yaml_path: Path) -> str:
+    return os.path.relpath(image_path, yaml_path.parent)
+
+
 def main() -> int:
     args = parse_args()
-    zones = load_yaml(Path(args.zones))
-    crops = load_yaml(Path(args.crops))
-
-    zone = next(
-        candidate
-        for candidate in zones['zones']
-        if candidate['zone_id'] == zones['default_zone_id']
-    )
-    bounds = zone['bounds']
-    plants = crops['plants']
-
-    origin_x = bounds['min_x'] - args.padding
-    origin_y = bounds['min_y'] - args.padding
-    width = int(math.ceil((bounds['max_x'] - bounds['min_x'] + 2 * args.padding) / args.resolution))
-    height = int(math.ceil((bounds['max_y'] - bounds['min_y'] + 2 * args.padding) / args.resolution))
-
-    grid = make_grid(width, height, UNKNOWN)
-    fill_rect(
-        grid,
-        origin_x,
-        origin_y,
-        args.resolution,
-        bounds['min_x'],
-        bounds['min_y'],
-        bounds['max_x'],
-        bounds['max_y'],
-        FREE,
-    )
-
-    wall = args.wall_thickness
-    entrance_half_width = args.entrance_half_width
-    fill_rect(
-        grid,
-        origin_x,
-        origin_y,
-        args.resolution,
-        bounds['min_x'],
-        bounds['min_y'],
-        bounds['min_x'] + wall,
-        bounds['max_y'],
-        OCCUPIED,
-    )
-    fill_rect(
-        grid,
-        origin_x,
-        origin_y,
-        args.resolution,
-        bounds['max_x'] - wall,
-        bounds['min_y'],
-        bounds['max_x'],
-        bounds['max_y'],
-        OCCUPIED,
-    )
-    fill_rect(
-        grid,
-        origin_x,
-        origin_y,
-        args.resolution,
-        bounds['min_x'],
-        bounds['max_y'] - wall,
-        bounds['max_x'],
-        bounds['max_y'],
-        OCCUPIED,
-    )
-    fill_rect(
-        grid,
-        origin_x,
-        origin_y,
-        args.resolution,
-        bounds['min_x'],
-        bounds['min_y'],
-        -entrance_half_width,
-        bounds['min_y'] + wall,
-        OCCUPIED,
-    )
-    fill_rect(
-        grid,
-        origin_x,
-        origin_y,
-        args.resolution,
-        entrance_half_width,
-        bounds['min_y'],
-        bounds['max_x'],
-        bounds['min_y'] + wall,
-        OCCUPIED,
-    )
-
-    for min_x, min_y, max_x, max_y in build_crop_beds(
-        plants,
-        args.crop_padding_x,
-        args.crop_padding_y,
-    ):
-        fill_rect(
-            grid,
-            origin_x,
-            origin_y,
-            args.resolution,
-            min_x,
-            min_y,
-            max_x,
-            max_y,
-            OCCUPIED,
-        )
-
-    for plant in plants:
-        pose = plant['pose']
-        fill_circle(
-            grid,
-            origin_x,
-            origin_y,
-            args.resolution,
-            pose['x'],
-            pose['y'],
-            args.plant_radius,
-            OCCUPIED,
-        )
+    grid, origin, extents = build_farm_grid(args.resolution)
 
     output_prefix = Path(args.output_prefix)
     output_prefix.parent.mkdir(parents=True, exist_ok=True)
     pgm_path = output_prefix.with_suffix('.pgm')
     yaml_path = output_prefix.with_suffix('.yaml')
-    write_pgm(pgm_path, grid)
-    write_map_yaml(yaml_path, pgm_path.name, args.resolution, (origin_x, origin_y))
+    boundary_yaml_path = Path(args.boundary_yaml)
+    boundary_yaml_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f'Wrote {pgm_path}')
+    write_pgm(pgm_path, grid)
+    write_map_yaml(
+        yaml_path,
+        relative_image_path(pgm_path, yaml_path),
+        args.resolution,
+        origin,
+    )
+    write_map_yaml(
+        boundary_yaml_path,
+        relative_image_path(pgm_path, boundary_yaml_path),
+        args.resolution,
+        origin,
+    )
+
+    width = len(grid[0])
+    height = len(grid)
+    print(
+        'Wrote '
+        f'{pgm_path} ({width}x{height}, resolution={args.resolution:.3f}, '
+        f'origin=({origin[0]:.2f}, {origin[1]:.2f}), '
+        f'collision_bounds=({extents.min_x:.2f}, {extents.min_y:.2f}) -> '
+        f'({extents.max_x:.2f}, {extents.max_y:.2f}))'
+    )
     print(f'Wrote {yaml_path}')
+    print(f'Wrote {boundary_yaml_path}')
     return 0
 
 

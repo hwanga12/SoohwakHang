@@ -1,10 +1,10 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { Navigate, createBrowserRouter } from 'react-router-dom'
 import AppShell from '@/app/shell'
-import { AlertsPage } from '@/pages/alerts-page'
 import { DashboardPage } from '@/pages/dashboard-page'
 import { EnvironmentPage } from '@/pages/environment-page'
 import { HarvestPage } from '@/pages/harvest-page'
 import { MapControlPage } from '@/pages/map-control-page'
+import { PlantsPage } from '@/pages/plants-page'
 
 export const router = createBrowserRouter([
   {
@@ -16,16 +16,28 @@ export const router = createBrowserRouter([
         element: <DashboardPage />,
       },
       {
-        path: 'map',
+        path: 'robot',
         element: <MapControlPage />,
       },
       {
+        path: 'map',
+        element: <Navigate replace to="/robot" />,
+      },
+      {
+        path: 'plants',
+        element: <PlantsPage />,
+      },
+      {
         path: 'alerts',
-        element: <AlertsPage />,
+        element: <Navigate replace to="/plants" />,
+      },
+      {
+        path: 'iot',
+        element: <EnvironmentPage />,
       },
       {
         path: 'environment',
-        element: <EnvironmentPage />,
+        element: <Navigate replace to="/iot" />,
       },
       {
         path: 'harvest',

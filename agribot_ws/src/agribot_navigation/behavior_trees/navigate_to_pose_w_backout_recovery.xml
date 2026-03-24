@@ -16,7 +16,7 @@
           selected_planner="{selected_planner}"
           default_planner="GridBased"
           topic_name="planner_selector"/>
-        <RateController hz="1.0">
+        <RateController hz="0.333">
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
             <ComputePathToPose
               goal="{goal}"
