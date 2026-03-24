@@ -61,11 +61,11 @@ export function EnvironmentPage() {
         <article className="hero-panel hero-panel--environment">
           <div className="hero-topline">
             <div>
-              <span className="panel-kicker">Precision Control</span>
+              <span className="panel-kicker">정밀 제어</span>
               <h3 className="hero-title">{page.recommendation}</h3>
             </div>
             <span className="live-pill">
-              {page.source === 'live' ? '실시간 장치 상태' : 'fallback 장치 상태'}
+              {page.source === 'live' ? '실시간 장치 상태' : '준비 데이터 장치 상태'}
             </span>
           </div>
           <div className="recommendation-strip">
@@ -109,7 +109,7 @@ export function EnvironmentPage() {
         <article className="panel">
           <div className="section-head">
             <div>
-              <span className="section-eyebrow">Device Control</span>
+              <span className="section-eyebrow">장치 제어</span>
               <h3 className="section-title">기기 제어</h3>
               <p className="section-description">
                 `iot/devices`, `actuations/recommendations`, `actuations/*` 동선을 기준으로
@@ -178,12 +178,43 @@ export function EnvironmentPage() {
             ))}
           </div>
           {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
+
+          <div className="panel-divider" />
+
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">승인 큐</span>
+              <h3 className="section-title">제어 추천 대기열</h3>
+              <p className="section-description">
+                자동 제어 권고를 운영자가 검토하고 승인할 수 있도록 별도 큐로 분리했습니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="recommendation-list">
+            {page.recommendations.map((item) => (
+              <article className="queue-card" key={item.id}>
+                <div className="split-row">
+                  <span
+                    className={`table-tag table-tag--${
+                      item.priority.includes('높') ? 'danger' : 'warning'
+                    }`}
+                  >
+                    {item.priority}
+                  </span>
+                  <span className="list-meta">{item.status}</span>
+                </div>
+                <h4 className="list-title">{item.title}</h4>
+                <p>{item.detail}</p>
+              </article>
+            ))}
+          </div>
         </article>
 
         <article className="panel">
           <div className="section-head">
             <div>
-              <span className="section-eyebrow">System Health</span>
+              <span className="section-eyebrow">시스템 상태</span>
               <h3 className="section-title">시스템 상태</h3>
               <p className="section-description">
                 MQTT bridge와 센서 상태를 운영자에게 짧은 막대 그래프로 보여줍니다.
@@ -205,6 +236,39 @@ export function EnvironmentPage() {
                   />
                 </div>
                 <strong>{bar.value}%</strong>
+              </article>
+            ))}
+          </div>
+
+          <div className="panel-divider" />
+
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">제어 이력</span>
+              <h3 className="section-title">최근 실행 기록</h3>
+              <p className="section-description">
+                `actuations/history` 기준으로 어떤 장치에 어떤 명령이 갔는지 빠르게 확인합니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="history-list">
+            {page.history.map((item) => (
+              <article className={`history-item history-item--${item.tone}`} key={item.id}>
+                <div className="split-row">
+                  <div>
+                    <h4 className="list-title">{item.device}</h4>
+                    <p className="list-meta">{item.time}</p>
+                  </div>
+                  <span
+                    className={`table-tag table-tag--${
+                      item.tone === 'critical' ? 'danger' : item.tone
+                    }`}
+                  >
+                    {item.result}
+                  </span>
+                </div>
+                <p>{item.action}</p>
               </article>
             ))}
           </div>

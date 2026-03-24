@@ -5,6 +5,7 @@ import {
   getRobotPageData,
   robotFallback,
   sendRobotControlAction,
+  sendRobotZoneMove,
 } from '@/lib/api/agribot'
 
 const controlActions = [
@@ -28,12 +29,23 @@ export function MapControlPage() {
       await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
     },
   })
+  const zoneMoveMutation = useMutation({
+    mutationFn: sendRobotZoneMove,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
+    },
+  })
   const page = robotQuery.data
-  const feedbackMessage = controlMutation.isSuccess
-    ? controlMutation.data
-    : controlMutation.isError
-      ? controlMutation.error.message
-      : null
+  const actionPending = controlMutation.isPending || zoneMoveMutation.isPending
+  const feedbackMessage = zoneMoveMutation.isSuccess
+    ? zoneMoveMutation.data
+    : zoneMoveMutation.isError
+      ? zoneMoveMutation.error.message
+      : controlMutation.isSuccess
+        ? controlMutation.data
+        : controlMutation.isError
+          ? controlMutation.error.message
+          : null
 
   return (
     <div className="screen">
@@ -54,7 +66,7 @@ export function MapControlPage() {
           <div className="map-floating-card">
             <span className="panel-kicker">현재 경유지</span>
             <strong>{page.waypoint}</strong>
-            <p>{page.zoneLabel}</p>
+            <p>{page.targetLabel}</p>
           </div>
 
           <div className="camera-peek">
@@ -102,7 +114,7 @@ export function MapControlPage() {
           <article className="panel">
             <div className="section-head">
               <div>
-                <span className="section-eyebrow">Mission Progress</span>
+                <span className="section-eyebrow">미션 진행</span>
                 <h3 className="section-title">{page.progressPct}%</h3>
                 <p className="section-description">{page.eta}</p>
               </div>
@@ -111,14 +123,22 @@ export function MapControlPage() {
             <div className="progress-track">
               <span className="progress-fill" style={{ width: `${page.progressPct}%` }} />
             </div>
-            <div className="mini-card-grid">
-              <article className="mini-metric-card">
-                <span className="mini-metric-label">배터리</span>
-                <strong className="mini-metric-value">{page.battery}</strong>
+            <div className="detail-grid">
+              <article className="detail-card">
+                <span className="detail-label">현재 구역</span>
+                <strong className="detail-value">{page.zoneLabel}</strong>
               </article>
-              <article className="mini-metric-card">
-                <span className="mini-metric-label">속도</span>
-                <strong className="mini-metric-value">{page.speed}</strong>
+              <article className="detail-card">
+                <span className="detail-label">현재 위치</span>
+                <strong className="detail-value">{page.poseLabel}</strong>
+              </article>
+              <article className="detail-card">
+                <span className="detail-label">다음 목표</span>
+                <strong className="detail-value">{page.targetLabel}</strong>
+              </article>
+              <article className="detail-card">
+                <span className="detail-label">주행 상태</span>
+                <strong className="detail-value">{page.speed} · 배터리 {page.battery}</strong>
               </article>
             </div>
           </article>
@@ -126,46 +146,77 @@ export function MapControlPage() {
           <article className="panel">
             <div className="section-head">
               <div>
-                <span className="section-eyebrow">Robot Control</span>
+                <span className="section-eyebrow">로봇 제어</span>
                 <h3 className="section-title">제어 센터</h3>
                 <p className="section-description">
-                `robots/commands`, `missions/patrol/*`, `missions/return-home` 대응 버튼 구성입니다.
-              </p>
+                  `robot/commands`, `missions/patrol/*`, `missions/return-home` 흐름을 같은 패널에 모았습니다.
+                </p>
+              </div>
+              <span className="table-tag table-tag--warning">
+                {page.source === 'live' ? '실 API' : '준비 데이터'}
+              </span>
             </div>
-            <span className="table-tag table-tag--warning">
-              {page.source === 'live' ? 'live API' : 'fallback'}
-            </span>
-          </div>
-          <div className="control-tile-grid">
-            {controlActions.map((action) => (
-              <button
-                className={`control-tile${action.tone === 'danger' ? ' control-tile--danger' : ''}`}
-                key={action.title}
-                onClick={() => {
-                  controlMutation.mutate(action.id)
-                }}
-                disabled={controlMutation.isPending}
-                type="button"
-              >
-                <AppIcon
+            <div className="control-tile-grid">
+              {controlActions.map((action) => (
+                <button
+                  className={`control-tile${action.tone === 'danger' ? ' control-tile--danger' : ''}`}
+                  disabled={actionPending}
+                  key={action.title}
+                  onClick={() => {
+                    controlMutation.mutate(action.id)
+                  }}
+                  type="button"
+                >
+                  <AppIcon
                     className="control-tile-icon"
                     filled={action.tone === 'danger'}
                     name={action.icon}
-                />
-                <span>{action.title}</span>
-              </button>
-            ))}
-          </div>
-          {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
-          <button className="action-button" type="button">
-            {controlMutation.isPending ? '명령 전송 중...' : '수동 제어 모드'}
-          </button>
-        </article>
+                  />
+                  <span>{action.title}</span>
+                </button>
+              ))}
+            </div>
+            {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
+          </article>
 
           <article className="panel">
             <div className="section-head">
               <div>
-                <span className="section-eyebrow">Event Log</span>
+                <span className="section-eyebrow">구역 이동</span>
+                <h3 className="section-title">빠른 구역 이동</h3>
+                <p className="section-description">
+                  `robot/commands`의 `move_to_zone` 계약을 기준으로 운영자가 구역 단위 이동을 요청합니다.
+                </p>
+              </div>
+            </div>
+            <div className="preset-grid">
+              {page.zonePresets.map((preset) => (
+                <button
+                  className="preset-button"
+                  disabled={actionPending}
+                  key={preset.id}
+                  onClick={() => {
+                    zoneMoveMutation.mutate(preset.id)
+                  }}
+                  type="button"
+                >
+                  <div className="split-row">
+                    <div>
+                      <span className="panel-kicker">{preset.id}</span>
+                      <h4 className="list-title">{preset.name}</h4>
+                    </div>
+                    <AppIcon className="control-tile-icon" name="route" />
+                  </div>
+                  <p>{preset.detail}</p>
+                </button>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="section-head">
+              <div>
+                <span className="section-eyebrow">이벤트 로그</span>
                 <h3 className="section-title">이벤트 로그</h3>
               </div>
             </div>

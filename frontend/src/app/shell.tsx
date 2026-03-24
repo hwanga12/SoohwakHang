@@ -12,9 +12,22 @@ function matchCurrentPath(path: string, pathname: string) {
   return pathname.startsWith(path)
 }
 
+function formatModeLabel(mode: string) {
+  if (mode === 'development') {
+    return '개발'
+  }
+
+  if (mode === 'production') {
+    return '운영'
+  }
+
+  return mode
+}
+
 export default function AppShell() {
   const location = useLocation()
   const liveStatus = useLiveStatus()
+  const modeLabel = formatModeLabel(env.mode)
   const currentItem =
     navigationItems.find((item) =>
       matchCurrentPath(item.path, location.pathname),
@@ -34,7 +47,7 @@ export default function AppShell() {
             <AppIcon className="brand-mark-icon" filled name="eco" />
           </div>
           <div>
-            <span className="brand-kicker">Smart Greenhouse Suite</span>
+            <span className="brand-kicker">스마트 온실 운영</span>
             <h1 className="brand-title">{env.appName}</h1>
           </div>
         </div>
@@ -44,16 +57,20 @@ export default function AppShell() {
             <span className="live-dot" />
             {liveLabel}
           </div>
-          <button className="icon-button" type="button">
+          <NavLink
+            aria-label="알림 센터"
+            className={`icon-button${matchCurrentPath('/alerts', location.pathname) ? ' icon-button--active' : ''}`}
+            to="/alerts"
+          >
             <AppIcon name="notifications" />
-          </button>
+          </NavLink>
         </div>
       </header>
 
       <div className="shell-layout">
         <aside className="sidebar">
           <div className="sidebar-panel">
-            <span className="panel-kicker">Mission Frame</span>
+            <span className="panel-kicker">현재 화면</span>
             <h2 className="sidebar-title">{currentItem.caption}</h2>
             <p className="sidebar-copy">{currentItem.description}</p>
           </div>
@@ -82,18 +99,18 @@ export default function AppShell() {
           </nav>
 
           <div className="sidebar-panel sidebar-panel--muted">
-            <span className="panel-kicker">Connection</span>
+            <span className="panel-kicker">연결 상태</span>
             <dl className="sidebar-meta">
               <div>
-                <dt>Mode</dt>
-                <dd>{env.mode}</dd>
+                <dt>모드</dt>
+                <dd>{modeLabel}</dd>
               </div>
               <div>
                 <dt>REST API</dt>
                 <dd className="code-chip">{env.apiBaseUrl}</dd>
               </div>
               <div>
-                <dt>WebSocket</dt>
+                <dt>웹소켓</dt>
                 <dd className="code-chip">{env.wsUrl}</dd>
               </div>
             </dl>
@@ -108,9 +125,9 @@ export default function AppShell() {
               <p className="muted">{currentItem.description}</p>
             </div>
             <div className="workspace-pills">
-              <span className="mode-pill">Live Ops</span>
+              <span className="mode-pill">실시간 운영</span>
               <span className="mode-pill mode-pill--ghost">
-                {env.mode.toUpperCase()}
+                {modeLabel}
               </span>
             </div>
           </header>

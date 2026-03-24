@@ -24,13 +24,20 @@ export const navigationItems: NavigationItem[] = [
   {
     path: '/plants',
     label: '작물',
-    caption: '작물 진단',
-    description: '생육 상태와 질병 의심 개체를 같은 흐름에서 훑어보게 구성합니다.',
+    caption: '생육과 진단',
+    description: '생육 상태, 수확 후보, 병해 의심 개체를 같은 흐름에서 검토합니다.',
     icon: 'potted_plant',
   },
   {
+    path: '/alerts',
+    label: '알림',
+    caption: '병해와 설비 경고',
+    description: '병해, 센서, 장치 경고를 한 화면에서 읽고 처리 상태를 정리합니다.',
+    icon: 'notifications_active',
+  },
+  {
     path: '/iot',
-    label: 'IoT',
+    label: '설비',
     caption: '센서와 자동화',
     description: '센서 값, 장치 상태, 자동 제어 추천과 승인 흐름을 배치합니다.',
     icon: 'sensors',
@@ -40,6 +47,6 @@ export const navigationItems: NavigationItem[] = [
     label: '수확',
     caption: '배치와 적재',
     description: '수확 미션, 바구니 적재 상태, 품질 지표를 운영 관점으로 정리합니다.',
-    icon: 'psychiatry',
+    icon: 'inventory_2',
   },
 ]

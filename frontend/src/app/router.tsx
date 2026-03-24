@@ -1,5 +1,6 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 import AppShell from '@/app/shell'
+import { AlertsPage } from '@/pages/alerts-page'
 import { DashboardPage } from '@/pages/dashboard-page'
 import { EnvironmentPage } from '@/pages/environment-page'
 import { HarvestPage } from '@/pages/harvest-page'
@@ -29,7 +30,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'alerts',
-        element: <Navigate replace to="/plants" />,
+        element: <AlertsPage />,
       },
       {
         path: 'iot',

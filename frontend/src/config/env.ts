@@ -4,7 +4,7 @@ const withFallback = (value: string | undefined, fallback: string) =>
 export const env = {
   appName: withFallback(
     import.meta.env.VITE_APP_NAME,
-    '수확해조 Control Center',
+    '수확해조 관제 센터',
   ),
   apiBaseUrl: withFallback(
     import.meta.env.VITE_API_BASE_URL,

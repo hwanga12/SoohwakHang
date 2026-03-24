@@ -1,27 +1,58 @@
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { AppIcon } from '@/components/app-icon'
 import {
   getPlantsPageData,
   plantsFallback,
+  requestHarvestMission,
 } from '@/lib/api/agribot'
 
 export function PlantsPage() {
+  const queryClient = useQueryClient()
   const plantsQuery = useQuery({
     queryKey: ['page', 'plants'],
     queryFn: getPlantsPageData,
     initialData: plantsFallback,
     refetchInterval: 20_000,
   })
+  const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null)
+  const harvestMutation = useMutation({
+    mutationFn: requestHarvestMission,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['page', 'plants'] })
+      await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
+      await queryClient.invalidateQueries({ queryKey: ['page', 'harvest'] })
+    },
+  })
   const page = plantsQuery.data
+  const selectedPlant =
+    page.plants.find((plant) => plant.id === selectedPlantId) ?? page.plants[0]
+  const feedbackMessage = harvestMutation.isSuccess
+    ? harvestMutation.data
+    : harvestMutation.isError
+      ? harvestMutation.error.message
+      : null
+
+  useEffect(() => {
+    if (!selectedPlantId && page.plants[0]) {
+      setSelectedPlantId(page.plants[0].id)
+      return
+    }
+
+    if (selectedPlantId && !page.plants.some((plant) => plant.id === selectedPlantId)) {
+      setSelectedPlantId(page.plants[0]?.id ?? null)
+    }
+  }, [page.plants, selectedPlantId])
 
   return (
     <div className="screen">
       <section className="hero-grid hero-grid--plants">
         <article className="hero-panel hero-panel--accent">
           <div className="hero-topline">
-            <span className="panel-kicker">Plant Intelligence</span>
+            <span className="panel-kicker">작물 인텔리전스</span>
             <span className="live-pill live-pill--soft">
-              {page.source === 'live' ? 'AI 비전 + API 연결' : '시안 fallback 데이터'}
+              {page.source === 'live' ? 'AI 비전 + API 연결' : '시안 준비 데이터'}
             </span>
           </div>
           <h3 className="hero-title">
@@ -47,19 +78,19 @@ export function PlantsPage() {
           <div className="alert-count-icon">
             <AppIcon className="alert-count-symbol" filled name="warning" />
           </div>
-          <span className="panel-kicker">Critical Cases</span>
+          <span className="panel-kicker">중점 검수</span>
           <strong className="feature-number">{page.criticalCount}</strong>
           <p className="feature-copy">즉시 판독 또는 처치가 필요한 개체 수</p>
-          <button className="action-button action-button--danger" type="button">
-            치료 요청
-          </button>
+          <Link className="action-button action-button--danger" to="/alerts">
+            알림 센터 열기
+          </Link>
         </article>
       </section>
 
       <section className="panel">
         <div className="section-head">
           <div>
-            <span className="section-eyebrow">Alert Rail</span>
+            <span className="section-eyebrow">우선 알림</span>
             <h3 className="section-title">긴급 알림</h3>
             <p className="section-description">
               병해 분류 모델이 높은 신뢰도로 잡아낸 개체를 우선 카드로 띄웁니다.
@@ -99,58 +130,141 @@ export function PlantsPage() {
         </div>
       </section>
 
-      <section className="panel">
-        <div className="section-head">
-          <div>
-            <span className="section-eyebrow">Crop Ledger</span>
-            <h3 className="section-title">작물 현황</h3>
-            <p className="section-description">
-              필터 칩, 건강도, 상태 태그만으로 현장 검수 우선순위를 빠르게 고를 수 있게
-              구성했습니다.
-            </p>
+      <section className="content-grid content-grid--plants">
+        <article className="panel">
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">작물 원장</span>
+              <h3 className="section-title">작물 현황</h3>
+              <p className="section-description">
+                식물 ID와 토마토 대상 ID를 함께 보면서 수확 후보와 검수 대상을 고릅니다.
+              </p>
+            </div>
+            <div className="chip-row">
+              <span className="chip chip--active">전체</span>
+              <span className="chip">수확 후보</span>
+              <span className="chip">병해 점검</span>
+            </div>
           </div>
-          <div className="chip-row">
-            <span className="chip chip--active">전체</span>
-            <span className="chip">수확 가능</span>
-            <span className="chip">질병 의심</span>
-          </div>
-        </div>
 
-        <div className="table-card">
-          <div className="table-head">
-            <span>작물 종류</span>
-            <span>건강도</span>
-            <span>상태</span>
-          </div>
-          {page.plants.map((plant) => (
-            <article className="table-row" key={plant.id}>
-              <div className="table-row-main">
-                <AppIcon
-                  className={`plant-row-icon plant-row-icon--${plant.tone}`}
-                  name="potted_plant"
-                />
-                <div>
-                  <h4>{plant.name}</h4>
-                  <p>{plant.id}</p>
-                </div>
-              </div>
-              <div className="health-cell">
-                <div className="health-track">
-                  <span
-                    className={`health-fill health-fill--${plant.tone}`}
-                    style={{ width: `${plant.health}%` }}
+          <div className="table-card">
+            <div className="table-head">
+              <span>작물</span>
+              <span>건강도</span>
+              <span>상태</span>
+            </div>
+            {page.plants.map((plant) => (
+              <button
+                className={`table-row is-selectable${selectedPlant?.id === plant.id ? ' is-selected' : ''}`}
+                key={plant.id}
+                onClick={() => {
+                  setSelectedPlantId(plant.id)
+                }}
+                type="button"
+              >
+                <div className="table-row-main">
+                  <AppIcon
+                    className={`plant-row-icon plant-row-icon--${plant.tone}`}
+                    name="potted_plant"
                   />
+                  <div className="table-row-copy">
+                    <h4>{plant.name}</h4>
+                    <p>{plant.id}</p>
+                    <span className="table-row-meta">{plant.targetId}</span>
+                  </div>
                 </div>
-                <strong>{plant.health}</strong>
+                <div className="health-cell">
+                  <div className="health-track">
+                    <span
+                      className={`health-fill health-fill--${plant.tone}`}
+                      style={{ width: `${plant.health}%` }}
+                    />
+                  </div>
+                  <strong>{plant.health}</strong>
+                </div>
+                <div className="table-tag-wrap">
+                  <span className={`table-tag table-tag--${plant.tone === 'critical' ? 'danger' : plant.tone}`}>
+                    {plant.status}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">선택 상세</span>
+              <h3 className="section-title">
+                {selectedPlant ? `${selectedPlant.name} 상세` : '작물 상세'}
+              </h3>
+              <p className="section-description">
+                현재 선택한 작물의 대상 ID와 위치를 보고 바로 수확 요청으로 넘길 수 있습니다.
+              </p>
+            </div>
+            {selectedPlant ? (
+              <span className={`table-tag table-tag--${selectedPlant.tone === 'critical' ? 'danger' : selectedPlant.tone}`}>
+                {selectedPlant.status}
+              </span>
+            ) : null}
+          </div>
+
+          {selectedPlant ? (
+            <>
+              <div className="detail-grid">
+                <article className="detail-card">
+                  <span className="detail-label">작물 ID</span>
+                  <strong className="detail-value">{selectedPlant.id}</strong>
+                </article>
+                <article className="detail-card">
+                  <span className="detail-label">대상 토마토 ID</span>
+                  <strong className="detail-value">{selectedPlant.targetId}</strong>
+                </article>
+                <article className="detail-card">
+                  <span className="detail-label">구역</span>
+                  <strong className="detail-value">{selectedPlant.zoneLabel}</strong>
+                </article>
+                <article className="detail-card">
+                  <span className="detail-label">위치</span>
+                  <strong className="detail-value">{selectedPlant.positionLabel}</strong>
+                </article>
               </div>
-              <div className="table-tag-wrap">
-                <span className={`table-tag table-tag--${plant.tone}`}>
-                  {plant.status}
-                </span>
+
+              <div className="detail-list">
+                <article className="detail-line">
+                  <span className="detail-label">최근 관측</span>
+                  <strong>{selectedPlant.lastObserved}</strong>
+                </article>
+                <article className="detail-line">
+                  <span className="detail-label">권장 작업</span>
+                  <strong>{selectedPlant.recommendedAction}</strong>
+                </article>
+                <article className="detail-line">
+                  <span className="detail-label">건강도</span>
+                  <strong>{selectedPlant.health}점</strong>
+                </article>
               </div>
-            </article>
-          ))}
-        </div>
+
+              <button
+                className="action-button"
+                disabled={harvestMutation.isPending}
+                onClick={() => {
+                  harvestMutation.mutate({
+                    plantId: selectedPlant.id,
+                    fruitId: selectedPlant.targetId,
+                  })
+                }}
+                type="button"
+              >
+                {harvestMutation.isPending ? '요청 전송 중...' : '선택 대상 수확 요청'}
+              </button>
+              {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
+            </>
+          ) : (
+            <p className="muted">표에서 작물을 선택하면 상세 정보가 표시됩니다.</p>
+          )}
+        </article>
       </section>
     </div>
   )
