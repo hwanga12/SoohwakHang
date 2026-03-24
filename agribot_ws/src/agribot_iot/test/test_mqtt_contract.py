@@ -1,10 +1,12 @@
 from pathlib import Path
+import json
 
 from agribot_interfaces.msg import EnvironmentData, IoTCommand, IoTDeviceState
 from agribot_iot.mqtt_contract import (
     deserialize_iot_command_payload,
     load_mqtt_bridge_config,
     resolve_mqtt_topic,
+    serialize_message,
     serialize_environment_data,
     serialize_iot_command,
     serialize_iot_device_state,
@@ -31,6 +33,13 @@ def test_load_mqtt_bridge_config_contains_expected_routes() -> None:
     assert len(config.ros_to_mqtt) == 3
     assert len(config.mqtt_to_ros) == 1
     assert config.mqtt_to_ros[0].mqtt_topic == 'agribot/commands/actuation'
+    device_state_route = next(route for route in config.ros_to_mqtt if route.ros_topic == '/iot/device_state')
+    command_result_route = next(route for route in config.ros_to_mqtt if route.ros_topic == '/iot/command_result')
+
+    assert device_state_route.serializer == 'iot_device_state'
+    assert device_state_route.retain is True
+    assert command_result_route.serializer == 'raw_json'
+    assert command_result_route.retain is False
 
 
 def test_serializers_match_expected_json_shape() -> None:
@@ -82,3 +91,28 @@ def test_deserialize_iot_command_payload_rebuilds_message() -> None:
     assert message.device_id == 'farm_01_watering'
     assert message.command_type == 'dispense_water'
     assert message.target_value == 450.0
+
+
+def test_raw_json_serializer_keeps_command_result_payload_fields() -> None:
+    payload = String()
+    payload.data = json.dumps(
+        {
+            'command_id': 'result-01',
+            'zone_id': 'farm_01',
+            'device_id': 'farm_01_nutrient',
+            'device_type': 'nutrient',
+            'command_type': 'apply_nutrient_recipe',
+            'state': 'COMPLETED',
+            'success': True,
+            'nutrient_type': 'calcium_boost',
+            'requested_by': 'dashboard:user',
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+    )
+
+    serialized = serialize_message('raw_json', payload)
+
+    assert serialized['device_type'] == 'nutrient'
+    assert serialized['nutrient_type'] == 'calcium_boost'
+    assert serialized['requested_by'] == 'dashboard:user'
