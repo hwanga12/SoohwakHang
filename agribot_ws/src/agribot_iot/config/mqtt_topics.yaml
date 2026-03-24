@@ -1,0 +1,29 @@
+schema_version: 1
+broker:
+  host: localhost
+  port: 1883
+  client_id: agribot_iot_bridge
+  keepalive_sec: 30
+  qos: 1
+  retain_default: false
+ros_to_mqtt:
+  - ros_topic: /environment_data
+    ros_type: agribot_interfaces/msg/EnvironmentData
+    mqtt_topic_template: agribot/environment/{zone_id}
+    serializer: environment_data
+    retain: false
+  - ros_topic: /iot/device_state
+    ros_type: agribot_interfaces/msg/IoTDeviceState
+    mqtt_topic_template: agribot/iot/device_state
+    serializer: iot_device_state
+    retain: true
+  - ros_topic: /iot/command_result
+    ros_type: std_msgs/msg/String
+    mqtt_topic_template: agribot/iot/command_result
+    serializer: raw_json
+    retain: false
+mqtt_to_ros:
+  - mqtt_topic: agribot/commands/actuation
+    ros_topic: /iot/commands/manual
+    ros_type: agribot_interfaces/msg/IoTCommand
+    deserializer: iot_command
