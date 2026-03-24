@@ -4,22 +4,22 @@
 
 schema_version: 1
 frame_id: map
-default_zone_id: greenhouse_01
+default_zone_id: farm_01
 
 zones:
-  - zone_id: greenhouse_01
-    display_name: Greenhouse 01
-    description: Single operational zone covering the only greenhouse in farm_world.sdf.
+  - zone_id: farm_01
+    display_name: Farm 01
+    description: Single operational zone covering the rectangular farm_world.sdf test field.
     representative_pose:
       x: 0.0
-      y: 112.5
+      y: 0.0
       z: 0.0
       yaw: 0.0
     bounds:
-      min_x: -30.0
-      max_x: 30.0
-      min_y: -5.0
-      max_y: 230.0
+      min_x: -10.0
+      max_x: 10.0
+      min_y: -10.0
+      max_y: 10.0
     source:
       world_file: agribot_description/worlds/farm_world.sdf
-      greenhouse_model_name: greenhouse
+      layout: rectangular_farm

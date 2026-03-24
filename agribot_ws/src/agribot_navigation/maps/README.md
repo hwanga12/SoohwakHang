@@ -1,6 +1,7 @@
-Saved greenhouse maps live in this directory.
+Saved farm and greenhouse maps live in this directory.
 
-Generate the committed baseline map from the shared greenhouse metadata:
+Generate the committed hardcoded farm map that matches
+`agribot_description/worlds/farm_world.sdf`:
 
 ```bash
 ros2 run agribot_navigation generate_static_map
