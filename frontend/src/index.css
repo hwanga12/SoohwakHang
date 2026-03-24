@@ -19,15 +19,17 @@
   --text: #3a3a3a;
   --muted: #8a8a8a;
   --primary: #7db252;
-  --primary-soft: rgba(125, 178, 82, 0.14);
+  --primary-soft: #f4f9f1;
   --secondary: #75d4e1;
-  --secondary-soft: rgba(117, 212, 225, 0.15);
+  --secondary-soft: #f1fbfc;
   --accent-yellow: #fbea72;
+  --accent-yellow-soft: #fffdf2;
   --accent-pink: #ffb7c5;
+  --accent-pink-soft: #fff5f7;
   --warning: #f1a942;
-  --warning-soft: rgba(241, 169, 66, 0.12);
+  --warning-soft: #fff8f0;
   --danger: #ef7a6d;
-  --danger-soft: rgba(239, 122, 109, 0.12);
+  --danger-soft: #fff5f4;
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.02);
   --shadow-bubbly: 0 16px 48px rgba(125, 178, 82, 0.08), 0 8px 16px rgba(0, 0, 0, 0.02);
   --radius-xl: 40px;
@@ -159,9 +161,7 @@ button {
   display: grid;
   place-items: center;
   border-radius: 20px;
-  background:
-    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.4), transparent 60%),
-    linear-gradient(135deg, #a1d683, #7db252);
+  background: var(--primary);
   color: #fff;
   box-shadow: 0 4px 12px rgba(125, 178, 82, 0.2);
 }
@@ -500,21 +500,18 @@ button {
 }
 
 .hero-panel--accent {
-  background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.22), transparent 24%),
-    linear-gradient(135deg, rgba(23, 107, 43, 0.12), rgba(255, 255, 255, 0.78));
+  background: var(--primary-soft);
+  border: 1px solid rgba(125, 178, 82, 0.2);
 }
 
 .hero-panel--warning {
-  background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.24), transparent 24%),
-    linear-gradient(135deg, rgba(176, 113, 25, 0.14), rgba(255, 255, 255, 0.8));
+  background: var(--warning-soft);
+  border: 1px solid rgba(241, 169, 66, 0.2);
 }
 
 .hero-panel--danger {
-  background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.22), transparent 24%),
-    linear-gradient(135deg, rgba(179, 61, 47, 0.16), rgba(255, 255, 255, 0.8));
+  background: var(--danger-soft);
+  border: 1px solid rgba(239, 122, 109, 0.2);
 }
 
 .hero-panel--environment {
@@ -628,21 +625,15 @@ button {
 }
 
 .metric-card--accent {
-  background:
-    linear-gradient(180deg, rgba(23, 107, 43, 0.12), transparent 48%),
-    var(--surface);
+  background: var(--primary-soft);
 }
 
 .metric-card--warning {
-  background:
-    linear-gradient(180deg, rgba(176, 113, 25, 0.16), transparent 48%),
-    var(--surface);
+  background: var(--warning-soft);
 }
 
 .metric-card--danger {
-  background:
-    linear-gradient(180deg, rgba(179, 61, 47, 0.16), transparent 48%),
-    var(--surface);
+  background: var(--danger-soft);
 }
 
 .section-head {
@@ -709,7 +700,7 @@ button {
   padding: 0.95rem 1.25rem;
   border-radius: 20px;
   color: #fff;
-  background: linear-gradient(135deg, #7db252, #5a8a3a);
+  background: #7db252;
   font-weight: 800;
   box-shadow: 0 6px 0 #4a7530, 0 10px 20px rgba(125, 178, 82, 0.25);
   transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.1s ease;
@@ -721,7 +712,7 @@ button {
 }
 
 .action-button--secondary {
-  background: linear-gradient(135deg, #75d4e1, #55bcc9);
+  background: #75d4e1;
   box-shadow: 0 6px 0 #3e9ba8, 0 10px 20px rgba(117, 212, 225, 0.25);
 }
 
@@ -736,11 +727,13 @@ button {
 }
 
 .action-button--warning {
-  background: linear-gradient(135deg, #b07119, #8f5a12);
+  background: #f1a942;
+  box-shadow: 0 6px 0 #c78832, 0 10px 20px rgba(241, 169, 66, 0.25);
 }
 
 .action-button--danger {
-  background: linear-gradient(135deg, #b33d2f, #8f291d);
+  background: #ef7a6d;
+  box-shadow: 0 6px 0 #c76156, 0 10px 20px rgba(239, 122, 109, 0.25);
 }
 
 .ghost-chip {
@@ -763,7 +756,7 @@ button {
 
 .chip--active {
   color: #fff;
-  background: linear-gradient(135deg, #7db252, #5a8a3a);
+  background: #7db252;
 }
 
 .table-tag {
@@ -818,9 +811,7 @@ button {
 .alert-card-visual {
   position: relative;
   min-height: 128px;
-  background:
-    linear-gradient(135deg, rgba(24, 47, 28, 0.12), rgba(255, 255, 255, 0.18)),
-    linear-gradient(120deg, #88a56d 0%, #d9d5aa 52%, #f2ead1 100%);
+  background: #fbfdfb;
 }
 
 .alert-card-visual::after {
@@ -926,16 +917,16 @@ button {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #176b2b, #7db77f);
+  background: var(--primary);
 }
 
 .health-fill--warning {
-  background: linear-gradient(90deg, #b07119, #e0ba6b);
+  background: var(--warning);
 }
 
 .health-fill--critical,
 .health-fill--danger {
-  background: linear-gradient(90deg, #b33d2f, #e3958a);
+  background: var(--danger);
 }
 
 .table-tag-wrap {
@@ -955,8 +946,8 @@ button {
 
 .table-row.is-selectable:hover,
 .table-row.is-selected {
-  border-color: rgba(23, 107, 43, 0.16);
-  background: linear-gradient(135deg, rgba(23, 107, 43, 0.08), rgba(255, 255, 255, 0.82));
+  border-color: rgba(125, 178, 82, 0.2);
+  background: var(--primary-soft);
 }
 
 .device-grid {
@@ -1039,7 +1030,7 @@ button {
 
 .segment-button.is-active {
   color: #fff;
-  background: linear-gradient(135deg, #176b2b, #0e4d1f);
+  background: var(--primary);
 }
 
 .health-row {
@@ -1064,31 +1055,14 @@ button {
 .map-board {
   min-height: 620px;
   padding: 0;
-  background:
-    linear-gradient(180deg, rgba(225, 233, 224, 0.84), rgba(241, 245, 238, 0.86)),
-    linear-gradient(145deg, #f2f5ef 0%, #e5ece1 100%);
+  background: #f4f9f1;
 }
 
 .map-board::before {
   content: '';
   position: absolute;
   inset: 0;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgba(23, 107, 43, 0.05) 0,
-      rgba(23, 107, 43, 0.05) 52px,
-      transparent 52px,
-      transparent 106px
-    ),
-    repeating-linear-gradient(
-      180deg,
-      rgba(18, 33, 23, 0.04) 0,
-      rgba(18, 33, 23, 0.04) 44px,
-      transparent 44px,
-      transparent 88px
-    );
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.8), transparent 120%);
+  background: transparent;
 }
 
 .map-floating-card,
@@ -1145,10 +1119,7 @@ button {
 .camera-frame {
   aspect-ratio: 16 / 10;
   border-radius: 12px;
-  background:
-    radial-gradient(circle at 40% 38%, rgba(255, 255, 255, 0.24), transparent 12%),
-    linear-gradient(145deg, rgba(24, 47, 28, 0.16), rgba(255, 255, 255, 0.06)),
-    linear-gradient(135deg, #7f9a7f 0%, #b0c09b 52%, #d1d2b3 100%);
+  background: #e5ece1;
 }
 
 .map-overlay {
@@ -1195,10 +1166,8 @@ button {
   place-items: center;
   border-radius: 28px;
   color: #fff;
-  background:
-    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.42), transparent 28%),
-    linear-gradient(135deg, #176b2b, #0e4d1f);
-  box-shadow: 0 24px 36px rgba(18, 33, 23, 0.18);
+  background: var(--primary);
+  box-shadow: 0 12px 24px rgba(125, 178, 82, 0.3);
 }
 
 .robot-marker-box .material-symbols-outlined {
@@ -1432,8 +1401,8 @@ button {
 }
 
 .preset-button:hover {
-  border-color: rgba(23, 107, 43, 0.16);
-  background: linear-gradient(135deg, rgba(23, 107, 43, 0.08), rgba(255, 255, 255, 0.82));
+  border-color: rgba(125, 178, 82, 0.2);
+  background: var(--primary-soft);
 }
 
 .history-item {
