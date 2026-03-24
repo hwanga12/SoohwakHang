@@ -20,6 +20,11 @@ def generate_launch_description():
         default_value=default_params,
         description='MQTT bridge parameter file.',
     )
+    force_log_only_arg = DeclareLaunchArgument(
+        'force_log_only',
+        default_value='false',
+        description='Force log-only mode even when an MQTT broker is available.',
+    )
 
     mqtt_bridge_node = Node(
         package='agribot_iot',
@@ -28,12 +33,16 @@ def generate_launch_description():
         output='screen',
         parameters=[
             LaunchConfiguration('params_file'),
-            {'use_sim_time': LaunchConfiguration('use_sim_time')},
+            {
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
+                'force_log_only': LaunchConfiguration('force_log_only'),
+            },
         ],
     )
 
     return LaunchDescription([
         use_sim_time_arg,
         params_file_arg,
+        force_log_only_arg,
         mqtt_bridge_node,
     ])
