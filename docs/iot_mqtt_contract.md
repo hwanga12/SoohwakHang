@@ -9,6 +9,7 @@ This document covers the minimum contract added for:
 - `S14P-503` MQTT topic and payload agreement
 - `S14P-504` watering controller execution
 - `S14P-505` curtain controller execution
+- `S14P-506` fan controller execution
 
 ## Shared Device Mapping
 
@@ -109,4 +110,10 @@ Current canonical IDs:
   - `close_curtain`
   - `set_curtain_position`
 - `set_curtain_position` accepts `percent_open`, `percent`, and `percent_closed`.
+- The fan controller currently handles:
+  - `turn_on_fan`
+  - `turn_off_fan`
+  - `set_fan_level`
+  - `set_fan_speed`
+- Fan state uses `speed_level` for the current stage and `current_value` with `unit=sec` for run time.
 - Curtain, fan, and nutrient controllers follow the same `IoTCommand` -> `IoTDeviceState` -> JSON result pattern.

@@ -44,6 +44,8 @@ class IoTDeviceSpec:
     default_unit: str
     is_available: bool
     flow_rate_per_sec: float
+    default_speed_level: int
+    max_speed_level: int
 
 
 @dataclass(frozen=True)
@@ -140,6 +142,8 @@ def _load_device_spec(payload: dict[str, Any], *, zone_id: str, context: str) ->
         default_unit=str(capabilities.get('default_unit', '')),
         is_available=bool(payload.get('is_available', True)),
         flow_rate_per_sec=float(capabilities.get('flow_rate_per_sec', 0.0)),
+        default_speed_level=max(0, int(capabilities.get('default_speed_level', 1))),
+        max_speed_level=max(1, int(capabilities.get('max_speed_level', 3))),
     )
 
 

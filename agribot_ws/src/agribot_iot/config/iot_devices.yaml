@@ -84,8 +84,13 @@ zones:
         is_available: true
         capabilities:
           supported_commands:
+            - turn_on_fan
+            - turn_off_fan
+            - set_fan_level
             - set_fan_speed
           default_unit: level
+          default_speed_level: 1
+          max_speed_level: 3
       - device_id: farm_01_nutrient
         device_type: nutrient
         display_name: Farm 01 Nutrient Dispenser
