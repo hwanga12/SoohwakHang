@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
 import { DevSurface } from '@/components/dev-surface'
 import {
@@ -46,6 +47,7 @@ export function EnvironmentPage() {
     },
   })
   const page = environmentQuery.data
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
   const feedbackMessage = approveMutation.isSuccess
     ? approveMutation.data
     : nutrientMutation.isSuccess
@@ -62,9 +64,16 @@ export function EnvironmentPage() {
         <DevSurface
           as="article"
           className="hero-panel hero-panel--environment"
-          detail="environment/latest와 추천 로직은 아직 완전한 런타임 체인이 없어 발표용 환경 시나리오를 기반으로 렌더링됩니다."
-          status="sample"
-          title="환경 제어 요약"
+          contract={{
+            title: '환경 제어 요약',
+            queries: [
+              createGetSignal('환경 최신값', querySource('/environment/latest'), '/environment/latest'),
+              createGetSignal('제어 추천', querySource('/actuations/recommendations'), '/actuations/recommendations'),
+            ],
+            actions: [
+              createPostAction('급수 승인', ['/actuations/recommendations/reco-water-001/approve', '/actuations/watering'], 'any'),
+            ],
+          }}
         >
           <div className="hero-topline">
             <div>
@@ -116,9 +125,17 @@ export function EnvironmentPage() {
         <DevSurface
           as="article"
           className="panel"
-          detail="장치 제어와 추천 큐는 API 계약을 반영했지만, 실제 IoT 제어 결과와 권고 생성 로직은 아직 stub 단계입니다."
-          status="stub"
-          title="장치 제어와 승인 큐"
+          contract={{
+            title: '장치 제어와 승인 큐',
+            queries: [
+              createGetSignal('장치 목록', querySource('/iot/devices'), '/iot/devices'),
+              createGetSignal('제어 추천', querySource('/actuations/recommendations'), '/actuations/recommendations'),
+            ],
+            actions: [
+              createPostAction('급수 승인', ['/actuations/recommendations/reco-water-001/approve', '/actuations/watering'], 'any'),
+              createPostAction('양액 투입', ['/actuations/nutrients']),
+            ],
+          }}
         >
           <div className="section-head">
             <div>
@@ -227,9 +244,13 @@ export function EnvironmentPage() {
         <DevSurface
           as="article"
           className="panel"
-          detail="센서 상태 막대와 최근 실행 기록은 MQTT bridge/actuation history 응답이 아직 비어 있어 발표용 운영 기록으로 대체합니다."
-          status="sample"
-          title="시스템 상태와 실행 기록"
+          contract={{
+            title: '시스템 상태와 실행 기록',
+            queries: [
+              createGetSignal('환경 최신값', querySource('/environment/latest'), '/environment/latest'),
+              createGetSignal('실행 이력', querySource('/actuations/history'), '/actuations/history'),
+            ],
+          }}
         >
           <div className="section-head">
             <div>

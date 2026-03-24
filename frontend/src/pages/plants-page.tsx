@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
 import { DevSurface } from '@/components/dev-surface'
 import { MockupImage } from '@/components/mockup-image'
@@ -36,6 +37,7 @@ export function PlantsPage() {
     },
   })
   const page = plantsQuery.data
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
   const selectedPlant =
     page.plants.find((plant) => plant.id === selectedPlantId) ?? page.plants[0]
   const feedbackMessage = harvestMutation.isSuccess
@@ -61,9 +63,13 @@ export function PlantsPage() {
         <DevSurface
           as="article"
           className="hero-panel hero-panel--accent"
-          detail="plants, observations, alerts API가 아직 실제 관측 이력을 제공하지 않아 발표용 작물 건강도와 스캔 요약을 사용합니다."
-          status="sample"
-          title="작물 진단 요약"
+          contract={{
+            title: '작물 진단 요약',
+            queries: [
+              createGetSignal('작물 목록', querySource('/plants'), '/plants'),
+              createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+            ],
+          }}
         >
           <div className="hero-topline">
             <span className="panel-kicker">작물 인텔리전스</span>
@@ -93,9 +99,12 @@ export function PlantsPage() {
         <DevSurface
           as="article"
           className="hero-panel hero-panel--danger hero-panel--compact"
-          detail="알림 센터 이동은 가능하지만 병해 판독 결과와 후속 액션은 현재 샘플 대기열을 기준으로 보여줍니다."
-          status="sample"
-          title="우선 검수 카드"
+          contract={{
+            title: '우선 검수 카드',
+            queries: [
+              createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+            ],
+          }}
         >
           <div className="alert-count-icon">
             <AppIcon className="alert-count-symbol" filled name="warning" />
@@ -112,9 +121,12 @@ export function PlantsPage() {
       <DevSurface
         as="section"
         className="panel"
-        detail="병해 카드 이미지는 실제 비전 입력 대신 발표용 생성 이미지이며, 우선순위와 액션 문구는 문서상의 운영 흐름을 따릅니다."
-        status="sample"
-        title="우선 알림 카드"
+        contract={{
+          title: '우선 알림 카드',
+          queries: [
+            createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+          ],
+        }}
       >
         <div className="section-head">
           <div>
@@ -168,9 +180,12 @@ export function PlantsPage() {
         <DevSurface
           as="article"
           className="panel"
-          detail="작물 원장은 실제 plants 목록 대신 fruit ID, zone, health score를 기준으로 정교화한 발표용 샘플 원장입니다."
-          status="sample"
-          title="작물 원장"
+          contract={{
+            title: '작물 원장',
+            queries: [
+              createGetSignal('작물 목록', querySource('/plants'), '/plants'),
+            ],
+          }}
         >
           <div className="section-head">
             <div>
@@ -235,9 +250,15 @@ export function PlantsPage() {
         <DevSurface
           as="article"
           className="panel"
-          detail="수확 요청 버튼은 fruit ID 기반 계약을 따르지만, 실제 missions/harvest와 ROS action chain까지는 아직 완전히 이어지지 않았습니다."
-          status="partial"
-          title="선택 대상 상세와 수확 요청"
+          contract={{
+            title: '선택 대상 상세와 수확 요청',
+            queries: [
+              createGetSignal('작물 목록', querySource('/plants'), '/plants'),
+            ],
+            actions: [
+              createPostAction('수확 요청', ['/missions/harvest']),
+            ],
+          }}
         >
           <div className="section-head">
             <div>

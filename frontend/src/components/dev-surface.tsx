@@ -1,33 +1,61 @@
 import type { PropsWithChildren } from 'react'
 import {
+  useEvaluatedDevSurface,
   useDevInspector,
+  type DevSurfaceContract,
   type DevSurfaceStatus,
 } from '@/app/dev-inspector'
 
-type DevSurfaceProps = PropsWithChildren<{
+type BaseProps = PropsWithChildren<{
   as?: 'article' | 'aside' | 'div' | 'section'
   className?: string
-  status: DevSurfaceStatus
-  title: string
-  detail: string
 }>
+
+type DevSurfaceProps = BaseProps & (
+  | {
+      contract: DevSurfaceContract
+      detail?: never
+      status?: never
+      title?: never
+    }
+  | {
+      contract?: never
+      detail: string
+      status: DevSurfaceStatus
+      title: string
+    }
+)
 
 const statusLabels: Record<DevSurfaceStatus, string> = {
   live: '실연동',
-  sample: '발표용 샘플',
-  partial: '부분 연동',
-  stub: '요청 수신만 구현',
+  sample: '샘플 표시',
+  partial: '혼합 상태',
+  contract: '계약 확인',
   pending: '미구현',
 }
 
-export function DevSurface({
-  as = 'article',
-  children,
-  className = '',
-  status,
-  title,
-  detail,
-}: DevSurfaceProps) {
+export function DevSurface(props: DevSurfaceProps) {
+  const {
+    as = 'article',
+    children,
+    className = '',
+  } = props
+  const fallbackTitle =
+    'title' in props && typeof props.title === 'string' ? props.title : ''
+  const fallbackStatus =
+    'status' in props && typeof props.status === 'string' ? props.status : 'sample'
+  const fallbackDetail =
+    'detail' in props && typeof props.detail === 'string' ? props.detail : ''
+  const evaluatedContract = useEvaluatedDevSurface(
+    props.contract ?? {
+      title: fallbackTitle,
+      queries: [],
+      actions: [],
+    },
+  )
+  const status = props.contract ? evaluatedContract.status : fallbackStatus
+  const title = props.contract ? evaluatedContract.title : fallbackTitle
+  const detail = props.contract ? evaluatedContract.detail : fallbackDetail
   const { isOverlayEnabled } = useDevInspector()
   const Component = as
 

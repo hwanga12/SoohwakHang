@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
 import { DevSurface } from '@/components/dev-surface'
 import { MetricCard } from '@/components/metric-card'
@@ -38,6 +39,7 @@ export function MapControlPage() {
     },
   })
   const page = robotQuery.data
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
   const actionPending = controlMutation.isPending || zoneMoveMutation.isPending
   const feedbackMessage = zoneMoveMutation.isSuccess
     ? zoneMoveMutation.data
@@ -67,9 +69,13 @@ export function MapControlPage() {
         <DevSurface
           as="article"
           className="map-board panel"
-          detail="현재 지도, 경로선, 카메라 뷰는 실제 SLAM/카메라 스트림 대신 발표용 샘플 자산으로 렌더링됩니다."
-          status="sample"
-          title="지도와 카메라 보드"
+          contract={{
+            title: '지도와 카메라 보드',
+            queries: [
+              createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+              createGetSignal('로봇 위치', querySource('/robot/pose'), '/robot/pose'),
+            ],
+          }}
         >
           <div className="map-floating-card">
             <span className="panel-kicker">현재 경유지</span>
@@ -129,9 +135,13 @@ export function MapControlPage() {
           <DevSurface
             as="article"
             className="panel"
-            detail="mission 진행률과 ETA는 아직 단일 runtime 체인이 없어 route/harvest 시나리오 기준 샘플 값으로 표시합니다."
-            status="sample"
-            title="미션 진행률"
+            contract={{
+              title: '미션 진행률',
+              queries: [
+                createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+                createGetSignal('로봇 위치', querySource('/robot/pose'), '/robot/pose'),
+              ],
+            }}
           >
             <div className="section-head">
               <div>
@@ -167,9 +177,18 @@ export function MapControlPage() {
           <DevSurface
             as="article"
             className="panel"
-            detail="제어 API는 요청을 받아들이지만, 실제 ROS 명령 수행 결과와 상태 피드백은 아직 고정 응답 단계입니다."
-            status="stub"
-            title="로봇 제어 센터"
+            contract={{
+              title: '로봇 제어 센터',
+              queries: [
+                createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+              ],
+              actions: [
+                createPostAction('정지 요청', ['/missions/patrol/stop', '/robot/commands'], 'any'),
+                createPostAction('재개 요청', ['/robot/commands']),
+                createPostAction('복귀 요청', ['/missions/return-home', '/robot/commands'], 'any'),
+                createPostAction('비상 정지', ['/robot/commands']),
+              ],
+            }}
           >
             <div className="section-head">
               <div>
@@ -209,9 +228,15 @@ export function MapControlPage() {
           <DevSurface
             as="article"
             className="panel"
-            detail="구역 이동 요청 포맷은 잡혀 있지만 zone preset과 실제 waypoint/mission 연결은 아직 백엔드 브리지 구현이 남아 있습니다."
-            status="stub"
-            title="빠른 구역 이동"
+            contract={{
+              title: '빠른 구역 이동',
+              queries: [
+                createGetSignal('구역 목록', querySource('/zones'), '/zones'),
+              ],
+              actions: [
+                createPostAction('구역 이동', ['/robot/commands']),
+              ],
+            }}
           >
             <div className="section-head">
               <div>
@@ -249,9 +274,12 @@ export function MapControlPage() {
           <DevSurface
             as="article"
             className="panel"
-            detail="이벤트 로그는 실제 mission event stream이 아니라 발표용 운행 로그를 시간순으로 정리한 샘플입니다."
-            status="sample"
-            title="이벤트 로그"
+            contract={{
+              title: '이벤트 로그',
+              queries: [
+                createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+              ],
+            }}
           >
             <div className="section-head">
               <div>

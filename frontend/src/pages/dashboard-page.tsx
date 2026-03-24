@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
 import { DevSurface } from '@/components/dev-surface'
 import { MetricCard } from '@/components/metric-card'
@@ -25,6 +26,7 @@ export function DashboardPage() {
     },
   })
   const page = dashboardQuery.data
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
   const feedbackMessage = controlMutation.isSuccess
     ? controlMutation.data
     : controlMutation.isError
@@ -37,9 +39,14 @@ export function DashboardPage() {
         <DevSurface
           as="article"
           className="hero-panel hero-panel--accent"
-          detail="dashboard/summary, robot/status, environment/latest, alerts 응답이 아직 고정되어 있어 발표용 샘플 데이터로 운영 서사를 재현합니다."
-          status="sample"
-          title="운영 요약 패널"
+          contract={{
+            title: '운영 요약 패널',
+            queries: [
+              createGetSignal('운영 요약', querySource('/dashboard/summary'), '/dashboard/summary'),
+              createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+              createGetSignal('환경 요약', querySource('/environment/latest'), '/environment/latest'),
+            ],
+          }}
         >
           <div className="hero-topline">
             <span className="panel-kicker">운영 상태</span>
@@ -73,9 +80,18 @@ export function DashboardPage() {
         <DevSurface
           as="article"
           className="hero-panel hero-panel--compact"
-          detail="robot/commands와 mission 명령은 요청 수신까지 연결돼 있지만, 실제 로봇 상태 반영과 결과 피드백은 아직 ROS 런타임과 완전히 이어지지 않았습니다."
-          status="stub"
-          title="빠른 로봇 제어"
+          contract={{
+            title: '빠른 로봇 제어',
+            queries: [
+              createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+            ],
+            actions: [
+              createPostAction('정지 요청', ['/missions/patrol/stop', '/robot/commands'], 'any'),
+              createPostAction('재개 요청', ['/robot/commands']),
+              createPostAction('복귀 요청', ['/missions/return-home', '/robot/commands'], 'any'),
+              createPostAction('비상 정지', ['/robot/commands']),
+            ],
+          }}
         >
           <div className="status-stack">
             <div className="status-pill-row">
@@ -159,9 +175,12 @@ export function DashboardPage() {
         <DevSurface
           as="article"
           className="panel"
-          detail="alerts와 realtime 이벤트 스트림이 아직 완전한 목록/타임라인 응답을 제공하지 않아 최근 활동은 발표용 이벤트 시퀀스로 채워집니다."
-          status="sample"
-          title="최근 활동 피드"
+          contract={{
+            title: '최근 활동 피드',
+            queries: [
+              createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+            ],
+          }}
         >
           <div className="section-head">
             <div>
@@ -195,9 +214,13 @@ export function DashboardPage() {
         <DevSurface
           as="article"
           className="panel"
-          detail="운영 큐는 문서상의 역할 분담과 실제 데모 흐름을 반영한 샘플 카드입니다."
-          status="sample"
-          title="운영 큐"
+          contract={{
+            title: '운영 큐',
+            queries: [
+              createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+              createGetSignal('수확 통계', querySource('/harvests/stats'), '/harvests/stats'),
+            ],
+          }}
         >
           <div className="section-head">
             <div>
@@ -224,9 +247,14 @@ export function DashboardPage() {
       <DevSurface
         as="section"
         className="panel"
-        detail="zones 엔드포인트는 최소 구조만 내려오고, 구역 상태 해석과 우선순위 문장은 아직 프론트 fallback 로직에서 보강합니다."
-        status="partial"
-        title="구역 상태 요약"
+        contract={{
+          title: '구역 상태 요약',
+          queries: [
+            createGetSignal('구역 목록', querySource('/zones'), '/zones'),
+            createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+            createGetSignal('환경 최신값', querySource('/environment/latest'), '/environment/latest'),
+          ],
+        }}
       >
         <div className="section-head">
           <div>

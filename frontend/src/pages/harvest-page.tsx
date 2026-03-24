@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { createGetSignal } from '@/app/dev-inspector'
 import { DevSurface } from '@/components/dev-surface'
 import { MetricCard } from '@/components/metric-card'
 import { MockupImage } from '@/components/mockup-image'
@@ -27,6 +28,7 @@ export function HarvestPage() {
     refetchInterval: 20_000,
   })
   const page = harvestQuery.data
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
 
   return (
     <div className="screen">
@@ -34,9 +36,13 @@ export function HarvestPage() {
         <DevSurface
           as="article"
           className="hero-panel hero-panel--warning"
-          detail="수확 배치, 적재율, 품질 지표는 실제 harvest runtime 대신 발표용 운영 시나리오에 맞춘 샘플 데이터입니다."
-          status="sample"
-          title="수확 운영 요약"
+          contract={{
+            title: '수확 운영 요약',
+            queries: [
+              createGetSignal('수확 통계', querySource('/harvests/stats'), '/harvests/stats'),
+              createGetSignal('수확 배치', querySource('/harvests'), '/harvests'),
+            ],
+          }}
         >
           <div className="hero-topline">
             <span className="panel-kicker">수확 운영</span>
@@ -87,9 +93,12 @@ export function HarvestPage() {
         <DevSurface
           as="article"
           className="panel"
-          detail="수확 배치 큐는 harvest 미션 서버가 아직 완전 연결되지 않아 발표용 루트 시퀀스로 재현합니다."
-          status="sample"
-          title="수확 일정 큐"
+          contract={{
+            title: '수확 일정 큐',
+            queries: [
+              createGetSignal('수확 배치', querySource('/harvests'), '/harvests'),
+            ],
+          }}
         >
           <div className="section-head">
             <div>
@@ -119,9 +128,12 @@ export function HarvestPage() {
         <DevSurface
           as="article"
           className="panel"
-          detail="품질 지표는 실제 출하/검수 DB가 아니라 발표용 KPI 조합으로, 메인 대시보드 재사용을 염두에 두고 구성했습니다."
-          status="sample"
-          title="수확 품질 지표"
+          contract={{
+            title: '수확 품질 지표',
+            queries: [
+              createGetSignal('수확 통계', querySource('/harvests/stats'), '/harvests/stats'),
+            ],
+          }}
         >
           <div className="section-head">
             <div>

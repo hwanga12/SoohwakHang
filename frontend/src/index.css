@@ -507,8 +507,8 @@ button {
   color: #2c6eaa;
 }
 
-.dev-legend-item--stub,
-.dev-surface-badge--stub {
+.dev-legend-item--contract,
+.dev-surface-badge--contract {
   background: rgba(160, 86, 35, 0.12);
   color: #8b4f1f;
 }
@@ -596,7 +596,7 @@ button {
   outline-offset: -2px;
 }
 
-.dev-surface--stub {
+.dev-surface--contract {
   outline: 2px dashed rgba(160, 86, 35, 0.18);
   outline-offset: -2px;
 }

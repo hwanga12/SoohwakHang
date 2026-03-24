@@ -1,11 +1,17 @@
 import { isAxiosError } from 'axios'
+import { markRouteFailed, markRouteVerified } from '@/app/dev-runtime'
 import { apiClient } from '@/lib/api/client'
 
 export type CardTone = 'accent' | 'warning' | 'danger'
 export type DataSource = 'live' | 'fallback'
 export type HealthTone = 'healthy' | 'warning' | 'critical'
+export type QuerySourceMap = Partial<Record<string, DataSource>>
 
 type UnknownRecord = Record<string, unknown>
+
+type PageDebugMeta = {
+  querySources: QuerySourceMap
+}
 
 export type MetricCardData = {
   label: string
@@ -37,6 +43,7 @@ export type ZoneStatusCard = {
 
 export type DashboardPageData = {
   source: DataSource
+  debug: PageDebugMeta
   heroStatus: string
   location: string
   activeTask: string
@@ -58,6 +65,7 @@ export type RobotZonePreset = {
 
 export type RobotPageData = {
   source: DataSource
+  debug: PageDebugMeta
   waypoint: string
   zoneLabel: string
   poseLabel: string
@@ -95,6 +103,7 @@ export type PlantRow = {
 
 export type PlantsPageData = {
   source: DataSource
+  debug: PageDebugMeta
   healthSummary: string
   criticalCount: string
   activeScans: string
@@ -132,6 +141,7 @@ export type ActuationHistoryItem = {
 
 export type EnvironmentPageData = {
   source: DataSource
+  debug: PageDebugMeta
   recommendation: string
   metrics: MetricCardData[]
   devices: DeviceCard[]
@@ -148,6 +158,7 @@ export type HarvestBatch = {
 
 export type HarvestPageData = {
   source: DataSource
+  debug: PageDebugMeta
   basketState: string
   nextSwap: string
   metrics: MetricCardData[]
@@ -167,6 +178,7 @@ export type AlertTimelineItem = {
 
 export type AlertsPageData = {
   source: DataSource
+  debug: PageDebugMeta
   summary: string
   unreadCount: string
   criticalCount: string
@@ -268,6 +280,10 @@ function hasStructuredData(payload: unknown): boolean {
   return keys.length > 0
 }
 
+function toQuerySource(payload: unknown): DataSource {
+  return hasStructuredData(payload) ? 'live' : 'fallback'
+}
+
 function normalizeToneFromSeverity(value: string): HealthTone {
   const normalized = value.toLowerCase()
 
@@ -313,6 +329,7 @@ async function postWithFallback(
   for (const attempt of attempts) {
     try {
       const response = await apiClient.post(attempt.path, attempt.body)
+      markRouteVerified('POST', attempt.path)
       const payload = unwrapPayload(response.data)
 
       if (isRecord(payload)) {
@@ -331,8 +348,11 @@ async function postWithFallback(
       return successFallback
     } catch (error) {
       if (isAxiosError(error) && error.response?.status === 404) {
+        markRouteFailed('POST', attempt.path)
         continue
       }
+
+      markRouteFailed('POST', attempt.path)
     }
   }
 
@@ -341,6 +361,16 @@ async function postWithFallback(
 
 export const dashboardFallback: DashboardPageData = {
   source: 'fallback',
+  debug: {
+    querySources: {
+      '/dashboard/summary': 'fallback',
+      '/robot/status': 'fallback',
+      '/environment/latest': 'fallback',
+      '/alerts': 'fallback',
+      '/harvests/stats': 'fallback',
+      '/zones': 'fallback',
+    },
+  },
   heroStatus: '서측 2열 순찰과 환경 점검이 함께 진행 중입니다.',
   location: 'farm_01 · 서측 2열',
   activeTask: '수확 후보 토마토 검수와 급수 권고 확인',
@@ -421,6 +451,13 @@ export const dashboardFallback: DashboardPageData = {
 
 export const robotFallback: RobotPageData = {
   source: 'fallback',
+  debug: {
+    querySources: {
+      '/robot/status': 'fallback',
+      '/robot/pose': 'fallback',
+      '/zones': 'fallback',
+    },
+  },
   waypoint: 'inspection_b12',
   zoneLabel: 'farm_01 · 서측 2열',
   poseLabel: 'map 기준 x 2.0 / y -5.9',
@@ -449,6 +486,12 @@ export const robotFallback: RobotPageData = {
 
 export const plantsFallback: PlantsPageData = {
   source: 'fallback',
+  debug: {
+    querySources: {
+      '/plants': 'fallback',
+      '/alerts': 'fallback',
+    },
+  },
   healthSummary: '95%',
   criticalCount: '03',
   activeScans: '1.2천 건',
@@ -523,6 +566,14 @@ export const plantsFallback: PlantsPageData = {
 
 export const environmentFallback: EnvironmentPageData = {
   source: 'fallback',
+  debug: {
+    querySources: {
+      '/environment/latest': 'fallback',
+      '/iot/devices': 'fallback',
+      '/actuations/recommendations': 'fallback',
+      '/actuations/history': 'fallback',
+    },
+  },
   recommendation: '1구역 토양 수분이 낮아 급수 승인을 검토하는 것이 좋습니다.',
   metrics: [
     { label: '기온', value: '24.2°C', meta: '권장 범위 상단', tone: 'accent' },
@@ -614,6 +665,12 @@ export const environmentFallback: EnvironmentPageData = {
 
 export const harvestFallback: HarvestPageData = {
   source: 'fallback',
+  debug: {
+    querySources: {
+      '/harvests/stats': 'fallback',
+      '/harvests': 'fallback',
+    },
+  },
   basketState: '바구니 A · 68%',
   nextSwap: '35분 후 교체 예정',
   metrics: [
@@ -648,6 +705,11 @@ export const harvestFallback: HarvestPageData = {
 
 export const alertsFallback: AlertsPageData = {
   source: 'fallback',
+  debug: {
+    querySources: {
+      '/alerts': 'fallback',
+    },
+  },
   summary: '병해, 센서, 장치 경고를 같은 기준으로 검토할 수 있는 알림 센터입니다.',
   unreadCount: '3건',
   criticalCount: '1건',
@@ -693,13 +755,15 @@ export async function getDashboardPageData(): Promise<DashboardPageData> {
       safeGet('/zones'),
     ])
 
-  const live =
-    hasStructuredData(summaryPayload)
-    || hasStructuredData(robotPayload)
-    || hasStructuredData(envPayload)
-    || hasStructuredData(alertsPayload)
-    || hasStructuredData(harvestPayload)
-    || hasStructuredData(zonesPayload)
+  const querySources: QuerySourceMap = {
+    '/dashboard/summary': toQuerySource(summaryPayload),
+    '/robot/status': toQuerySource(robotPayload),
+    '/environment/latest': toQuerySource(envPayload),
+    '/alerts': toQuerySource(alertsPayload),
+    '/harvests/stats': toQuerySource(harvestPayload),
+    '/zones': toQuerySource(zonesPayload),
+  }
+  const live = Object.values(querySources).some((source) => source === 'live')
 
   const robot = readRecord(robotPayload)
   const env = readRecord(envPayload)
@@ -786,6 +850,9 @@ export async function getDashboardPageData(): Promise<DashboardPageData> {
   return {
     ...dashboardFallback,
     source: live ? 'live' : 'fallback',
+    debug: {
+      querySources,
+    },
     heroStatus:
       readString(robot?.status)
       || readString(robot?.current_mode)
@@ -836,10 +903,12 @@ export async function getRobotPageData(): Promise<RobotPageData> {
     safeGet('/zones'),
   ])
 
-  const live =
-    hasStructuredData(statusPayload)
-    || hasStructuredData(posePayload)
-    || hasStructuredData(zonesPayload)
+  const querySources: QuerySourceMap = {
+    '/robot/status': toQuerySource(statusPayload),
+    '/robot/pose': toQuerySource(posePayload),
+    '/zones': toQuerySource(zonesPayload),
+  }
+  const live = Object.values(querySources).some((source) => source === 'live')
   const status = readRecord(statusPayload)
   const pose = readRecord(posePayload)
   const poseRecord = readRecord(pose?.pose)
@@ -890,6 +959,9 @@ export async function getRobotPageData(): Promise<RobotPageData> {
   return {
     ...robotFallback,
     source: live ? 'live' : 'fallback',
+    debug: {
+      querySources,
+    },
     waypoint:
       readString(status?.waypoint_id)
       || readString(status?.next_waypoint)
@@ -933,7 +1005,11 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
     safeGet('/alerts'),
   ])
 
-  const live = hasStructuredData(plantsPayload) || hasStructuredData(alertsPayload)
+  const querySources: QuerySourceMap = {
+    '/plants': toQuerySource(plantsPayload),
+    '/alerts': toQuerySource(alertsPayload),
+  }
+  const live = Object.values(querySources).some((source) => source === 'live')
   const alerts = asArray(alertsPayload)
   const plants = asArray(plantsPayload)
 
@@ -1027,6 +1103,9 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
   return {
     ...plantsFallback,
     source: live ? 'live' : 'fallback',
+    debug: {
+      querySources,
+    },
     criticalCount:
       parsedAlerts.length > 0
         ? String(parsedAlerts.length).padStart(2, '0')
@@ -1044,11 +1123,13 @@ export async function getEnvironmentPageData(): Promise<EnvironmentPageData> {
     safeGet('/actuations/history'),
   ])
 
-  const live =
-    hasStructuredData(envPayload)
-    || hasStructuredData(devicePayload)
-    || hasStructuredData(recommendationPayload)
-    || hasStructuredData(historyPayload)
+  const querySources: QuerySourceMap = {
+    '/environment/latest': toQuerySource(envPayload),
+    '/iot/devices': toQuerySource(devicePayload),
+    '/actuations/recommendations': toQuerySource(recommendationPayload),
+    '/actuations/history': toQuerySource(historyPayload),
+  }
+  const live = Object.values(querySources).some((source) => source === 'live')
 
   const env = readRecord(envPayload)
   const devices = asArray(devicePayload)
@@ -1222,6 +1303,9 @@ export async function getEnvironmentPageData(): Promise<EnvironmentPageData> {
   return {
     ...environmentFallback,
     source: live ? 'live' : 'fallback',
+    debug: {
+      querySources,
+    },
     recommendation:
       recommendationText
       || readString(env?.recommendation)
@@ -1240,7 +1324,11 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
     safeGet('/harvests'),
   ])
 
-  const live = hasStructuredData(statsPayload) || hasStructuredData(harvestsPayload)
+  const querySources: QuerySourceMap = {
+    '/harvests/stats': toQuerySource(statsPayload),
+    '/harvests': toQuerySource(harvestsPayload),
+  }
+  const live = Object.values(querySources).some((source) => source === 'live')
   const stats = readRecord(statsPayload)
   const rows = asArray(harvestsPayload)
   const metrics = [...harvestFallback.metrics]
@@ -1292,6 +1380,9 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
   return {
     ...harvestFallback,
     source: live ? 'live' : 'fallback',
+    debug: {
+      querySources,
+    },
     basketState:
       readString(stats?.basket_state)
       || readString(stats?.basket_fill_rate)
@@ -1304,7 +1395,10 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
 
 export async function getAlertsPageData(): Promise<AlertsPageData> {
   const alertsPayload = await safeGet('/alerts')
-  const live = hasStructuredData(alertsPayload)
+  const querySources: QuerySourceMap = {
+    '/alerts': toQuerySource(alertsPayload),
+  }
+  const live = Object.values(querySources).some((source) => source === 'live')
   const alerts = asArray(alertsPayload)
 
   const items =
@@ -1353,6 +1447,9 @@ export async function getAlertsPageData(): Promise<AlertsPageData> {
   return {
     ...alertsFallback,
     source: live ? 'live' : 'fallback',
+    debug: {
+      querySources,
+    },
     unreadCount: items.length > 0 ? `${unreadCount}건` : alertsFallback.unreadCount,
     criticalCount: items.length > 0 ? `${criticalCount}건` : alertsFallback.criticalCount,
     items: items.length > 0 ? items : alertsFallback.items,

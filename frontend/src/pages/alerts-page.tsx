@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
 import { DevSurface } from '@/components/dev-surface'
 import {
@@ -36,6 +37,7 @@ export function AlertsPage() {
     },
   })
   const page = alertsQuery.data
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
   const pendingItems = page.items.filter((item) => !item.acknowledged)
   const feedbackMessage = ackMutation.isSuccess
     ? ackMutation.data
@@ -49,9 +51,15 @@ export function AlertsPage() {
         <DevSurface
           as="article"
           className="hero-panel hero-panel--warning"
-          detail="알림 목록은 아직 발표용 시나리오를 기반으로 렌더링되며, 읽음 처리만 부분적으로 API 계약에 맞춰 연결됩니다."
-          status="partial"
-          title="알림 센터 요약"
+          contract={{
+            title: '알림 센터 요약',
+            queries: [
+              createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+            ],
+            actions: [
+              createPostAction('읽음 처리', ['/alerts/{alert_id}/ack']),
+            ],
+          }}
         >
           <div className="hero-topline">
             <span className="panel-kicker">알림 센터</span>
@@ -78,9 +86,12 @@ export function AlertsPage() {
         <DevSurface
           as="article"
           className="hero-panel hero-panel--compact"
-          detail="운영자 안내 문구는 문서에 정의된 병해/설비 공통 알림 플로우를 기준으로 정리한 샘플입니다."
-          status="sample"
-          title="알림 운영 가이드"
+          contract={{
+            title: '알림 운영 가이드',
+            queries: [
+              createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+            ],
+          }}
         >
           <div className="status-stack">
             <div className="status-inline">
@@ -100,9 +111,15 @@ export function AlertsPage() {
         <DevSurface
           as="article"
           className="panel"
-          detail="실시간 타임라인 스트림은 아직 미구현이라 목록 자체는 샘플이지만, 읽음 처리 액션은 현재 라우터 계약으로 부분 검증 가능합니다."
-          status="partial"
-          title="알림 타임라인"
+          contract={{
+            title: '알림 타임라인',
+            queries: [
+              createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+            ],
+            actions: [
+              createPostAction('읽음 처리', ['/alerts/{alert_id}/ack']),
+            ],
+          }}
         >
           <div className="section-head">
             <div>
@@ -151,9 +168,12 @@ export function AlertsPage() {
         <DevSurface
           as="article"
           className="panel"
-          detail="우선 대응 큐는 아직 서버 정렬 결과가 아니라, 프론트에서 미처리 알림을 재정렬한 샘플 목록입니다."
-          status="sample"
-          title="우선 대응 큐"
+          contract={{
+            title: '우선 대응 큐',
+            queries: [
+              createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+            ],
+          }}
         >
           <div className="section-head">
             <div>

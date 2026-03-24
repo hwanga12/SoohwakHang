@@ -146,9 +146,10 @@ export default function AppShell() {
                     </div>
                     <div className="dev-legend">
                       <span className="dev-legend-item dev-legend-item--live">실연동</span>
-                      <span className="dev-legend-item dev-legend-item--sample">발표용 샘플</span>
-                      <span className="dev-legend-item dev-legend-item--partial">부분 연동</span>
-                      <span className="dev-legend-item dev-legend-item--stub">요청 수신만 구현</span>
+                      <span className="dev-legend-item dev-legend-item--sample">샘플 표시</span>
+                      <span className="dev-legend-item dev-legend-item--partial">혼합 상태</span>
+                      <span className="dev-legend-item dev-legend-item--contract">계약 확인</span>
+                      <span className="dev-legend-item dev-legend-item--pending">미구현</span>
                     </div>
                   </div>
                 </div>
