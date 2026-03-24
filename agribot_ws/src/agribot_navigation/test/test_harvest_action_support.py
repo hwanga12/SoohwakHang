@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from agribot_interfaces.msg import HarvestEvent
+from agribot_interfaces.msg import HarvestBasketState, HarvestEvent
 from agribot_navigation.harvest_action_support import (
     PHASE_PROGRESS_PCT,
     alignment_required,
+    build_basket_state,
     build_feedback,
     build_harvest_event,
     build_result,
@@ -169,3 +170,32 @@ def test_build_harvest_event_populates_message_fields() -> None:
     assert event.success is False
     assert event.failure_reason == 'verification failed'
     assert event.basket_count == 1
+
+
+def test_build_basket_state_tracks_loaded_fruits_and_remaining_count() -> None:
+    basket_state = build_basket_state(
+        zone_id='farm_01',
+        frame_id='odom',
+        basket_count=2,
+        harvested_count=2,
+        remaining_ready_count=70,
+        last_event_id='harvest-event-02',
+        last_harvested_fruit_id='farm01_plant_02_tomato_01',
+        loaded_fruit_ids=[
+            'farm01_plant_01_tomato_01',
+            'farm01_plant_02_tomato_01',
+        ],
+    )
+
+    assert isinstance(basket_state, HarvestBasketState)
+    assert basket_state.zone_id == 'farm_01'
+    assert basket_state.header.frame_id == 'odom'
+    assert basket_state.basket_count == 2
+    assert basket_state.harvested_count == 2
+    assert basket_state.remaining_ready_count == 70
+    assert basket_state.last_event_id == 'harvest-event-02'
+    assert basket_state.last_harvested_fruit_id == 'farm01_plant_02_tomato_01'
+    assert basket_state.loaded_fruit_ids == [
+        'farm01_plant_01_tomato_01',
+        'farm01_plant_02_tomato_01',
+    ]

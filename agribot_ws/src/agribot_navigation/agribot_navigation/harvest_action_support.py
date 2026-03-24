@@ -7,7 +7,7 @@ import math
 import uuid
 
 from agribot_interfaces.action import HarvestTomato
-from agribot_interfaces.msg import HarvestEvent
+from agribot_interfaces.msg import HarvestBasketState, HarvestEvent
 
 from .harvest_routing import CropCatalog, HarvestRoutePlan
 
@@ -161,3 +161,26 @@ def build_harvest_event(
     event.failure_reason = failure_reason.strip()
     event.basket_count = int(basket_count)
     return event
+
+
+def build_basket_state(
+    *,
+    zone_id: str,
+    frame_id: str,
+    basket_count: int,
+    harvested_count: int,
+    remaining_ready_count: int,
+    last_event_id: str,
+    last_harvested_fruit_id: str,
+    loaded_fruit_ids: list[str],
+) -> HarvestBasketState:
+    state = HarvestBasketState()
+    state.header.frame_id = frame_id
+    state.zone_id = zone_id
+    state.basket_count = int(basket_count)
+    state.harvested_count = int(harvested_count)
+    state.remaining_ready_count = int(remaining_ready_count)
+    state.last_event_id = last_event_id
+    state.last_harvested_fruit_id = last_harvested_fruit_id
+    state.loaded_fruit_ids = list(loaded_fruit_ids)
+    return state

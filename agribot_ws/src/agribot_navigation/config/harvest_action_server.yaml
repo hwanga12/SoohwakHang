@@ -13,3 +13,4 @@ harvest_action_server:
     verify_duration_sec: 0.6
     basket_stow_duration_sec: 0.8
     reject_duplicate_targets: true
+    basket_state_topic: harvest/basket_state
