@@ -93,23 +93,25 @@ export default function AppShell() {
             ))}
           </nav>
 
-          <div className="sidebar-panel sidebar-panel--muted">
-            <span className="panel-kicker">연결 상태</span>
-            <dl className="sidebar-meta">
-              <div>
-                <dt>모드</dt>
-                <dd>{modeLabel}</dd>
-              </div>
-              <div>
-                <dt>REST API</dt>
-                <dd className="code-chip">{env.apiBaseUrl}</dd>
-              </div>
-              <div>
-                <dt>웹소켓</dt>
-                <dd className="code-chip">{env.wsUrl}</dd>
-              </div>
-            </dl>
-          </div>
+          {env.mode === 'development' && (
+            <div className="sidebar-panel sidebar-panel--muted">
+              <span className="panel-kicker">연결 상태</span>
+              <dl className="sidebar-meta">
+                <div>
+                  <dt>모드</dt>
+                  <dd>{modeLabel}</dd>
+                </div>
+                <div>
+                  <dt>REST API</dt>
+                  <dd className="code-chip">{env.apiBaseUrl}</dd>
+                </div>
+                <div>
+                  <dt>웹소켓</dt>
+                  <dd className="code-chip">{env.wsUrl}</dd>
+                </div>
+              </dl>
+            </div>
+          )}
         </aside>
 
         <main className="workspace">
