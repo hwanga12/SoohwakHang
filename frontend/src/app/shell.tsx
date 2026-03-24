@@ -46,11 +46,7 @@ export default function AppShell() {
       <header className="shell-header">
         <div className="shell-brand">
           <div className="brand-mark">
-            <img 
-              alt="수확해조 로고" 
-              className="brand-mark-image" 
-              src="/logo-ac.png" 
-            />
+            <AppIcon className="brand-mark-icon" filled name="eco" />
           </div>
           <div>
             <span className="brand-kicker">스마트 온실 운영</span>
@@ -138,21 +134,20 @@ export default function AppShell() {
         </aside>
 
         <main className="workspace">
-          <header className="workspace-header">
-            <div>
-              <span className="page-kicker">{currentItem.label}</span>
-              <h2 className="page-title">{currentItem.caption}</h2>
-              <p className="muted">{currentItem.description}</p>
-            </div>
-            <div className="workspace-pills">
-              <span className="mode-pill">실시간 운영</span>
-              <span className="mode-pill mode-pill--ghost">
-                {modeLabel}
-              </span>
-            </div>
-          </header>
-
           <div className="workspace-scroll">
+            <header className="workspace-header">
+              <div>
+                <span className="page-kicker">{currentItem.label}</span>
+                <h2 className="page-title">{currentItem.caption}</h2>
+                <p className="muted">{currentItem.description}</p>
+              </div>
+              <div className="workspace-pills">
+                <span className="mode-pill">실시간 운영</span>
+                <span className="mode-pill mode-pill--ghost">
+                  {modeLabel}
+                </span>
+              </div>
+            </header>
             <Outlet />
           </div>
         </main>
