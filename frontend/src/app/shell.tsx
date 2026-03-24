@@ -69,11 +69,6 @@ export default function AppShell() {
 
       <div className="shell-layout">
         <aside className="sidebar">
-          <div className="sidebar-panel">
-            <span className="panel-kicker">현재 화면</span>
-            <h2 className="sidebar-title">{currentItem.caption}</h2>
-            <p className="sidebar-copy">{currentItem.description}</p>
-          </div>
 
           <nav aria-label="주요 메뉴" className="nav-list">
             {navigationItems.map((item) => (
