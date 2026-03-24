@@ -46,7 +46,11 @@ export default function AppShell() {
       <header className="shell-header">
         <div className="shell-brand">
           <div className="brand-mark">
-            <img src="/logo.png" alt="Logo" className="brand-mark-logo" />
+            <img 
+              alt="수확해조 로고" 
+              className="brand-mark-image" 
+              src="/logo-ac.png" 
+            />
           </div>
           <div>
             <span className="brand-kicker">스마트 온실 운영</span>
