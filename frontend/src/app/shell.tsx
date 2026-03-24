@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AppIcon } from '@/components/app-icon'
 import { navigationItems } from '@/app/navigation'
@@ -25,6 +26,7 @@ function formatModeLabel(mode: string) {
 }
 
 export default function AppShell() {
+  const [showDevInfo, setShowDevInfo] = useState(false)
   const location = useLocation()
   const liveStatus = useLiveStatus()
   const modeLabel = formatModeLabel(env.mode)
@@ -94,22 +96,39 @@ export default function AppShell() {
           </nav>
 
           {env.mode === 'development' && (
-            <div className="sidebar-panel sidebar-panel--muted">
-              <span className="panel-kicker">연결 상태</span>
-              <dl className="sidebar-meta">
-                <div>
-                  <dt>모드</dt>
-                  <dd>{modeLabel}</dd>
+            <div style={{ position: 'relative', marginTop: 'auto' }}>
+              {showDevInfo && (
+                <div className="sidebar-panel sidebar-panel--muted" style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: '8px', zIndex: 50, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="panel-kicker">시스템 진단 정보</span>
+                    <button onClick={() => setShowDevInfo(false)} style={{ color: 'var(--muted)', fontSize: '1rem' }}>✕</button>
+                  </div>
+                  <dl className="sidebar-meta" style={{ marginTop: '12px' }}>
+                    <div>
+                      <dt>모드</dt>
+                      <dd>{modeLabel}</dd>
+                    </div>
+                    <div>
+                      <dt>REST API</dt>
+                      <dd className="code-chip" style={{ wordBreak: 'break-all', display: 'block' }}>{env.apiBaseUrl}</dd>
+                    </div>
+                    <div>
+                      <dt>웹소켓</dt>
+                      <dd className="code-chip" style={{ wordBreak: 'break-all', display: 'block' }}>{env.wsUrl}</dd>
+                    </div>
+                  </dl>
                 </div>
-                <div>
-                  <dt>REST API</dt>
-                  <dd className="code-chip">{env.apiBaseUrl}</dd>
+              )}
+              <button 
+                className={`nav-item ${showDevInfo ? 'active' : ''}`}
+                onClick={() => setShowDevInfo(!showDevInfo)}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', background: 'transparent', cursor: 'pointer', border: 'none' }}
+              >
+                <AppIcon className="nav-icon" name="router" />
+                <div className="nav-copy" style={{ textAlign: 'left' }}>
+                  <span className="nav-label">시스템 정보 (개발용)</span>
                 </div>
-                <div>
-                  <dt>웹소켓</dt>
-                  <dd className="code-chip">{env.wsUrl}</dd>
-                </div>
-              </dl>
+              </button>
             </div>
           )}
         </aside>
