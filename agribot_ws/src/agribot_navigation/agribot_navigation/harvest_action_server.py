@@ -11,7 +11,7 @@ import uuid
 
 from action_msgs.msg import GoalStatus
 from agribot_interfaces.action import HarvestTomato
-from agribot_interfaces.msg import HarvestBasketState, HarvestEvent
+from agribot_interfaces.msg import HarvestBasketState, HarvestEvent, MissionStatus
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 import rclpy
@@ -30,6 +30,7 @@ from .harvest_action_support import (
     build_basket_state,
     build_feedback,
     build_harvest_event,
+    build_mission_status,
     build_result,
     ensure_harvest_target_available,
     resolve_harvest_goal,
@@ -64,6 +65,7 @@ class HarvestActionServerNode(Node):
         self.declare_parameter('navigate_to_pose_action', 'navigate_to_pose')
         self.declare_parameter('patrol_status_topic', 'patrol/status')
         self.declare_parameter('patrol_stop_service', 'patrol/stop')
+        self.declare_parameter('patrol_resume_service', 'patrol/resume')
         self.declare_parameter('nav_server_wait_sec', 5.0)
         self.declare_parameter('patrol_service_wait_sec', 1.0)
         self.declare_parameter('patrol_pause_timeout_sec', 8.0)
@@ -71,8 +73,11 @@ class HarvestActionServerNode(Node):
         self.declare_parameter('picking_duration_sec', 1.0)
         self.declare_parameter('verify_duration_sec', 0.6)
         self.declare_parameter('basket_stow_duration_sec', 0.8)
+        self.declare_parameter('return_mode_override', '')
+        self.declare_parameter('auto_resume_patrol', True)
         self.declare_parameter('harvest_event_topic', 'harvest/event')
         self.declare_parameter('basket_state_topic', 'harvest/basket_state')
+        self.declare_parameter('mission_status_topic', 'harvest/mission_status')
         self.declare_parameter('reject_duplicate_targets', True)
 
         self._plan = self._load_patrol_plan()
@@ -81,8 +86,10 @@ class HarvestActionServerNode(Node):
         self._navigate_action_name = str(self.get_parameter('navigate_to_pose_action').value)
         self._patrol_status_topic = str(self.get_parameter('patrol_status_topic').value)
         self._patrol_stop_service = str(self.get_parameter('patrol_stop_service').value)
+        self._patrol_resume_service = str(self.get_parameter('patrol_resume_service').value)
         self._harvest_event_topic = str(self.get_parameter('harvest_event_topic').value)
         self._basket_state_topic = str(self.get_parameter('basket_state_topic').value)
+        self._mission_status_topic = str(self.get_parameter('mission_status_topic').value)
         self._nav_server_wait_sec = float(self.get_parameter('nav_server_wait_sec').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
         self._patrol_pause_timeout_sec = float(self.get_parameter('patrol_pause_timeout_sec').value)
@@ -102,6 +109,8 @@ class HarvestActionServerNode(Node):
             0.0,
             float(self.get_parameter('basket_stow_duration_sec').value),
         )
+        self._return_mode_override = str(self.get_parameter('return_mode_override').value).strip()
+        self._auto_resume_patrol = bool(self.get_parameter('auto_resume_patrol').value)
         self._reject_duplicate_targets = bool(self.get_parameter('reject_duplicate_targets').value)
 
         self._navigate_client = ActionClient(
@@ -113,6 +122,11 @@ class HarvestActionServerNode(Node):
         self._patrol_stop_client = self.create_client(
             Trigger,
             self._patrol_stop_service,
+            callback_group=callback_group,
+        )
+        self._patrol_resume_client = self.create_client(
+            Trigger,
+            self._patrol_resume_service,
             callback_group=callback_group,
         )
         self._patrol_status_subscription = self.create_subscription(
@@ -137,6 +151,11 @@ class HarvestActionServerNode(Node):
             self._basket_state_topic,
             basket_state_qos,
         )
+        self._mission_status_publisher = self.create_publisher(
+            MissionStatus,
+            self._mission_status_topic,
+            basket_state_qos,
+        )
 
         self._goal_lock = threading.Lock()
         self._goal_in_progress = False
@@ -149,6 +168,10 @@ class HarvestActionServerNode(Node):
             1 for tomato in self._catalog.tomatoes.values() if tomato.ready_to_harvest
         )
         self._last_patrol_status: dict[str, object] = {}
+        self._current_mission_id = ''
+        self._current_zone_id = self._plan.zone_id
+        self._current_tomato_id = ''
+        self._last_execution_phase = ''
 
         self._action_server = ActionServer(
             self,
@@ -165,7 +188,8 @@ class HarvestActionServerNode(Node):
             f'action_name={self._action_name}, '
             f'navigate_to_pose_action={self._navigate_action_name}, '
             f'harvest_event_topic={self._harvest_event_topic}, '
-            f'basket_state_topic={self._basket_state_topic}'
+            f'basket_state_topic={self._basket_state_topic}, '
+            f'mission_status_topic={self._mission_status_topic}'
         )
         self._publish_basket_state()
 
@@ -227,6 +251,10 @@ class HarvestActionServerNode(Node):
         with self._goal_lock:
             self._goal_in_progress = True
 
+        harvest_completed = False
+        success_event_id = ''
+        completed_return_waypoint_id = ''
+        resumed_patrol = False
         try:
             resolved_goal = resolve_harvest_goal(
                 mission_id=goal_handle.request.mission_id,
@@ -242,18 +270,39 @@ class HarvestActionServerNode(Node):
                 tomato_id=resolved_goal.tomato_id,
                 harvested_tomato_ids=self._harvested_tomato_ids if self._reject_duplicate_targets else set(),
             )
+            self._current_mission_id = resolved_goal.mission_id
+            self._current_zone_id = resolved_goal.zone_id
+            self._current_tomato_id = resolved_goal.tomato_id
 
             self._publish_feedback(
                 goal_handle,
                 current_phase='PLANNING',
                 aligned_to_target=False,
                 gripper_engaged=False,
+                target_id=resolved_goal.tomato_id,
+                detail_message=f'Planning harvest route for {resolved_goal.tomato_id}.',
             )
             route_plan = compute_harvest_route(
                 self._plan,
                 self._catalog,
                 resolved_goal.tomato_id,
-                preferred_return_waypoint_id=resolved_goal.preferred_approach_waypoint_id or None,
+                return_mode=self._return_mode_override or None,
+                preferred_return_waypoint_id=self._preferred_return_waypoint_id(
+                    resolved_goal.preferred_approach_waypoint_id
+                ),
+            )
+            resume_patrol_after_return = (
+                route_plan.return_mode == 'resume_patrol' and self._auto_resume_patrol
+            )
+            self._publish_execution_status(
+                current_phase='PLANNING',
+                target_id=resolved_goal.tomato_id,
+                progress_pct=PHASE_PROGRESS_PCT['PLANNING'],
+                detail_message=(
+                    f'Harvest plan ready for {resolved_goal.tomato_id}; '
+                    f'return target={route_plan.return_waypoint_id} '
+                    f'(mode={route_plan.return_mode}).'
+                ),
             )
 
             self._maybe_pause_patrol(goal_handle)
@@ -263,6 +312,11 @@ class HarvestActionServerNode(Node):
                 current_phase='APPROACHING',
                 aligned_to_target=False,
                 gripper_engaged=False,
+                target_id=route_plan.inspect_waypoint_id,
+                detail_message=(
+                    f'Approaching {resolved_goal.tomato_id} via '
+                    f'{route_plan.inspect_waypoint_name}.'
+                ),
             )
             if alignment_required(route_plan):
                 self._run_navigation_phase(
@@ -271,6 +325,8 @@ class HarvestActionServerNode(Node):
                     current_phase='ALIGNING',
                     aligned_to_target=False,
                     gripper_engaged=False,
+                    target_id=resolved_goal.tomato_id,
+                    detail_message=f'Aligning robot posture for {resolved_goal.tomato_id}.',
                 )
 
             self._wait_phase(
@@ -279,6 +335,8 @@ class HarvestActionServerNode(Node):
                 current_phase='ALIGNING',
                 aligned_to_target=True,
                 gripper_engaged=False,
+                target_id=resolved_goal.tomato_id,
+                detail_message=f'Holding aligned posture for {resolved_goal.tomato_id}.',
             )
             self._wait_phase(
                 goal_handle,
@@ -286,6 +344,8 @@ class HarvestActionServerNode(Node):
                 current_phase='PICKING',
                 aligned_to_target=True,
                 gripper_engaged=False,
+                target_id=resolved_goal.tomato_id,
+                detail_message=f'Simulating picking for {resolved_goal.tomato_id}.',
             )
             self._publish_feedback(
                 goal_handle,
@@ -293,6 +353,8 @@ class HarvestActionServerNode(Node):
                 aligned_to_target=True,
                 gripper_engaged=True,
                 progress_pct=75.0,
+                target_id=resolved_goal.tomato_id,
+                detail_message=f'Gripper engaged for {resolved_goal.tomato_id}.',
             )
             self._wait_phase(
                 goal_handle,
@@ -300,6 +362,8 @@ class HarvestActionServerNode(Node):
                 current_phase='VERIFYING',
                 aligned_to_target=True,
                 gripper_engaged=True,
+                target_id=resolved_goal.tomato_id,
+                detail_message=f'Verifying harvest success for {resolved_goal.tomato_id}.',
             )
             ensure_harvest_target_available(
                 catalog=self._catalog,
@@ -312,6 +376,8 @@ class HarvestActionServerNode(Node):
                 current_phase='STOWING',
                 aligned_to_target=True,
                 gripper_engaged=True,
+                target_id=resolved_goal.tomato_id,
+                detail_message=f'Loading {resolved_goal.tomato_id} into the basket.',
             )
 
             event_id = f'harvest-event-{uuid.uuid4()}'
@@ -334,11 +400,37 @@ class HarvestActionServerNode(Node):
             event.header.stamp = self.get_clock().now().to_msg()
             self._harvest_event_publisher.publish(event)
             self._publish_basket_state()
+            harvest_completed = True
+            success_event_id = event_id
+
+            completed_return_waypoint_id = self._run_return_navigation_phase(
+                goal_handle,
+                route_plan=route_plan,
+            )
+            if resume_patrol_after_return:
+                self._resume_patrol_after_return(
+                    goal_handle,
+                    return_waypoint_id=completed_return_waypoint_id,
+                )
+                resumed_patrol = True
+
+            self._publish_execution_status(
+                current_phase='RESUME',
+                state='COMPLETED',
+                target_id=completed_return_waypoint_id or route_plan.return_waypoint_id,
+                progress_pct=PHASE_PROGRESS_PCT['RESUME'],
+                detail_message=(
+                    f'Harvest completed for {resolved_goal.tomato_id}; '
+                    f'robot returned to {completed_return_waypoint_id or route_plan.return_waypoint_id}'
+                    + (' and patrol resumed.' if resumed_patrol else '.')
+                ),
+            )
             self._publish_feedback(
                 goal_handle,
                 current_phase='COMPLETED',
                 aligned_to_target=True,
                 gripper_engaged=False,
+                publish_status=False,
             )
 
             goal_handle.succeed()
@@ -348,54 +440,82 @@ class HarvestActionServerNode(Node):
                 basket_count=self._basket_count,
                 message=(
                     f'Harvest action completed for {resolved_goal.tomato_id} '
-                    f'via {route_plan.inspect_waypoint_id}.'
+                    f'via {route_plan.inspect_waypoint_id} and returned to '
+                    f'{completed_return_waypoint_id or route_plan.return_waypoint_id}.'
                 ),
             )
         except HarvestActionCanceled as exc:
-            event_id = f'harvest-event-{uuid.uuid4()}'
-            event = build_harvest_event(
-                event_id=event_id,
-                mission_id=self._normalize_request_text(goal_handle.request.mission_id) or f'harvest-{uuid.uuid4()}',
-                zone_id=self._normalize_request_text(goal_handle.request.zone_id) or self._plan.zone_id,
-                plant_id=self._resolve_failure_plant_id(goal_handle.request),
-                fruit_id=self._normalize_request_text(goal_handle.request.fruit_id),
-                frame_id=self._plan.frame_id,
-                basket_count=self._basket_count,
-                success=False,
-                failure_reason=str(exc),
+            event_id = success_event_id
+            if not harvest_completed:
+                event_id = f'harvest-event-{uuid.uuid4()}'
+                event = build_harvest_event(
+                    event_id=event_id,
+                    mission_id=self._normalize_request_text(goal_handle.request.mission_id) or f'harvest-{uuid.uuid4()}',
+                    zone_id=self._normalize_request_text(goal_handle.request.zone_id) or self._plan.zone_id,
+                    plant_id=self._resolve_failure_plant_id(goal_handle.request),
+                    fruit_id=self._normalize_request_text(goal_handle.request.fruit_id),
+                    frame_id=self._plan.frame_id,
+                    basket_count=self._basket_count,
+                    success=False,
+                    failure_reason=str(exc),
+                )
+                event.header.stamp = self.get_clock().now().to_msg()
+                self._harvest_event_publisher.publish(event)
+            self._publish_execution_status(
+                current_phase=self._last_execution_phase or 'CANCELED',
+                state='CANCELED',
+                target_id=completed_return_waypoint_id or self._current_tomato_id,
+                progress_pct=PHASE_PROGRESS_PCT.get(self._last_execution_phase, 0.0),
+                detail_message=str(exc),
             )
-            event.header.stamp = self.get_clock().now().to_msg()
-            self._harvest_event_publisher.publish(event)
             goal_handle.canceled()
             return build_result(
                 success=False,
                 harvest_event_id=event_id,
                 basket_count=self._basket_count,
-                message=str(exc),
+                message=(
+                    str(exc)
+                    if not harvest_completed
+                    else f'Harvest completed but return-home sequence was canceled: {exc}'
+                ),
             )
         except (HarvestActionError, ValueError) as exc:
-            event_id = f'harvest-event-{uuid.uuid4()}'
-            event = build_harvest_event(
-                event_id=event_id,
-                mission_id=self._normalize_request_text(goal_handle.request.mission_id) or f'harvest-{uuid.uuid4()}',
-                zone_id=self._normalize_request_text(goal_handle.request.zone_id) or self._plan.zone_id,
-                plant_id=self._resolve_failure_plant_id(goal_handle.request),
-                fruit_id=self._normalize_request_text(goal_handle.request.fruit_id),
-                frame_id=self._plan.frame_id,
-                basket_count=self._basket_count,
-                success=False,
-                failure_reason=str(exc),
+            event_id = success_event_id
+            if not harvest_completed:
+                event_id = f'harvest-event-{uuid.uuid4()}'
+                event = build_harvest_event(
+                    event_id=event_id,
+                    mission_id=self._normalize_request_text(goal_handle.request.mission_id) or f'harvest-{uuid.uuid4()}',
+                    zone_id=self._normalize_request_text(goal_handle.request.zone_id) or self._plan.zone_id,
+                    plant_id=self._resolve_failure_plant_id(goal_handle.request),
+                    fruit_id=self._normalize_request_text(goal_handle.request.fruit_id),
+                    frame_id=self._plan.frame_id,
+                    basket_count=self._basket_count,
+                    success=False,
+                    failure_reason=str(exc),
+                )
+                event.header.stamp = self.get_clock().now().to_msg()
+                self._harvest_event_publisher.publish(event)
+            self._publish_execution_status(
+                current_phase=self._last_execution_phase or 'FAILED',
+                state='FAILED',
+                target_id=completed_return_waypoint_id or self._current_tomato_id,
+                progress_pct=PHASE_PROGRESS_PCT.get(self._last_execution_phase, 0.0),
+                detail_message=str(exc),
             )
-            event.header.stamp = self.get_clock().now().to_msg()
-            self._harvest_event_publisher.publish(event)
             goal_handle.abort()
             return build_result(
                 success=False,
                 harvest_event_id=event_id,
                 basket_count=self._basket_count,
-                message=str(exc),
+                message=(
+                    str(exc)
+                    if not harvest_completed
+                    else f'Harvest completed but return-home sequence failed: {exc}'
+                ),
             )
         finally:
+            self._clear_execution_context()
             with self._goal_lock:
                 self._goal_in_progress = False
 
@@ -408,6 +528,8 @@ class HarvestActionServerNode(Node):
             current_phase='WAITING_FOR_PATROL_PAUSE',
             aligned_to_target=False,
             gripper_engaged=False,
+            target_id=self._current_tomato_id,
+            detail_message='Waiting for patrol pause before harvest execution.',
         )
         if not self._patrol_stop_client.wait_for_service(timeout_sec=self._patrol_service_wait_sec):
             raise HarvestActionError('Patrol stop service is unavailable during harvest action.')
@@ -429,6 +551,79 @@ class HarvestActionServerNode(Node):
             time.sleep(0.05)
         raise HarvestActionError('Timed out while waiting for patrol to pause before harvest.')
 
+    def _preferred_return_waypoint_id(self, explicit_waypoint_id: str) -> str | None:
+        normalized_explicit = explicit_waypoint_id.strip()
+        if normalized_explicit and normalized_explicit in self._plan.waypoints:
+            return normalized_explicit
+
+        current_waypoint_id = self._last_patrol_status.get('current_waypoint_id')
+        if isinstance(current_waypoint_id, str) and current_waypoint_id in self._plan.waypoints:
+            return current_waypoint_id
+
+        next_waypoint_id = self._last_patrol_status.get('next_waypoint_id')
+        if isinstance(next_waypoint_id, str) and next_waypoint_id in self._plan.waypoints:
+            return next_waypoint_id
+        return None
+
+    def _run_return_navigation_phase(self, goal_handle, *, route_plan) -> str:
+        primary_waypoint_id = route_plan.return_waypoint_id
+        try:
+            self._run_navigation_phase(
+                goal_handle,
+                self._plan.waypoints[primary_waypoint_id].pose,
+                current_phase='RETURN_HOME',
+                aligned_to_target=False,
+                gripper_engaged=False,
+                target_id=primary_waypoint_id,
+                detail_message=(
+                    f'Returning to {primary_waypoint_id} after harvesting '
+                    f'{route_plan.tomato_id}.'
+                ),
+            )
+            return primary_waypoint_id
+        except HarvestActionError as exc:
+            fallback_waypoint_id = route_plan.fallback_return_waypoint_id
+            if fallback_waypoint_id == primary_waypoint_id:
+                raise
+            self.get_logger().warning(
+                'Primary return target failed, retrying fallback '
+                f'{fallback_waypoint_id}: {exc}'
+            )
+            self._run_navigation_phase(
+                goal_handle,
+                self._plan.waypoints[fallback_waypoint_id].pose,
+                current_phase='RETURN_HOME',
+                aligned_to_target=False,
+                gripper_engaged=False,
+                target_id=fallback_waypoint_id,
+                detail_message=(
+                    f'Primary return target failed; retrying fallback '
+                    f'{fallback_waypoint_id}.'
+                ),
+            )
+            return fallback_waypoint_id
+
+    def _resume_patrol_after_return(self, goal_handle, *, return_waypoint_id: str) -> None:
+        self._publish_feedback(
+            goal_handle,
+            current_phase='RESUME',
+            aligned_to_target=False,
+            gripper_engaged=False,
+            target_id=return_waypoint_id,
+            detail_message=f'Resuming patrol after returning to {return_waypoint_id}.',
+        )
+        if not self._patrol_resume_client.wait_for_service(timeout_sec=self._patrol_service_wait_sec):
+            raise HarvestActionError('Patrol resume service is unavailable after harvest return.')
+
+        future = self._patrol_resume_client.call_async(Trigger.Request())
+        response = self._wait_for_future(
+            future,
+            goal_handle,
+            description='patrol resume service response',
+        )
+        if not response.success:
+            raise HarvestActionError(f'Patrol resume request failed: {response.message}')
+
     def _run_navigation_phase(
         self,
         goal_handle,
@@ -437,6 +632,8 @@ class HarvestActionServerNode(Node):
         current_phase: str,
         aligned_to_target: bool,
         gripper_engaged: bool,
+        target_id: str = '',
+        detail_message: str = '',
     ) -> None:
         if not self._navigate_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
             raise HarvestActionError(
@@ -448,6 +645,8 @@ class HarvestActionServerNode(Node):
             current_phase=current_phase,
             aligned_to_target=aligned_to_target,
             gripper_engaged=gripper_engaged,
+            target_id=target_id,
+            detail_message=detail_message,
         )
 
         nav_goal = NavigateToPose.Goal()
@@ -489,12 +688,16 @@ class HarvestActionServerNode(Node):
         current_phase: str,
         aligned_to_target: bool,
         gripper_engaged: bool,
+        target_id: str = '',
+        detail_message: str = '',
     ) -> None:
         self._publish_feedback(
             goal_handle,
             current_phase=current_phase,
             aligned_to_target=aligned_to_target,
             gripper_engaged=gripper_engaged,
+            target_id=target_id,
+            detail_message=detail_message,
         )
         if duration_sec <= 0.0:
             return
@@ -568,6 +771,42 @@ class HarvestActionServerNode(Node):
             return ''
         return normalized
 
+    def _publish_execution_status(
+        self,
+        *,
+        current_phase: str,
+        state: str = 'RUNNING',
+        target_id: str = '',
+        progress_pct: float | None = None,
+        detail_message: str = '',
+    ) -> None:
+        if not self._current_mission_id:
+            return
+
+        self._last_execution_phase = current_phase
+        status = build_mission_status(
+            mission_id=self._current_mission_id,
+            mission_type='HARVEST',
+            state=state,
+            current_phase=current_phase,
+            zone_id=self._current_zone_id,
+            target_id=target_id or self._current_tomato_id,
+            progress_pct=(
+                PHASE_PROGRESS_PCT.get(current_phase, 0.0)
+                if progress_pct is None
+                else progress_pct
+            ),
+            detail_message=detail_message,
+        )
+        status.header.stamp = self.get_clock().now().to_msg()
+        self._mission_status_publisher.publish(status)
+
+    def _clear_execution_context(self) -> None:
+        self._current_mission_id = ''
+        self._current_zone_id = self._plan.zone_id
+        self._current_tomato_id = ''
+        self._last_execution_phase = ''
+
     def _publish_feedback(
         self,
         goal_handle,
@@ -576,18 +815,29 @@ class HarvestActionServerNode(Node):
         aligned_to_target: bool,
         gripper_engaged: bool,
         progress_pct: float | None = None,
+        target_id: str = '',
+        detail_message: str = '',
+        publish_status: bool = True,
     ) -> None:
+        resolved_progress_pct = (
+            PHASE_PROGRESS_PCT.get(current_phase, 0.0)
+            if progress_pct is None
+            else progress_pct
+        )
         feedback = build_feedback(
             current_phase=current_phase,
-            progress_pct=(
-                PHASE_PROGRESS_PCT.get(current_phase, 0.0)
-                if progress_pct is None
-                else progress_pct
-            ),
+            progress_pct=resolved_progress_pct,
             aligned_to_target=aligned_to_target,
             gripper_engaged=gripper_engaged,
         )
         goal_handle.publish_feedback(feedback)
+        if publish_status:
+            self._publish_execution_status(
+                current_phase=current_phase,
+                target_id=target_id,
+                progress_pct=resolved_progress_pct,
+                detail_message=detail_message,
+            )
 
     def _build_pose_stamped(self, pose: Pose2D) -> PoseStamped:
         stamped = PoseStamped()
