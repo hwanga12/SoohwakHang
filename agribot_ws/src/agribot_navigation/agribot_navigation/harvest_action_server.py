@@ -29,11 +29,13 @@ from .harvest_action_support import (
     alignment_required,
     build_basket_state,
     build_feedback,
+    build_failure_alert_payload,
     build_harvest_event,
     build_mission_status,
     build_result,
     ensure_harvest_target_available,
     resolve_harvest_goal,
+    should_retry_phase,
 )
 from .harvest_routing import (
     CropCatalog,
@@ -75,9 +77,17 @@ class HarvestActionServerNode(Node):
         self.declare_parameter('basket_stow_duration_sec', 0.8)
         self.declare_parameter('return_mode_override', '')
         self.declare_parameter('auto_resume_patrol', True)
+        self.declare_parameter('phase_retry_limit', 1)
+        self.declare_parameter('phase_retry_backoff_sec', 0.5)
+        self.declare_parameter(
+            'retryable_phases',
+            ['WAITING_FOR_PATROL_PAUSE', 'APPROACHING', 'ALIGNING', 'RETURN_HOME', 'RESUME'],
+        )
+        self.declare_parameter('safety_stop_on_failure', True)
         self.declare_parameter('harvest_event_topic', 'harvest/event')
         self.declare_parameter('basket_state_topic', 'harvest/basket_state')
         self.declare_parameter('mission_status_topic', 'harvest/mission_status')
+        self.declare_parameter('failure_alert_topic', 'harvest/alerts')
         self.declare_parameter('reject_duplicate_targets', True)
 
         self._plan = self._load_patrol_plan()
@@ -90,6 +100,7 @@ class HarvestActionServerNode(Node):
         self._harvest_event_topic = str(self.get_parameter('harvest_event_topic').value)
         self._basket_state_topic = str(self.get_parameter('basket_state_topic').value)
         self._mission_status_topic = str(self.get_parameter('mission_status_topic').value)
+        self._failure_alert_topic = str(self.get_parameter('failure_alert_topic').value)
         self._nav_server_wait_sec = float(self.get_parameter('nav_server_wait_sec').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
         self._patrol_pause_timeout_sec = float(self.get_parameter('patrol_pause_timeout_sec').value)
@@ -111,6 +122,17 @@ class HarvestActionServerNode(Node):
         )
         self._return_mode_override = str(self.get_parameter('return_mode_override').value).strip()
         self._auto_resume_patrol = bool(self.get_parameter('auto_resume_patrol').value)
+        self._phase_retry_limit = max(0, int(self.get_parameter('phase_retry_limit').value))
+        self._phase_retry_backoff_sec = max(
+            0.0,
+            float(self.get_parameter('phase_retry_backoff_sec').value),
+        )
+        self._retryable_phases = {
+            str(phase).strip().upper()
+            for phase in self.get_parameter('retryable_phases').value
+            if str(phase).strip()
+        }
+        self._safety_stop_on_failure = bool(self.get_parameter('safety_stop_on_failure').value)
         self._reject_duplicate_targets = bool(self.get_parameter('reject_duplicate_targets').value)
 
         self._navigate_client = ActionClient(
@@ -156,6 +178,11 @@ class HarvestActionServerNode(Node):
             self._mission_status_topic,
             basket_state_qos,
         )
+        self._failure_alert_publisher = self.create_publisher(
+            String,
+            self._failure_alert_topic,
+            10,
+        )
 
         self._goal_lock = threading.Lock()
         self._goal_in_progress = False
@@ -172,6 +199,7 @@ class HarvestActionServerNode(Node):
         self._current_zone_id = self._plan.zone_id
         self._current_tomato_id = ''
         self._last_execution_phase = ''
+        self._retry_count = 0
 
         self._action_server = ActionServer(
             self,
@@ -189,7 +217,8 @@ class HarvestActionServerNode(Node):
             f'navigate_to_pose_action={self._navigate_action_name}, '
             f'harvest_event_topic={self._harvest_event_topic}, '
             f'basket_state_topic={self._basket_state_topic}, '
-            f'mission_status_topic={self._mission_status_topic}'
+            f'mission_status_topic={self._mission_status_topic}, '
+            f'failure_alert_topic={self._failure_alert_topic}'
         )
         self._publish_basket_state()
 
@@ -255,6 +284,7 @@ class HarvestActionServerNode(Node):
         success_event_id = ''
         completed_return_waypoint_id = ''
         resumed_patrol = False
+        safe_stop_completed = False
         try:
             resolved_goal = resolve_harvest_goal(
                 mission_id=goal_handle.request.mission_id,
@@ -273,6 +303,7 @@ class HarvestActionServerNode(Node):
             self._current_mission_id = resolved_goal.mission_id
             self._current_zone_id = resolved_goal.zone_id
             self._current_tomato_id = resolved_goal.tomato_id
+            self._retry_count = 0
 
             self._publish_feedback(
                 goal_handle,
@@ -305,28 +336,49 @@ class HarvestActionServerNode(Node):
                 ),
             )
 
-            self._maybe_pause_patrol(goal_handle)
-            self._run_navigation_phase(
+            self._run_phase_with_retry(
                 goal_handle,
-                route_plan.approach_pose,
+                current_phase='WAITING_FOR_PATROL_PAUSE',
+                target_id=resolved_goal.tomato_id,
+                detail_message='Waiting for patrol pause before harvest execution.',
+                operation=lambda: self._maybe_pause_patrol(goal_handle),
+            )
+            self._run_phase_with_retry(
+                goal_handle,
                 current_phase='APPROACHING',
-                aligned_to_target=False,
-                gripper_engaged=False,
                 target_id=route_plan.inspect_waypoint_id,
                 detail_message=(
                     f'Approaching {resolved_goal.tomato_id} via '
                     f'{route_plan.inspect_waypoint_name}.'
                 ),
-            )
-            if alignment_required(route_plan):
-                self._run_navigation_phase(
+                operation=lambda: self._run_navigation_phase(
                     goal_handle,
-                    route_plan.align_pose,
-                    current_phase='ALIGNING',
+                    route_plan.approach_pose,
+                    current_phase='APPROACHING',
                     aligned_to_target=False,
                     gripper_engaged=False,
+                    target_id=route_plan.inspect_waypoint_id,
+                    detail_message=(
+                        f'Approaching {resolved_goal.tomato_id} via '
+                        f'{route_plan.inspect_waypoint_name}.'
+                    ),
+                ),
+            )
+            if alignment_required(route_plan):
+                self._run_phase_with_retry(
+                    goal_handle,
+                    current_phase='ALIGNING',
                     target_id=resolved_goal.tomato_id,
                     detail_message=f'Aligning robot posture for {resolved_goal.tomato_id}.',
+                    operation=lambda: self._run_navigation_phase(
+                        goal_handle,
+                        route_plan.align_pose,
+                        current_phase='ALIGNING',
+                        aligned_to_target=False,
+                        gripper_engaged=False,
+                        target_id=resolved_goal.tomato_id,
+                        detail_message=f'Aligning robot posture for {resolved_goal.tomato_id}.',
+                    ),
                 )
 
             self._wait_phase(
@@ -403,14 +455,31 @@ class HarvestActionServerNode(Node):
             harvest_completed = True
             success_event_id = event_id
 
-            completed_return_waypoint_id = self._run_return_navigation_phase(
+            completed_return_waypoint_id = self._run_phase_with_retry(
                 goal_handle,
-                route_plan=route_plan,
+                current_phase='RETURN_HOME',
+                target_id=route_plan.return_waypoint_id,
+                detail_message=(
+                    f'Returning to {route_plan.return_waypoint_id} after harvesting '
+                    f'{route_plan.tomato_id}.'
+                ),
+                operation=lambda: self._run_return_navigation_phase(
+                    goal_handle,
+                    route_plan=route_plan,
+                ),
             )
             if resume_patrol_after_return:
-                self._resume_patrol_after_return(
+                self._run_phase_with_retry(
                     goal_handle,
-                    return_waypoint_id=completed_return_waypoint_id,
+                    current_phase='RESUME',
+                    target_id=completed_return_waypoint_id,
+                    detail_message=(
+                        f'Resuming patrol after returning to {completed_return_waypoint_id}.'
+                    ),
+                    operation=lambda: self._resume_patrol_after_return(
+                        goal_handle,
+                        return_waypoint_id=completed_return_waypoint_id,
+                    ),
                 )
                 resumed_patrol = True
 
@@ -419,6 +488,7 @@ class HarvestActionServerNode(Node):
                 state='COMPLETED',
                 target_id=completed_return_waypoint_id or route_plan.return_waypoint_id,
                 progress_pct=PHASE_PROGRESS_PCT['RESUME'],
+                retry_count=self._retry_count,
                 detail_message=(
                     f'Harvest completed for {resolved_goal.tomato_id}; '
                     f'robot returned to {completed_return_waypoint_id or route_plan.return_waypoint_id}'
@@ -466,6 +536,7 @@ class HarvestActionServerNode(Node):
                 state='CANCELED',
                 target_id=completed_return_waypoint_id or self._current_tomato_id,
                 progress_pct=PHASE_PROGRESS_PCT.get(self._last_execution_phase, 0.0),
+                retry_count=self._retry_count,
                 detail_message=str(exc),
             )
             goal_handle.canceled()
@@ -496,12 +567,27 @@ class HarvestActionServerNode(Node):
                 )
                 event.header.stamp = self.get_clock().now().to_msg()
                 self._harvest_event_publisher.publish(event)
+            safe_stop_completed = self._perform_safety_stop(reason=str(exc))
+            failure_phase = self._last_execution_phase or 'FAILED'
+            safe_stop_message = (
+                'Safety stop requested successfully.'
+                if safe_stop_completed
+                else 'Safety stop request failed or was unavailable.'
+            )
+            failure_message = f'{exc} {safe_stop_message}'
+            self._publish_failure_alert(
+                current_phase=failure_phase,
+                failure_reason=str(exc),
+                harvest_completed=harvest_completed,
+                safety_stop_completed=safe_stop_completed,
+            )
             self._publish_execution_status(
-                current_phase=self._last_execution_phase or 'FAILED',
+                current_phase='SAFETY_STOP',
                 state='FAILED',
                 target_id=completed_return_waypoint_id or self._current_tomato_id,
-                progress_pct=PHASE_PROGRESS_PCT.get(self._last_execution_phase, 0.0),
-                detail_message=str(exc),
+                progress_pct=PHASE_PROGRESS_PCT['SAFETY_STOP'],
+                retry_count=self._retry_count,
+                detail_message=failure_message,
             )
             goal_handle.abort()
             return build_result(
@@ -509,9 +595,9 @@ class HarvestActionServerNode(Node):
                 harvest_event_id=event_id,
                 basket_count=self._basket_count,
                 message=(
-                    str(exc)
+                    failure_message
                     if not harvest_completed
-                    else f'Harvest completed but return-home sequence failed: {exc}'
+                    else f'Harvest completed but return-home sequence failed: {failure_message}'
                 ),
             )
         finally:
@@ -564,6 +650,55 @@ class HarvestActionServerNode(Node):
         if isinstance(next_waypoint_id, str) and next_waypoint_id in self._plan.waypoints:
             return next_waypoint_id
         return None
+
+    def _run_phase_with_retry(
+        self,
+        goal_handle,
+        *,
+        current_phase: str,
+        target_id: str,
+        detail_message: str,
+        operation,
+    ):
+        phase_retry_count = 0
+        while True:
+            try:
+                return operation()
+            except HarvestActionCanceled:
+                raise
+            except HarvestActionError as exc:
+                if not should_retry_phase(
+                    current_phase=current_phase,
+                    retryable_phases=self._retryable_phases,
+                    retry_count=phase_retry_count,
+                    retry_limit=self._phase_retry_limit,
+                ):
+                    if phase_retry_count > 0:
+                        raise HarvestActionError(
+                            f'{current_phase} failed after {phase_retry_count} retries: {exc}'
+                        ) from exc
+                    raise
+
+                phase_retry_count += 1
+                self._retry_count += 1
+                retry_message = (
+                    f'{current_phase} failed: {exc}. Retrying in '
+                    f'{self._phase_retry_backoff_sec:.1f}s '
+                    f'({phase_retry_count}/{self._phase_retry_limit}).'
+                )
+                self.get_logger().warning(retry_message)
+                self._publish_execution_status(
+                    current_phase=current_phase,
+                    target_id=target_id,
+                    progress_pct=PHASE_PROGRESS_PCT.get(current_phase, 0.0),
+                    retry_count=self._retry_count,
+                    detail_message=retry_message,
+                )
+                if self._phase_retry_backoff_sec > 0.0:
+                    deadline = time.monotonic() + self._phase_retry_backoff_sec
+                    while time.monotonic() < deadline:
+                        self._ensure_goal_is_active(goal_handle)
+                        time.sleep(0.05)
 
     def _run_return_navigation_phase(self, goal_handle, *, route_plan) -> str:
         primary_waypoint_id = route_plan.return_waypoint_id
@@ -623,6 +758,65 @@ class HarvestActionServerNode(Node):
         )
         if not response.success:
             raise HarvestActionError(f'Patrol resume request failed: {response.message}')
+
+    def _perform_safety_stop(self, *, reason: str) -> bool:
+        if not self._safety_stop_on_failure:
+            self.get_logger().warning(f'Harvest failure without safety stop: {reason}')
+            return False
+
+        if self._patrol_is_quiescent():
+            self.get_logger().warning(
+                f'Harvest failure triggered safety stop, but patrol is already quiescent: {reason}'
+            )
+            return True
+
+        if not self._patrol_stop_client.wait_for_service(timeout_sec=self._patrol_service_wait_sec):
+            self.get_logger().error(
+                f'Harvest failure safety stop requested but patrol stop service is unavailable: {reason}'
+            )
+            return False
+
+        future = self._patrol_stop_client.call_async(Trigger.Request())
+        try:
+            response = self._wait_for_future_without_goal(
+                future,
+                description='safety stop patrol stop service response',
+            )
+        except HarvestActionError as exc:
+            self.get_logger().error(f'Safety stop failed: {exc}')
+            return False
+
+        if not response.success and not self._patrol_is_quiescent():
+            self.get_logger().error(f'Safety stop request failed: {response.message}')
+            return False
+
+        self.get_logger().warning(f'Harvest failure triggered safety stop: {reason}')
+        return True
+
+    def _publish_failure_alert(
+        self,
+        *,
+        current_phase: str,
+        failure_reason: str,
+        harvest_completed: bool,
+        safety_stop_completed: bool,
+    ) -> None:
+        alert = String()
+        alert.data = build_failure_alert_payload(
+            mission_id=self._current_mission_id,
+            zone_id=self._current_zone_id,
+            fruit_id=self._current_tomato_id,
+            current_phase=current_phase,
+            failure_reason=failure_reason,
+            retry_count=self._retry_count,
+            safety_stop_requested=self._safety_stop_on_failure,
+            safety_stop_completed=safety_stop_completed,
+            harvest_completed=harvest_completed,
+        )
+        self._failure_alert_publisher.publish(alert)
+        self.get_logger().error(
+            f'Published harvest failure alert for {self._current_tomato_id}: {failure_reason}'
+        )
 
     def _run_navigation_phase(
         self,
@@ -728,6 +922,21 @@ class HarvestActionServerNode(Node):
         except Exception as exc:
             raise HarvestActionError(f'Failed while waiting for {description}: {exc}') from exc
 
+    def _wait_for_future_without_goal(
+        self,
+        future: Future,
+        *,
+        description: str,
+    ):
+        while rclpy.ok() and not future.done():
+            time.sleep(0.05)
+        if not future.done():
+            raise HarvestActionError(f'Executor stopped while waiting for {description}.')
+        try:
+            return future.result()
+        except Exception as exc:
+            raise HarvestActionError(f'Failed while waiting for {description}: {exc}') from exc
+
     def _cancel_navigation_goal(self, nav_goal_handle) -> None:
         cancel_future = nav_goal_handle.cancel_goal_async()
         deadline = time.monotonic() + 1.0
@@ -778,6 +987,7 @@ class HarvestActionServerNode(Node):
         state: str = 'RUNNING',
         target_id: str = '',
         progress_pct: float | None = None,
+        retry_count: int | None = None,
         detail_message: str = '',
     ) -> None:
         if not self._current_mission_id:
@@ -796,6 +1006,7 @@ class HarvestActionServerNode(Node):
                 if progress_pct is None
                 else progress_pct
             ),
+            retry_count=self._retry_count if retry_count is None else retry_count,
             detail_message=detail_message,
         )
         status.header.stamp = self.get_clock().now().to_msg()
@@ -806,6 +1017,7 @@ class HarvestActionServerNode(Node):
         self._current_zone_id = self._plan.zone_id
         self._current_tomato_id = ''
         self._last_execution_phase = ''
+        self._retry_count = 0
 
     def _publish_feedback(
         self,

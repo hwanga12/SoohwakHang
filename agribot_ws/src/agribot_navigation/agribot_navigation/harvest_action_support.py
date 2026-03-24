@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import math
 import uuid
 
@@ -31,6 +32,7 @@ PHASE_PROGRESS_PCT = {
     'STOWING': 95.0,
     'RETURN_HOME': 98.0,
     'RESUME': 100.0,
+    'SAFETY_STOP': 100.0,
     'COMPLETED': 100.0,
 }
 
@@ -211,3 +213,48 @@ def build_mission_status(
     status.retry_count = max(0, int(retry_count))
     status.detail_message = detail_message
     return status
+
+
+def should_retry_phase(
+    *,
+    current_phase: str,
+    retryable_phases: set[str],
+    retry_count: int,
+    retry_limit: int,
+) -> bool:
+    normalized_phase = current_phase.strip().upper()
+    if not normalized_phase:
+        return False
+    if retry_limit <= 0:
+        return False
+    if normalized_phase not in retryable_phases:
+        return False
+    return retry_count < retry_limit
+
+
+def build_failure_alert_payload(
+    *,
+    mission_id: str,
+    zone_id: str,
+    fruit_id: str,
+    current_phase: str,
+    failure_reason: str,
+    retry_count: int,
+    safety_stop_requested: bool,
+    safety_stop_completed: bool,
+    harvest_completed: bool,
+) -> str:
+    payload = {
+        'alert_type': 'HARVEST_FAILURE',
+        'severity': 'ERROR',
+        'mission_id': mission_id,
+        'zone_id': zone_id,
+        'fruit_id': fruit_id,
+        'current_phase': current_phase,
+        'retry_count': max(0, int(retry_count)),
+        'safety_stop_requested': bool(safety_stop_requested),
+        'safety_stop_completed': bool(safety_stop_completed),
+        'harvest_completed': bool(harvest_completed),
+        'failure_reason': failure_reason.strip(),
+    }
+    return json.dumps(payload, ensure_ascii=True, sort_keys=True)
