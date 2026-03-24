@@ -68,8 +68,10 @@ zones:
         is_available: true
         capabilities:
           supported_commands:
+            - open_curtain
+            - close_curtain
             - set_curtain_position
-          default_unit: percent
+          default_unit: percent_open
       - device_id: farm_01_fan
         device_type: fan
         display_name: Farm 01 Ventilation Fan
