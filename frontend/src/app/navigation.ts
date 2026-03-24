@@ -29,13 +29,6 @@ export const navigationItems: NavigationItem[] = [
     icon: 'potted_plant',
   },
   {
-    path: '/alerts',
-    label: '알림',
-    caption: '병해와 설비 경고',
-    description: '병해, 센서, 장치 경고를 한 화면에서 읽고 처리 상태를 정리합니다.',
-    icon: 'notifications_active',
-  },
-  {
     path: '/iot',
     label: '설비',
     caption: '센서와 자동화',
