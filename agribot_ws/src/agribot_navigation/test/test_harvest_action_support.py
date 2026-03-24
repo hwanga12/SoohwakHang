@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from agribot_interfaces.msg import HarvestBasketState, HarvestEvent, MissionStatus
 from agribot_navigation.harvest_action_support import (
@@ -6,11 +7,13 @@ from agribot_navigation.harvest_action_support import (
     alignment_required,
     build_basket_state,
     build_feedback,
+    build_failure_alert_payload,
     build_harvest_event,
     build_mission_status,
     build_result,
     ensure_harvest_target_available,
     resolve_harvest_goal,
+    should_retry_phase,
 )
 from agribot_navigation.harvest_routing import compute_harvest_route, load_crop_catalog
 from agribot_navigation.patrol_config import load_patrol_plan
@@ -225,3 +228,53 @@ def test_build_mission_status_captures_return_home_progress() -> None:
     assert mission_status.progress_pct == pytest.approx(98.0)
     assert mission_status.retry_count == 1
     assert mission_status.detail_message == 'Returning to home pose after harvest.'
+
+
+def test_should_retry_phase_respects_allowlist_and_limit() -> None:
+    retryable_phases = {'APPROACHING', 'RETURN_HOME', 'RESUME'}
+
+    assert should_retry_phase(
+        current_phase='APPROACHING',
+        retryable_phases=retryable_phases,
+        retry_count=0,
+        retry_limit=1,
+    ) is True
+    assert should_retry_phase(
+        current_phase='APPROACHING',
+        retryable_phases=retryable_phases,
+        retry_count=1,
+        retry_limit=1,
+    ) is False
+    assert should_retry_phase(
+        current_phase='VERIFYING',
+        retryable_phases=retryable_phases,
+        retry_count=0,
+        retry_limit=2,
+    ) is False
+
+
+def test_build_failure_alert_payload_marks_safe_stop_and_failure_reason() -> None:
+    payload = build_failure_alert_payload(
+        mission_id='mission-456',
+        zone_id='farm_01',
+        fruit_id='farm01_plant_01_tomato_01',
+        current_phase='APPROACHING',
+        failure_reason='NavigateToPose action server not available.',
+        retry_count=2,
+        safety_stop_requested=True,
+        safety_stop_completed=True,
+        harvest_completed=False,
+    )
+    decoded = json.loads(payload)
+
+    assert decoded['alert_type'] == 'HARVEST_FAILURE'
+    assert decoded['severity'] == 'ERROR'
+    assert decoded['mission_id'] == 'mission-456'
+    assert decoded['zone_id'] == 'farm_01'
+    assert decoded['fruit_id'] == 'farm01_plant_01_tomato_01'
+    assert decoded['current_phase'] == 'APPROACHING'
+    assert decoded['retry_count'] == 2
+    assert decoded['safety_stop_requested'] is True
+    assert decoded['safety_stop_completed'] is True
+    assert decoded['harvest_completed'] is False
+    assert decoded['failure_reason'] == 'NavigateToPose action server not available.'

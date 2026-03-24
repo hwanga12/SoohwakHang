@@ -16,5 +16,10 @@ harvest_action_server:
     basket_stow_duration_sec: 0.8
     return_mode_override: ""
     auto_resume_patrol: true
+    phase_retry_limit: 1
+    phase_retry_backoff_sec: 0.5
+    retryable_phases: [WAITING_FOR_PATROL_PAUSE, APPROACHING, ALIGNING, RETURN_HOME, RESUME]
+    safety_stop_on_failure: true
     reject_duplicate_targets: true
     basket_state_topic: harvest/basket_state
+    failure_alert_topic: harvest/alerts
