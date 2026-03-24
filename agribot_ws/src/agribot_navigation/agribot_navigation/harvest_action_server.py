@@ -11,7 +11,7 @@ import uuid
 
 from action_msgs.msg import GoalStatus
 from agribot_interfaces.action import HarvestTomato
-from agribot_interfaces.msg import HarvestEvent
+from agribot_interfaces.msg import HarvestBasketState, HarvestEvent
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 import rclpy
@@ -19,6 +19,7 @@ from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalRespons
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.task import Future
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
@@ -26,6 +27,7 @@ from std_srvs.srv import Trigger
 from .harvest_action_support import (
     PHASE_PROGRESS_PCT,
     alignment_required,
+    build_basket_state,
     build_feedback,
     build_harvest_event,
     build_result,
@@ -70,6 +72,7 @@ class HarvestActionServerNode(Node):
         self.declare_parameter('verify_duration_sec', 0.6)
         self.declare_parameter('basket_stow_duration_sec', 0.8)
         self.declare_parameter('harvest_event_topic', 'harvest/event')
+        self.declare_parameter('basket_state_topic', 'harvest/basket_state')
         self.declare_parameter('reject_duplicate_targets', True)
 
         self._plan = self._load_patrol_plan()
@@ -79,6 +82,7 @@ class HarvestActionServerNode(Node):
         self._patrol_status_topic = str(self.get_parameter('patrol_status_topic').value)
         self._patrol_stop_service = str(self.get_parameter('patrol_stop_service').value)
         self._harvest_event_topic = str(self.get_parameter('harvest_event_topic').value)
+        self._basket_state_topic = str(self.get_parameter('basket_state_topic').value)
         self._nav_server_wait_sec = float(self.get_parameter('nav_server_wait_sec').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
         self._patrol_pause_timeout_sec = float(self.get_parameter('patrol_pause_timeout_sec').value)
@@ -123,11 +127,27 @@ class HarvestActionServerNode(Node):
             self._harvest_event_topic,
             10,
         )
+        basket_state_qos = QoSProfile(
+            depth=1,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE,
+        )
+        self._basket_state_publisher = self.create_publisher(
+            HarvestBasketState,
+            self._basket_state_topic,
+            basket_state_qos,
+        )
 
         self._goal_lock = threading.Lock()
         self._goal_in_progress = False
         self._basket_count = 0
         self._harvested_tomato_ids: set[str] = set()
+        self._loaded_tomato_ids: list[str] = []
+        self._last_success_event_id = ''
+        self._last_harvested_tomato_id = ''
+        self._remaining_ready_count = sum(
+            1 for tomato in self._catalog.tomatoes.values() if tomato.ready_to_harvest
+        )
         self._last_patrol_status: dict[str, object] = {}
 
         self._action_server = ActionServer(
@@ -144,8 +164,10 @@ class HarvestActionServerNode(Node):
             'HarvestTomato action server ready. '
             f'action_name={self._action_name}, '
             f'navigate_to_pose_action={self._navigate_action_name}, '
-            f'harvest_event_topic={self._harvest_event_topic}'
+            f'harvest_event_topic={self._harvest_event_topic}, '
+            f'basket_state_topic={self._basket_state_topic}'
         )
+        self._publish_basket_state()
 
     def _load_patrol_plan(self) -> PatrolPlan:
         patrol_plan_path = Path(str(self.get_parameter('patrol_waypoints_file').value)).expanduser()
@@ -295,6 +317,10 @@ class HarvestActionServerNode(Node):
             event_id = f'harvest-event-{uuid.uuid4()}'
             self._basket_count += 1
             self._harvested_tomato_ids.add(resolved_goal.tomato_id)
+            self._loaded_tomato_ids.append(resolved_goal.tomato_id)
+            self._last_success_event_id = event_id
+            self._last_harvested_tomato_id = resolved_goal.tomato_id
+            self._remaining_ready_count = max(0, self._remaining_ready_count - 1)
             event = build_harvest_event(
                 event_id=event_id,
                 mission_id=resolved_goal.mission_id,
@@ -307,6 +333,7 @@ class HarvestActionServerNode(Node):
             )
             event.header.stamp = self.get_clock().now().to_msg()
             self._harvest_event_publisher.publish(event)
+            self._publish_basket_state()
             self._publish_feedback(
                 goal_handle,
                 current_phase='COMPLETED',
@@ -507,6 +534,20 @@ class HarvestActionServerNode(Node):
     def _ensure_goal_is_active(self, goal_handle) -> None:
         if goal_handle.is_cancel_requested:
             raise HarvestActionCanceled('Harvest action canceled by client.')
+
+    def _publish_basket_state(self) -> None:
+        state = build_basket_state(
+            zone_id=self._plan.zone_id,
+            frame_id=self._plan.frame_id,
+            basket_count=self._basket_count,
+            harvested_count=len(self._harvested_tomato_ids),
+            remaining_ready_count=self._remaining_ready_count,
+            last_event_id=self._last_success_event_id,
+            last_harvested_fruit_id=self._last_harvested_tomato_id,
+            loaded_fruit_ids=self._loaded_tomato_ids,
+        )
+        state.header.stamp = self.get_clock().now().to_msg()
+        self._basket_state_publisher.publish(state)
 
     def _resolve_failure_plant_id(self, goal_request: HarvestTomato.Goal) -> str:
         plant_id = self._normalize_request_text(goal_request.plant_id)
