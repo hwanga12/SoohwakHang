@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AppIcon } from '@/components/app-icon'
+import { DevSurface } from '@/components/dev-surface'
 import { MetricCard } from '@/components/metric-card'
+import { MockupImage } from '@/components/mockup-image'
 import {
   getRobotPageData,
   robotFallback,
@@ -62,7 +64,13 @@ export function MapControlPage() {
       </section>
 
       <section className="map-layout">
-        <article className="map-board panel">
+        <DevSurface
+          as="article"
+          className="map-board panel"
+          detail="현재 지도, 경로선, 카메라 뷰는 실제 SLAM/카메라 스트림 대신 발표용 샘플 자산으로 렌더링됩니다."
+          status="sample"
+          title="지도와 카메라 보드"
+        >
           <div className="map-floating-card">
             <span className="panel-kicker">현재 경유지</span>
             <strong>{page.waypoint}</strong>
@@ -72,9 +80,16 @@ export function MapControlPage() {
           <div className="camera-peek">
             <span className="camera-live-pill">
               <span className="live-dot" />
-              실시간
+              시뮬레이션 프리뷰
             </span>
-            <div className="camera-frame" />
+            <div className="camera-frame">
+              <MockupImage
+                alt="로봇 카메라 프리뷰 시뮬레이션"
+                className="camera-frame-media"
+                height="100%"
+                src="/mock-images/robot-camera-preview.png"
+              />
+            </div>
           </div>
 
           <svg
@@ -108,10 +123,16 @@ export function MapControlPage() {
               <AppIcon filled name="my_location" />
             </button>
           </div>
-        </article>
+        </DevSurface>
 
         <aside className="map-sidebar">
-          <article className="panel">
+          <DevSurface
+            as="article"
+            className="panel"
+            detail="mission 진행률과 ETA는 아직 단일 runtime 체인이 없어 route/harvest 시나리오 기준 샘플 값으로 표시합니다."
+            status="sample"
+            title="미션 진행률"
+          >
             <div className="section-head">
               <div>
                 <span className="section-eyebrow">미션 진행</span>
@@ -141,9 +162,15 @@ export function MapControlPage() {
                 <strong className="detail-value">{page.speed} · 배터리 {page.battery}</strong>
               </article>
             </div>
-          </article>
+          </DevSurface>
 
-          <article className="panel">
+          <DevSurface
+            as="article"
+            className="panel"
+            detail="제어 API는 요청을 받아들이지만, 실제 ROS 명령 수행 결과와 상태 피드백은 아직 고정 응답 단계입니다."
+            status="stub"
+            title="로봇 제어 센터"
+          >
             <div className="section-head">
               <div>
                 <span className="section-eyebrow">로봇 제어</span>
@@ -177,9 +204,15 @@ export function MapControlPage() {
               ))}
             </div>
             {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
-          </article>
+          </DevSurface>
 
-          <article className="panel">
+          <DevSurface
+            as="article"
+            className="panel"
+            detail="구역 이동 요청 포맷은 잡혀 있지만 zone preset과 실제 waypoint/mission 연결은 아직 백엔드 브리지 구현이 남아 있습니다."
+            status="stub"
+            title="빠른 구역 이동"
+          >
             <div className="section-head">
               <div>
                 <span className="section-eyebrow">구역 이동</span>
@@ -211,9 +244,15 @@ export function MapControlPage() {
                 </button>
               ))}
             </div>
-          </article>
+          </DevSurface>
 
-          <article className="panel">
+          <DevSurface
+            as="article"
+            className="panel"
+            detail="이벤트 로그는 실제 mission event stream이 아니라 발표용 운행 로그를 시간순으로 정리한 샘플입니다."
+            status="sample"
+            title="이벤트 로그"
+          >
             <div className="section-head">
               <div>
                 <span className="section-eyebrow">이벤트 로그</span>
@@ -230,7 +269,7 @@ export function MapControlPage() {
                 </article>
               ))}
             </div>
-          </article>
+          </DevSurface>
         </aside>
       </section>
     </div>

@@ -1,41 +1,40 @@
 type MockupImageProps = {
-  width?: string | number;
-  height?: string | number;
-  label?: string;
-  className?: string;
-};
+  alt: string
+  className?: string
+  height?: number | string
+  label?: string
+  objectPosition?: string
+  src?: string
+  width?: number | string
+}
 
-export function MockupImage({ width = '100%', height = 200, label = '[목업]', className = '' }: MockupImageProps) {
+export function MockupImage({
+  alt,
+  className = '',
+  height = 200,
+  label,
+  objectPosition = 'center',
+  src,
+  width = '100%',
+}: MockupImageProps) {
   return (
-    <div 
-      className={`mockup-image-container ${className}`} 
-      style={{ 
-        width, 
-        height, 
-        backgroundColor: '#e5e7eb', // Tailwind gray-200
-        position: 'relative',
-        borderRadius: '16px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-        border: '1px dashed #9ca3af' // dashed border to indicate it's a placeholder
-      }}
+    <div
+      className={`mockup-image ${className}`.trim()}
+      style={{ width, height }}
     >
-      <span style={{
-        position: 'absolute',
-        top: '8px',
-        left: '8px',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        color: 'white',
-        fontSize: '0.75rem',
-        padding: '2px 6px',
-        borderRadius: '4px',
-        fontWeight: 'bold'
-      }}>
-        {label}
-      </span>
-      <span style={{ color: '#6b7280', fontSize: '0.9rem' }}>이미지 영역</span>
+      {src ? (
+        <img
+          alt={alt}
+          className="mockup-image__media"
+          src={src}
+          style={{ objectPosition }}
+        />
+      ) : (
+        <div className="mockup-image__placeholder">
+          <span>시뮬레이션 장면 준비 중</span>
+        </div>
+      )}
+      {label ? <span className="mockup-image__label">{label}</span> : null}
     </div>
-  );
+  )
 }

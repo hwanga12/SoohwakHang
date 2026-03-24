@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AppIcon } from '@/components/app-icon'
 import { navigationItems } from '@/app/navigation'
+import { useDevInspector } from '@/app/dev-inspector'
 import { env } from '@/config/env'
 import { useLiveStatus } from '@/hooks/use-live-status'
 
@@ -29,6 +30,7 @@ export default function AppShell() {
   const [showDevInfo, setShowDevInfo] = useState(false)
   const location = useLocation()
   const liveStatus = useLiveStatus()
+  const { isDevelopment, isOverlayEnabled, toggleOverlay } = useDevInspector()
   const modeLabel = formatModeLabel(env.mode)
 
   const liveLabel =
@@ -98,7 +100,7 @@ export default function AppShell() {
             ))}
           </nav>
 
-          {env.mode === 'development' && (
+          {isDevelopment && (
             <div style={{ position: 'relative', marginTop: 'auto' }}>
               {showDevInfo && (
                 <div className="sidebar-panel sidebar-panel--muted" style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: '8px', zIndex: 50, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
@@ -120,6 +122,27 @@ export default function AppShell() {
                       <dd className="code-chip" style={{ wordBreak: 'break-all', display: 'block' }}>{env.wsUrl}</dd>
                     </div>
                   </dl>
+                  <div className="sidebar-panel-section">
+                    <div className="split-row">
+                      <div>
+                        <span className="panel-kicker">개발자 오버레이</span>
+                        <p className="muted">같은 화면 위에서 샘플 데이터와 미연동 영역만 강조해서 보여줍니다.</p>
+                      </div>
+                      <button
+                        className={`ghost-chip${isOverlayEnabled ? ' ghost-chip--active' : ''}`}
+                        onClick={toggleOverlay}
+                        type="button"
+                      >
+                        {isOverlayEnabled ? '끄기' : '켜기'}
+                      </button>
+                    </div>
+                    <div className="dev-legend">
+                      <span className="dev-legend-item dev-legend-item--live">실연동</span>
+                      <span className="dev-legend-item dev-legend-item--sample">발표용 샘플</span>
+                      <span className="dev-legend-item dev-legend-item--partial">부분 연동</span>
+                      <span className="dev-legend-item dev-legend-item--stub">요청 수신만 구현</span>
+                    </div>
+                  </div>
                 </div>
               )}
               <button 
@@ -130,6 +153,9 @@ export default function AppShell() {
                 <AppIcon className="nav-icon" name="router" />
                 <div className="nav-copy" style={{ textAlign: 'left' }}>
                   <span className="nav-label">시스템 정보 (개발용)</span>
+                  <span className="nav-caption">
+                    {isOverlayEnabled ? '오버레이 표시 중' : '오버레이 숨김'}
+                  </span>
                 </div>
               </button>
             </div>

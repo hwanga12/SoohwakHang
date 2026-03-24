@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AppIcon } from '@/components/app-icon'
+import { DevSurface } from '@/components/dev-surface'
 import { MetricCard } from '@/components/metric-card'
 import {
   dashboardFallback,
@@ -33,7 +34,13 @@ export function DashboardPage() {
   return (
     <div className="screen">
       <section className="hero-grid hero-grid--dashboard">
-        <article className="hero-panel hero-panel--accent">
+        <DevSurface
+          as="article"
+          className="hero-panel hero-panel--accent"
+          detail="dashboard/summary, robot/status, environment/latest, alerts 응답이 아직 고정되어 있어 발표용 샘플 데이터로 운영 서사를 재현합니다."
+          status="sample"
+          title="운영 요약 패널"
+        >
           <div className="hero-topline">
             <span className="panel-kicker">운영 상태</span>
             <span className="live-pill live-pill--soft">{page.heroStatus}</span>
@@ -54,11 +61,22 @@ export function DashboardPage() {
             </div>
           </div>
           <div style={{ marginTop: '16px' }}>
-            <MockupImage height={140} />
+            <MockupImage
+              alt="온실 전경 시뮬레이션"
+              className="hero-photo"
+              height={160}
+              src="/mock-images/greenhouse-overview.png"
+            />
           </div>
-        </article>
+        </DevSurface>
 
-        <article className="hero-panel hero-panel--compact">
+        <DevSurface
+          as="article"
+          className="hero-panel hero-panel--compact"
+          detail="robot/commands와 mission 명령은 요청 수신까지 연결돼 있지만, 실제 로봇 상태 반영과 결과 피드백은 아직 ROS 런타임과 완전히 이어지지 않았습니다."
+          status="stub"
+          title="빠른 로봇 제어"
+        >
           <div className="status-stack">
             <div className="status-pill-row">
               <span className="panel-kicker">배터리</span>
@@ -122,7 +140,7 @@ export function DashboardPage() {
               </article>
             ))}
           </div>
-        </article>
+        </DevSurface>
       </section>
 
       <section className="metric-row">
@@ -138,7 +156,13 @@ export function DashboardPage() {
       </section>
 
       <section className="content-grid content-grid--dashboard">
-        <article className="panel">
+        <DevSurface
+          as="article"
+          className="panel"
+          detail="alerts와 realtime 이벤트 스트림이 아직 완전한 목록/타임라인 응답을 제공하지 않아 최근 활동은 발표용 이벤트 시퀀스로 채워집니다."
+          status="sample"
+          title="최근 활동 피드"
+        >
           <div className="section-head">
             <div>
               <span className="section-eyebrow">실시간 피드</span>
@@ -166,9 +190,15 @@ export function DashboardPage() {
               </article>
             ))}
           </div>
-        </article>
+        </DevSurface>
 
-        <article className="panel">
+        <DevSurface
+          as="article"
+          className="panel"
+          detail="운영 큐는 문서상의 역할 분담과 실제 데모 흐름을 반영한 샘플 카드입니다."
+          status="sample"
+          title="운영 큐"
+        >
           <div className="section-head">
             <div>
               <span className="section-eyebrow">운영 큐</span>
@@ -188,10 +218,16 @@ export function DashboardPage() {
               </article>
             ))}
           </div>
-        </article>
+        </DevSurface>
       </section>
 
-      <section className="panel">
+      <DevSurface
+        as="section"
+        className="panel"
+        detail="zones 엔드포인트는 최소 구조만 내려오고, 구역 상태 해석과 우선순위 문장은 아직 프론트 fallback 로직에서 보강합니다."
+        status="partial"
+        title="구역 상태 요약"
+      >
         <div className="section-head">
           <div>
             <span className="section-eyebrow">구역 요약</span>
@@ -221,7 +257,7 @@ export function DashboardPage() {
             </article>
           ))}
         </div>
-      </section>
+      </DevSurface>
     </div>
   )
 }

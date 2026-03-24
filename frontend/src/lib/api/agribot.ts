@@ -341,12 +341,12 @@ async function postWithFallback(
 
 export const dashboardFallback: DashboardPageData = {
   source: 'fallback',
-  heroStatus: '[목업] 순찰과 환경 점검이 함께 진행 중입니다.',
-  location: '[목업] farm_01 · 서측 2열',
-  activeTask: '[목업] 수확 후보 토마토 확인과 급수 권고 검토',
+  heroStatus: '서측 2열 순찰과 환경 점검이 함께 진행 중입니다.',
+  location: 'farm_01 · 서측 2열',
+  activeTask: '수확 후보 토마토 검수와 급수 권고 확인',
   battery: '82%',
-  batteryMeta: '[목업] 충전 없이 2시간 10분 운행 예상',
-  robotLabel: '[목업] AGR-02 · 자율 순찰 루프',
+  batteryMeta: '현재 적재 기준으로 2시간 10분 연속 운행 예상',
+  robotLabel: 'AGR-02 · 오전 자율 순찰 루프',
   environmentStats: [
     { label: '기온', value: '24.2°C', delta: '0.4° 상승' },
     { label: '습도', value: '62%', delta: '2% 감소' },
@@ -360,8 +360,8 @@ export const dashboardFallback: DashboardPageData = {
   events: [
     {
       tone: 'danger',
-      title: '[목업] farm01_plant_06_tomato_01 병해 의심',
-      detail: '[목업] 수동 검토 후 관찰 또는 수확 미션 전환 여부를 결정해야 합니다.',
+      title: 'farm01_plant_06_tomato_01 병해 의심',
+      detail: '수동 검토 후 관찰 유지 또는 수확 제외 여부를 결정해야 합니다.',
       time: '09:42',
     },
     {
@@ -381,8 +381,8 @@ export const dashboardFallback: DashboardPageData = {
     {
       tone: 'healthy',
       label: '작물',
-      title: '[목업] farm01_plant_03_tomato_01',
-      detail: '[목업] 수확 후보 ID가 준비되어 있어 바로 수확 미션 요청으로 넘길 수 있습니다.',
+      title: 'farm01_plant_03_tomato_01',
+      detail: 'canonical fruit ID가 준비되어 있어 수확 미션 요청으로 바로 넘길 수 있습니다.',
     },
     {
       tone: 'warning',
@@ -421,10 +421,10 @@ export const dashboardFallback: DashboardPageData = {
 
 export const robotFallback: RobotPageData = {
   source: 'fallback',
-  waypoint: '[목업] inspection_b12',
-  zoneLabel: '[목업] farm_01 · 서측 2열',
-  poseLabel: '[목업] map 기준 x 2.0 / y -5.9',
-  targetLabel: '[목업] 다음 목표 farm01_plant_06_tomato_01',
+  waypoint: 'inspection_b12',
+  zoneLabel: 'farm_01 · 서측 2열',
+  poseLabel: 'map 기준 x 2.0 / y -5.9',
+  targetLabel: '다음 목표 farm01_plant_06_tomato_01',
   metrics: [
     { label: '현재 모드', value: '자율 순찰', meta: 'patrol/status 기준으로 동작 중입니다.', tone: 'accent' },
     { label: '배터리', value: '82%', meta: '충전 없이 2시간 10분 운행 예상', tone: 'warning' },
@@ -437,7 +437,7 @@ export const robotFallback: RobotPageData = {
   speed: '1.1m/s',
   logs: [
     'B-12 점검 경유지 진입 완료',
-    'farm01_plant_03_tomato_01 수확 대상 준비 가능',
+    '서측 2열에서 fruit ID 기반 대상 큐 갱신',
     '순찰 중지 후 수확 미션으로 전환 가능',
   ],
   zonePresets: [

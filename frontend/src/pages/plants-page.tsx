@@ -2,11 +2,21 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { AppIcon } from '@/components/app-icon'
+import { DevSurface } from '@/components/dev-surface'
+import { MockupImage } from '@/components/mockup-image'
 import {
   getPlantsPageData,
   plantsFallback,
   requestHarvestMission,
 } from '@/lib/api/agribot'
+
+function getAlertPreview(alertId: string) {
+  if (alertId.includes('disease')) {
+    return '/mock-images/disease-closeup.png'
+  }
+
+  return '/mock-images/harvest-closeup.png'
+}
 
 export function PlantsPage() {
   const queryClient = useQueryClient()
@@ -48,11 +58,17 @@ export function PlantsPage() {
   return (
     <div className="screen">
       <section className="hero-grid hero-grid--plants">
-        <article className="hero-panel hero-panel--accent">
+        <DevSurface
+          as="article"
+          className="hero-panel hero-panel--accent"
+          detail="plants, observations, alerts API가 아직 실제 관측 이력을 제공하지 않아 발표용 작물 건강도와 스캔 요약을 사용합니다."
+          status="sample"
+          title="작물 진단 요약"
+        >
           <div className="hero-topline">
             <span className="panel-kicker">작물 인텔리전스</span>
             <span className="live-pill live-pill--soft">
-              {page.source === 'live' ? 'AI 비전 + API 연결' : '시안 준비 데이터'}
+              {page.source === 'live' ? 'AI 비전 + API 연결' : '발표용 샘플 데이터'}
             </span>
           </div>
           <h3 className="hero-title">
@@ -72,9 +88,15 @@ export function PlantsPage() {
               <strong>{page.growthIndex}</strong>
             </div>
           </div>
-        </article>
+        </DevSurface>
 
-        <article className="hero-panel hero-panel--danger hero-panel--compact">
+        <DevSurface
+          as="article"
+          className="hero-panel hero-panel--danger hero-panel--compact"
+          detail="알림 센터 이동은 가능하지만 병해 판독 결과와 후속 액션은 현재 샘플 대기열을 기준으로 보여줍니다."
+          status="sample"
+          title="우선 검수 카드"
+        >
           <div className="alert-count-icon">
             <AppIcon className="alert-count-symbol" filled name="warning" />
           </div>
@@ -84,10 +106,16 @@ export function PlantsPage() {
           <Link className="action-button action-button--danger" to="/alerts">
             알림 센터 열기
           </Link>
-        </article>
+        </DevSurface>
       </section>
 
-      <section className="panel">
+      <DevSurface
+        as="section"
+        className="panel"
+        detail="병해 카드 이미지는 실제 비전 입력 대신 발표용 생성 이미지이며, 우선순위와 액션 문구는 문서상의 운영 흐름을 따릅니다."
+        status="sample"
+        title="우선 알림 카드"
+      >
         <div className="section-head">
           <div>
             <span className="section-eyebrow">우선 알림</span>
@@ -105,6 +133,12 @@ export function PlantsPage() {
           {page.alerts.map((alert) => (
             <article className="alert-card" key={alert.title}>
               <div className="alert-card-visual">
+                <MockupImage
+                  alt={`${alert.title} 시뮬레이션 이미지`}
+                  className="alert-card-photo"
+                  height="100%"
+                  src={getAlertPreview(alert.id)}
+                />
                 <div
                   className={`severity-pill severity-pill--${
                     alert.severity === '심각' ? 'danger' : 'warning'
@@ -128,10 +162,16 @@ export function PlantsPage() {
             </article>
           ))}
         </div>
-      </section>
+      </DevSurface>
 
       <section className="content-grid content-grid--plants">
-        <article className="panel">
+        <DevSurface
+          as="article"
+          className="panel"
+          detail="작물 원장은 실제 plants 목록 대신 fruit ID, zone, health score를 기준으로 정교화한 발표용 샘플 원장입니다."
+          status="sample"
+          title="작물 원장"
+        >
           <div className="section-head">
             <div>
               <span className="section-eyebrow">작물 원장</span>
@@ -190,9 +230,15 @@ export function PlantsPage() {
               </button>
             ))}
           </div>
-        </article>
+        </DevSurface>
 
-        <article className="panel">
+        <DevSurface
+          as="article"
+          className="panel"
+          detail="수확 요청 버튼은 fruit ID 기반 계약을 따르지만, 실제 missions/harvest와 ROS action chain까지는 아직 완전히 이어지지 않았습니다."
+          status="partial"
+          title="선택 대상 상세와 수확 요청"
+        >
           <div className="section-head">
             <div>
               <span className="section-eyebrow">선택 상세</span>
@@ -264,7 +310,7 @@ export function PlantsPage() {
           ) : (
             <p className="muted">표에서 작물을 선택하면 상세 정보가 표시됩니다.</p>
           )}
-        </article>
+        </DevSurface>
       </section>
     </div>
   )

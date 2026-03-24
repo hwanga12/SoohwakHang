@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AppIcon } from '@/components/app-icon'
+import { DevSurface } from '@/components/dev-surface'
 import {
   approveWateringRecommendation,
   environmentFallback,
@@ -58,7 +59,13 @@ export function EnvironmentPage() {
   return (
     <div className="screen">
       <section className="hero-grid hero-grid--environment">
-        <article className="hero-panel hero-panel--environment">
+        <DevSurface
+          as="article"
+          className="hero-panel hero-panel--environment"
+          detail="environment/latest와 추천 로직은 아직 완전한 런타임 체인이 없어 발표용 환경 시나리오를 기반으로 렌더링됩니다."
+          status="sample"
+          title="환경 제어 요약"
+        >
           <div className="hero-topline">
             <div>
               <span className="panel-kicker">정밀 제어</span>
@@ -92,7 +99,7 @@ export function EnvironmentPage() {
               </button>
             </div>
           </div>
-        </article>
+        </DevSurface>
       </section>
 
       <section className="metric-row metric-row--compact">
@@ -106,7 +113,13 @@ export function EnvironmentPage() {
       </section>
 
       <section className="content-grid content-grid--environment">
-        <article className="panel">
+        <DevSurface
+          as="article"
+          className="panel"
+          detail="장치 제어와 추천 큐는 API 계약을 반영했지만, 실제 IoT 제어 결과와 권고 생성 로직은 아직 stub 단계입니다."
+          status="stub"
+          title="장치 제어와 승인 큐"
+        >
           <div className="section-head">
             <div>
               <span className="section-eyebrow">장치 제어</span>
@@ -209,9 +222,15 @@ export function EnvironmentPage() {
               </article>
             ))}
           </div>
-        </article>
+        </DevSurface>
 
-        <article className="panel">
+        <DevSurface
+          as="article"
+          className="panel"
+          detail="센서 상태 막대와 최근 실행 기록은 MQTT bridge/actuation history 응답이 아직 비어 있어 발표용 운영 기록으로 대체합니다."
+          status="sample"
+          title="시스템 상태와 실행 기록"
+        >
           <div className="section-head">
             <div>
               <span className="section-eyebrow">시스템 상태</span>
@@ -272,7 +291,7 @@ export function EnvironmentPage() {
               </article>
             ))}
           </div>
-        </article>
+        </DevSurface>
       </section>
     </div>
   )
