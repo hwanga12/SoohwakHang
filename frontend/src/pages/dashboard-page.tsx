@@ -6,6 +6,7 @@ import {
   getDashboardPageData,
   sendRobotControlAction,
 } from '@/lib/api/agribot'
+import { MockupImage } from '@/components/mockup-image'
 
 export function DashboardPage() {
   const queryClient = useQueryClient()
@@ -51,6 +52,9 @@ export function DashboardPage() {
               <span className="hero-stat-label">활성 작업</span>
               <strong>{page.activeTask}</strong>
             </div>
+          </div>
+          <div style={{ marginTop: '16px' }}>
+            <MockupImage height={140} />
           </div>
         </article>
 
