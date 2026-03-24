@@ -68,3 +68,11 @@ AGENTS.md
 todo.md
 docs/ai/worklog.md
 docs/ai/portfolio_notes.md
+
+# ─── Local AI artifacts ───
+artifacts/models/**/*.pt
+artifacts/models/**/*.zip
+artifacts/runtime/**/*.jpg
+artifacts/runtime/**/*.jpeg
+artifacts/runtime/**/*.png
+artifacts/runtime/**/*.json

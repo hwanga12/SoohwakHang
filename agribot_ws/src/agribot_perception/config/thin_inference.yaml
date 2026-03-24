@@ -1,0 +1,17 @@
+thin_inference_node:
+  ros__parameters:
+    image_topic: /agribot/camera/image
+    plant_observation_topic: /plant_observation
+    backend_confirm_url: http://127.0.0.1:8000/api/v1/inference/confirm
+    zone_id: greenhouse_01
+    robot_id: agribot
+    imgsz: 640
+    confidence_threshold: 0.35
+    frame_stride: 8
+    cooldown_sec: 4.0
+    crop_padding_ratio: 0.1
+    snapshot_format: jpg
+    jpeg_quality: 90
+    allowed_classes: ""
+    ignored_classes: healthy,normal,normal_leaf,healthy_leaf
+    publish_preliminary_on_backend_error: true

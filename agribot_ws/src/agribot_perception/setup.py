@@ -26,6 +26,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'thin_inference_node = agribot_perception.thin_inference_node:main',
         ],
     },
 )

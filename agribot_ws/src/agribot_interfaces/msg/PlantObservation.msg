@@ -12,5 +12,6 @@ float32 confidence              # 분류/탐지 confidence
 float32 health_score            # 건강도 추정치
 bool needs_water                # 급수 필요 여부
 bool ready_to_harvest           # 수확 가능 여부
+string growth_stage             # 성장 단계. 없으면 빈 문자열
 geometry_msgs/Pose pose         # 관측 대상의 3D pose
 string image_path               # 저장된 스냅샷 경로. 없으면 빈 문자열

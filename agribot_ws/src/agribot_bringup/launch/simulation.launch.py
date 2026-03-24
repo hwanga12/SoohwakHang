@@ -63,6 +63,16 @@ def generate_launch_description():
         default_value='true',
         description='Launch the IoT status/result publishing stack.',
     )
+    use_perception_arg = DeclareLaunchArgument(
+        'use_perception',
+        default_value='true',
+        description='Launch the thin inference pipeline that forwards snapshots to the backend.',
+    )
+    backend_confirm_url_arg = DeclareLaunchArgument(
+        'backend_confirm_url',
+        default_value='http://127.0.0.1:8000/api/v1/inference/confirm',
+        description='FastAPI endpoint used by thin inference for backend confirmation.',
+    )
     mqtt_force_log_only_arg = DeclareLaunchArgument(
         'mqtt_force_log_only',
         default_value='false',
@@ -82,13 +92,29 @@ def generate_launch_description():
         }.items(),
         condition=IfCondition(LaunchConfiguration('use_iot')),
     )
+    perception = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('agribot_perception'),
+                'launch',
+                'perception.launch.py'
+            )
+        ),
+        launch_arguments={
+            'use_sim_time': 'true',
+            'backend_confirm_url': LaunchConfiguration('backend_confirm_url'),
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('use_perception')),
+    )
 
     return LaunchDescription([
         *env_vars,
         use_iot_arg,
+        use_perception_arg,
+        backend_confirm_url_arg,
         mqtt_force_log_only_arg,
         spawn_agribot,
         navigation,
         iot_status_pipeline,
-        # TODO: Add perception launch
+        perception,
     ])
