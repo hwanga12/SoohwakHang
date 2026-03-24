@@ -1230,6 +1230,8 @@ button {
   min-height: 620px;
   padding: 0;
   background: #f4f9f1;
+  overflow: hidden;
+  isolation: isolate;
 }
 
 .map-board::before {
@@ -1308,6 +1310,202 @@ button {
   filter: saturate(1.08) contrast(1.04);
 }
 
+.robot-facility-map {
+  position: absolute;
+  inset: 0;
+  transform-origin: center center;
+  transition: transform 180ms ease;
+}
+
+.robot-facility-map__surface {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.94), transparent 26%),
+    linear-gradient(180deg, rgba(242, 247, 237, 0.94), rgba(234, 241, 228, 0.96));
+}
+
+.robot-facility-map__boundary {
+  position: absolute;
+  inset: 6%;
+  border: 2px solid rgba(103, 137, 88, 0.24);
+  border-radius: 28px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.robot-facility-map__row-guide,
+.robot-facility-map__lane-guide {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.robot-facility-map__row-guide {
+  top: 8%;
+  bottom: 8%;
+  width: 18px;
+  margin-left: -9px;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(126, 170, 95, 0.28), rgba(126, 170, 95, 0.12));
+}
+
+.robot-facility-map__row-guide span,
+.robot-facility-map__lane-guide span {
+  position: absolute;
+  color: rgba(69, 81, 52, 0.68);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.robot-facility-map__row-guide span {
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.robot-facility-map__lane-guide {
+  left: 8%;
+  right: 8%;
+  height: 16px;
+  margin-top: -8px;
+  border-top: 1px dashed rgba(90, 111, 70, 0.26);
+  border-bottom: 1px dashed rgba(90, 111, 70, 0.12);
+}
+
+.robot-facility-map__lane-guide--primary {
+  background: rgba(115, 169, 198, 0.16);
+  border-top-color: rgba(88, 153, 186, 0.4);
+  border-bottom-color: rgba(88, 153, 186, 0.22);
+}
+
+.robot-facility-map__lane-guide span {
+  right: 0;
+  top: -22px;
+}
+
+.robot-facility-map__asset {
+  position: absolute;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transform: translate(-50%, -50%);
+  padding: 0.3rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 24px rgba(69, 81, 52, 0.12);
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.robot-facility-map__asset-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+}
+
+.robot-facility-map__asset--plant .robot-facility-map__asset-icon {
+  color: #3f6f2e;
+  background: rgba(129, 180, 94, 0.2);
+}
+
+.robot-facility-map__asset--sprinkler .robot-facility-map__asset-icon {
+  color: #337b9f;
+  background: rgba(110, 177, 212, 0.18);
+}
+
+.robot-facility-map__asset.is-attention {
+  border-color: rgba(218, 145, 63, 0.32);
+}
+
+.robot-facility-map__asset.is-target {
+  box-shadow: 0 0 0 6px rgba(125, 178, 82, 0.12), 0 14px 28px rgba(69, 81, 52, 0.16);
+}
+
+.robot-facility-map__asset.is-selected {
+  border-color: rgba(69, 81, 52, 0.22);
+  background: rgba(255, 255, 255, 0.97);
+}
+
+.robot-facility-map__asset-label {
+  white-space: nowrap;
+}
+
+.robot-facility-map__robot {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+}
+
+.robot-facility-map__robot-ring,
+.robot-facility-map__robot-core {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+}
+
+.robot-facility-map__robot-ring {
+  width: 58px;
+  height: 58px;
+  background: rgba(94, 143, 81, 0.14);
+  animation: mapPulse 2s ease-in-out infinite;
+}
+
+.robot-facility-map__robot-core {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(180deg, #79b255, #587f3d);
+  box-shadow: 0 12px 26px rgba(76, 109, 54, 0.26);
+}
+
+.robot-facility-map__legend,
+.robot-facility-map__toggles {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(14px);
+}
+
+.robot-facility-map__legend {
+  top: 20px;
+  right: 20px;
+  max-width: 300px;
+}
+
+.robot-facility-map__toggles {
+  right: 20px;
+  bottom: 88px;
+  justify-content: flex-end;
+}
+
+.robot-facility-map__legend-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.38rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(242, 247, 237, 0.95);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
 .map-overlay {
   position: absolute;
   inset: 0;
@@ -1366,6 +1564,7 @@ button {
   bottom: 20px;
   display: grid;
   gap: 10px;
+  z-index: 3;
 }
 
 .map-sidebar {
@@ -1785,6 +1984,26 @@ button {
 
   .map-board {
     min-height: 480px;
+  }
+
+  .robot-facility-map__legend,
+  .robot-facility-map__toggles {
+    right: 16px;
+    left: 16px;
+    max-width: none;
+  }
+
+  .robot-facility-map__legend {
+    top: 16px;
+  }
+
+  .robot-facility-map__toggles {
+    bottom: 80px;
+    justify-content: flex-start;
+  }
+
+  .robot-facility-map__asset-label {
+    display: none;
   }
 
   .hero-title {
