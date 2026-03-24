@@ -4,30 +4,30 @@
   color-scheme: light;
   font-family: 'IBM Plex Sans KR', 'Noto Sans KR', sans-serif;
   line-height: 1.5;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text);
-  background: #ffffff;
+  background: #FDFEF9; /* White tone, soft off-white background */
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   --surface: #ffffff;
   --surface-strong: #ffffff;
-  --surface-muted: #f9fafb;
-  --line: rgba(17, 24, 39, 0.1);
-  --line-strong: rgba(17, 24, 39, 0.18);
-  --text: #111827;
-  --muted: #6b7280;
-  --primary: #2563eb;
-  --primary-soft: rgba(37, 99, 235, 0.12);
-  --secondary: #0d9488;
-  --warning: #d97706;
-  --warning-soft: rgba(217, 119, 6, 0.12);
-  --danger: #dc2626;
-  --danger-soft: rgba(220, 38, 38, 0.12);
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --radius-xl: 24px;
-  --radius-lg: 16px;
+  --surface-muted: #FEFFF6;
+  --line: rgba(121, 147, 81, 0.1);
+  --line-strong: rgba(121, 147, 81, 0.2);
+  --text: #5D4037; /* Soft brown for text */
+  --muted: #A1887F; /* Muted brown */
+  --primary: #7FB34D; /* Animal Crossing Leaf Green */
+  --primary-soft: rgba(127, 179, 77, 0.12);
+  --secondary: #A1CB71; /* Light Point Green */
+  --warning: #EF9A9A; /* Soft Coral for warning */
+  --warning-soft: rgba(239, 154, 154, 0.12);
+  --danger: #E57373; /* Soft red for danger */
+  --danger-soft: rgba(229, 115, 115, 0.12);
+  --shadow: 0 8px 16px -4px rgba(121, 147, 81, 0.15), 0 4px 8px -4px rgba(121, 147, 81, 0.1);
+  --radius-xl: 32px; /* Smoother, rounder corners */
+  --radius-lg: 24px;
 }
 
 * {
@@ -116,7 +116,8 @@ button {
   gap: 16px;
   padding: 16px 18px;
   border-radius: var(--radius-xl);
-  background: rgba(255, 255, 255, 0.74);
+  background: rgba(255, 255, 255, 0.85); /* Slightly more opaque for white tone */
+  border-bottom: 4px solid var(--line); /* Cute border at bottom */
 }
 
 .shell-brand,
@@ -147,19 +148,21 @@ button {
 }
 
 .brand-mark {
-  width: 46px;
-  height: 46px;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-items: center;
   border-radius: 18px;
-  background:
-    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9), transparent 34%),
-    linear-gradient(135deg, #1d7a34, #0d4d1f);
-  color: #fff;
+  background: #ffffff;
+  border: 4px solid var(--primary); /* Playful thick border */
+  box-shadow: 0 4px 0 var(--secondary); /* Cute 3D effect shadow */
+  overflow: hidden;
 }
 
-.brand-mark-icon {
-  font-size: 24px;
+.brand-mark-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .shell-header-actions {
@@ -696,10 +699,17 @@ button {
   gap: 8px;
   justify-content: center;
   padding: 0.88rem 1.05rem;
-  border-radius: 16px;
+  border-radius: 18px; /* Rounder */
   color: #fff;
-  background: linear-gradient(135deg, #176b2b, #0e4d1f);
+  background: var(--primary); /* Plain color or subtle gradient */
+  border-bottom: 4px solid var(--secondary); /* Cute 3D effect */
   font-weight: 700;
+  transition: transform 150ms ease, border-bottom-width 150ms ease;
+}
+
+.action-button:active {
+  transform: translateY(4px);
+  border-bottom-width: 0px;
 }
 
 .action-button--soft {
@@ -736,7 +746,8 @@ button {
 
 .chip--active {
   color: #fff;
-  background: linear-gradient(135deg, #176b2b, #0e4d1f);
+  background: var(--primary);
+  border-bottom: 3px solid var(--secondary);
 }
 
 .table-tag {
