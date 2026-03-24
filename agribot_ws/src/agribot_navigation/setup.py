@@ -35,6 +35,7 @@ setup(
             'generate_static_map = agribot_navigation.generate_static_map:main',
             'validate_patrol_waypoints = agribot_navigation.patrol_config:main',
             'plan_harvest_route = agribot_navigation.harvest_routing:main',
+            'harvest_action_server = agribot_navigation.harvest_action_server:main',
             'startup_map_tf_broadcaster = agribot_navigation.startup_map_tf_broadcaster:main',
             'patrol_node = agribot_navigation.patrol_node:main',
             'frontier_explorer = agribot_navigation.frontier_explorer:main',
