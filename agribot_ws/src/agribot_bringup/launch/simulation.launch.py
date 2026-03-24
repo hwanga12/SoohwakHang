@@ -11,6 +11,7 @@ Usage:
 """
 
 from launch import LaunchDescription
+from launch.actions import TimerAction
 from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
@@ -40,7 +41,13 @@ def generate_launch_description():
                 'launch',
                 'spawn_agribot.launch.py'
             )
-        )
+        ),
+        launch_arguments={
+            # AMCL / startup_map_tf_broadcaster own map -> odom during
+            # static-map localization. Keeping the spawn-time identity TF here
+            # forces the saved map to stay aligned with raw odom.
+            'publish_map_to_odom_tf': 'false',
+        }.items(),
     )
 
     navigation = IncludeLaunchDescription(
@@ -53,14 +60,20 @@ def generate_launch_description():
         ),
         launch_arguments={
             'use_sim_time': 'true',
-            'use_rviz': 'true'
+            'use_rviz': 'true',
+            'patrol_robot_pose_topic': '/odom',
         }.items()
+    )
+
+    delayed_navigation = TimerAction(
+        period=5.0,
+        actions=[navigation],
     )
 
     return LaunchDescription([
         *env_vars,
         spawn_agribot,
-        navigation,
+        delayed_navigation,
         # TODO: Add perception launch
         # TODO: Add IoT launch
     ])

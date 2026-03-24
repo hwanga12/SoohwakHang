@@ -20,7 +20,7 @@ def generate_launch_description():
     default_map = os.path.join(
         pkg_agribot_navigation,
         'maps',
-        'greenhouse_map.yaml',
+        'farm_map.yaml',
     )
     default_rviz = os.path.join(
         pkg_agribot_navigation,
@@ -31,7 +31,7 @@ def generate_launch_description():
     map_arg = DeclareLaunchArgument(
         'map',
         default_value=default_map,
-        description='Path to the saved greenhouse map yaml file.',
+        description='Path to the saved farm map yaml file.',
     )
     rviz_arg = DeclareLaunchArgument(
         'use_rviz',

@@ -1,31 +1,30 @@
-# Harvest patrol metadata for the rectangular farm_world.
-# The patrol keeps the robot on aisle centers and uses inspect stops that cover nearby row groups.
+# Harvest patrol metadata for the widened 4-column farm world.
+# The patrol keeps the robot on the widened aisle centers and uses observation stops that cover nearby beds.
 
 schema_version: 1
-frame_id: odom
+frame_id: map
 zone_id: farm_01
 world_file: agribot_description/worlds/farm_world.sdf
 map_file: agribot_navigation/maps/farm_map.yaml
 home_pose_id: farm_01_home
 coordinate_rationale:
-  description: Harvest patrol follows aisle-center observation stops aligned to the
-    rectangular farm grid.
+  description: Harvest patrol uses widened aisle centers for the symmetric 4-column
+    farm layout.
   lane_clearances_m:
-    west_outer_aisle: 1.0
-    inner_aisles: 1.0
-    center_aisle: 2.0
-    east_outer_aisle: 1.0
+    west_outer_aisle: 1.75
+    inner_aisles: 1.75
+    east_outer_aisle: 1.75
   source_bounds:
-    left_bed_edge_x: -8.25
-    right_bed_edge_x: 8.25
-    front_connector_y: -8.9
-    rear_connector_y: 8.9
+    left_bed_edge_x: -6.25
+    right_bed_edge_x: 6.25
+    front_connector_y: -8.6
+    rear_connector_y: 8.6
 robot_constraints:
   recommended_travel_speed_mps: 0.35
   recommended_observation_dwell_sec: 0.3
   notes:
-  - Keep the robot on aisle centers between crop columns.
-  - Use short observation stops and resume the serpentine aisle sweep.
+  - Keep the robot on the widened aisle centers between crop columns.
+  - Use only the north and south connector bands for lane changes.
 harvest_routing:
   approach_margin_from_bed_edge_m: 0.45
   max_lateral_offset_from_inspect_m: 1.25
@@ -46,7 +45,7 @@ waypoints:
   description: Harvest patrol staging pose at the south-center entrance.
   pose:
     x: 0.0
-    y: -9.0
+    y: -8.6
     z: 0.0
     yaw: 1.5708
 - waypoint_id: farm_01_lane_01_south_entry
@@ -57,8 +56,8 @@ waypoints:
   observe_here: false
   description: Entry anchor for farm harvest aisle 01.
   pose:
-    x: -9.0
-    y: -8.9
+    x: -8.0
+    y: -8.6
     z: 0.0
     yaw: 1.5708
 - waypoint_id: farm_01_lane_01_inspect_01
@@ -67,88 +66,96 @@ waypoints:
   lane_id: harvest_lane_01
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 01 covering rows [-8.0, -6.0].
+  description: Observation stop for farm harvest aisle 01.
   pose:
-    x: -9.0
-    y: -7.0
+    x: -8.0
+    y: -6.0
     z: 0.0
     yaw: 1.5708
   observed_plant_ids:
   - farm01_plant_01
-  - farm01_plant_09
   observed_tomato_ids:
   - farm01_plant_01_tomato_01
-  - farm01_plant_09_tomato_01
 - waypoint_id: farm_01_lane_01_inspect_02
   display_name: Harvest Aisle 01 Inspect 02
   purpose: inspect
   lane_id: harvest_lane_01
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 01 covering rows [-4.0, -2.0].
+  description: Observation stop for farm harvest aisle 01.
   pose:
-    x: -9.0
-    y: -3.0
+    x: -8.0
+    y: -4.0
     z: 0.0
     yaw: 1.5708
   observed_plant_ids:
-  - farm01_plant_17
-  - farm01_plant_25
+  - farm01_plant_05
   observed_tomato_ids:
-  - farm01_plant_17_tomato_01
-  - farm01_plant_25_tomato_01
+  - farm01_plant_05_tomato_01
 - waypoint_id: farm_01_lane_01_inspect_03
   display_name: Harvest Aisle 01 Inspect 03
   purpose: inspect
   lane_id: harvest_lane_01
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 01 covering rows [0.0].
+  description: Observation stop for farm harvest aisle 01.
   pose:
-    x: -9.0
-    y: 0.0
+    x: -8.0
+    y: -2.0
     z: 0.0
     yaw: 1.5708
   observed_plant_ids:
-  - farm01_plant_33
+  - farm01_plant_09
   observed_tomato_ids:
-  - farm01_plant_33_tomato_01
+  - farm01_plant_09_tomato_01
 - waypoint_id: farm_01_lane_01_inspect_04
   display_name: Harvest Aisle 01 Inspect 04
   purpose: inspect
   lane_id: harvest_lane_01
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 01 covering rows [2.0, 4.0].
+  description: Observation stop for farm harvest aisle 01.
   pose:
-    x: -9.0
-    y: 3.0
+    x: -8.0
+    y: 2.0
     z: 0.0
     yaw: 1.5708
   observed_plant_ids:
-  - farm01_plant_41
-  - farm01_plant_49
+  - farm01_plant_13
   observed_tomato_ids:
-  - farm01_plant_41_tomato_01
-  - farm01_plant_49_tomato_01
+  - farm01_plant_13_tomato_01
 - waypoint_id: farm_01_lane_01_inspect_05
   display_name: Harvest Aisle 01 Inspect 05
   purpose: inspect
   lane_id: harvest_lane_01
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 01 covering rows [6.0, 8.0].
+  description: Observation stop for farm harvest aisle 01.
   pose:
-    x: -9.0
-    y: 7.0
+    x: -8.0
+    y: 4.0
     z: 0.0
     yaw: 1.5708
   observed_plant_ids:
-  - farm01_plant_57
-  - farm01_plant_65
+  - farm01_plant_17
   observed_tomato_ids:
-  - farm01_plant_57_tomato_01
-  - farm01_plant_65_tomato_01
+  - farm01_plant_17_tomato_01
+- waypoint_id: farm_01_lane_01_inspect_06
+  display_name: Harvest Aisle 01 Inspect 06
+  purpose: inspect
+  lane_id: harvest_lane_01
+  batchable: false
+  observe_here: true
+  description: Observation stop for farm harvest aisle 01.
+  pose:
+    x: -8.0
+    y: 6.0
+    z: 0.0
+    yaw: 1.5708
+  observed_plant_ids:
+  - farm01_plant_21
+  observed_tomato_ids:
+  - farm01_plant_21_tomato_01
 - waypoint_id: farm_01_lane_01_north_turn
   display_name: Harvest Aisle 01 Turn
   purpose: turn
@@ -157,8 +164,8 @@ waypoints:
   observe_here: false
   description: Turn anchor at the far end of farm harvest aisle 01.
   pose:
-    x: -9.0
-    y: 8.9
+    x: -8.0
+    y: 8.6
     z: 0.0
     yaw: 1.5708
 - waypoint_id: farm_01_lane_02_north_entry
@@ -169,8 +176,8 @@ waypoints:
   observe_here: false
   description: Entry anchor for farm harvest aisle 02.
   pose:
-    x: -7.0
-    y: 8.9
+    x: -4.0
+    y: 8.6
     z: 0.0
     yaw: -1.5708
 - waypoint_id: farm_01_lane_02_inspect_01
@@ -179,106 +186,108 @@ waypoints:
   lane_id: harvest_lane_02
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 02 covering rows [6.0, 8.0].
+  description: Observation stop for farm harvest aisle 02.
   pose:
-    x: -7.0
-    y: 7.0
+    x: -4.0
+    y: 6.0
     z: 0.0
     yaw: -1.5708
   observed_plant_ids:
-  - farm01_plant_57
-  - farm01_plant_65
-  - farm01_plant_58
-  - farm01_plant_66
+  - farm01_plant_21
+  - farm01_plant_22
   observed_tomato_ids:
-  - farm01_plant_57_tomato_01
-  - farm01_plant_65_tomato_01
-  - farm01_plant_58_tomato_01
-  - farm01_plant_66_tomato_01
+  - farm01_plant_21_tomato_01
+  - farm01_plant_22_tomato_01
 - waypoint_id: farm_01_lane_02_inspect_02
   display_name: Harvest Aisle 02 Inspect 02
   purpose: inspect
   lane_id: harvest_lane_02
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 02 covering rows [2.0, 4.0].
+  description: Observation stop for farm harvest aisle 02.
   pose:
-    x: -7.0
-    y: 3.0
+    x: -4.0
+    y: 4.0
     z: 0.0
     yaw: -1.5708
   observed_plant_ids:
-  - farm01_plant_41
-  - farm01_plant_49
-  - farm01_plant_42
-  - farm01_plant_50
+  - farm01_plant_17
+  - farm01_plant_18
   observed_tomato_ids:
-  - farm01_plant_41_tomato_01
-  - farm01_plant_49_tomato_01
-  - farm01_plant_42_tomato_01
-  - farm01_plant_50_tomato_01
+  - farm01_plant_17_tomato_01
+  - farm01_plant_18_tomato_01
 - waypoint_id: farm_01_lane_02_inspect_03
   display_name: Harvest Aisle 02 Inspect 03
   purpose: inspect
   lane_id: harvest_lane_02
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 02 covering rows [0.0].
+  description: Observation stop for farm harvest aisle 02.
   pose:
-    x: -7.0
-    y: 0.0
+    x: -4.0
+    y: 2.0
     z: 0.0
     yaw: -1.5708
   observed_plant_ids:
-  - farm01_plant_33
-  - farm01_plant_34
+  - farm01_plant_13
+  - farm01_plant_14
   observed_tomato_ids:
-  - farm01_plant_33_tomato_01
-  - farm01_plant_34_tomato_01
+  - farm01_plant_13_tomato_01
+  - farm01_plant_14_tomato_01
 - waypoint_id: farm_01_lane_02_inspect_04
   display_name: Harvest Aisle 02 Inspect 04
   purpose: inspect
   lane_id: harvest_lane_02
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 02 covering rows [-4.0, -2.0].
+  description: Observation stop for farm harvest aisle 02.
   pose:
-    x: -7.0
-    y: -3.0
+    x: -4.0
+    y: -2.0
     z: 0.0
     yaw: -1.5708
   observed_plant_ids:
-  - farm01_plant_17
-  - farm01_plant_25
-  - farm01_plant_18
-  - farm01_plant_26
+  - farm01_plant_09
+  - farm01_plant_10
   observed_tomato_ids:
-  - farm01_plant_17_tomato_01
-  - farm01_plant_25_tomato_01
-  - farm01_plant_18_tomato_01
-  - farm01_plant_26_tomato_01
+  - farm01_plant_09_tomato_01
+  - farm01_plant_10_tomato_01
 - waypoint_id: farm_01_lane_02_inspect_05
   display_name: Harvest Aisle 02 Inspect 05
   purpose: inspect
   lane_id: harvest_lane_02
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 02 covering rows [-8.0, -6.0].
+  description: Observation stop for farm harvest aisle 02.
   pose:
-    x: -7.0
-    y: -7.0
+    x: -4.0
+    y: -4.0
+    z: 0.0
+    yaw: -1.5708
+  observed_plant_ids:
+  - farm01_plant_05
+  - farm01_plant_06
+  observed_tomato_ids:
+  - farm01_plant_05_tomato_01
+  - farm01_plant_06_tomato_01
+- waypoint_id: farm_01_lane_02_inspect_06
+  display_name: Harvest Aisle 02 Inspect 06
+  purpose: inspect
+  lane_id: harvest_lane_02
+  batchable: false
+  observe_here: true
+  description: Observation stop for farm harvest aisle 02.
+  pose:
+    x: -4.0
+    y: -6.0
     z: 0.0
     yaw: -1.5708
   observed_plant_ids:
   - farm01_plant_01
-  - farm01_plant_09
   - farm01_plant_02
-  - farm01_plant_10
   observed_tomato_ids:
   - farm01_plant_01_tomato_01
-  - farm01_plant_09_tomato_01
   - farm01_plant_02_tomato_01
-  - farm01_plant_10_tomato_01
 - waypoint_id: farm_01_lane_02_south_turn
   display_name: Harvest Aisle 02 Turn
   purpose: turn
@@ -287,8 +296,8 @@ waypoints:
   observe_here: false
   description: Turn anchor at the far end of farm harvest aisle 02.
   pose:
-    x: -7.0
-    y: -8.9
+    x: -4.0
+    y: -8.6
     z: 0.0
     yaw: -1.5708
 - waypoint_id: farm_01_lane_03_south_entry
@@ -299,8 +308,8 @@ waypoints:
   observe_here: false
   description: Entry anchor for farm harvest aisle 03.
   pose:
-    x: -5.0
-    y: -8.9
+    x: 4.0
+    y: -8.6
     z: 0.0
     yaw: 1.5708
 - waypoint_id: farm_01_lane_03_inspect_01
@@ -309,106 +318,108 @@ waypoints:
   lane_id: harvest_lane_03
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 03 covering rows [-8.0, -6.0].
+  description: Observation stop for farm harvest aisle 03.
   pose:
-    x: -5.0
-    y: -7.0
+    x: 4.0
+    y: -6.0
     z: 0.0
     yaw: 1.5708
   observed_plant_ids:
-  - farm01_plant_02
-  - farm01_plant_10
   - farm01_plant_03
-  - farm01_plant_11
+  - farm01_plant_04
   observed_tomato_ids:
-  - farm01_plant_02_tomato_01
-  - farm01_plant_10_tomato_01
   - farm01_plant_03_tomato_01
-  - farm01_plant_11_tomato_01
+  - farm01_plant_04_tomato_01
 - waypoint_id: farm_01_lane_03_inspect_02
   display_name: Harvest Aisle 03 Inspect 02
   purpose: inspect
   lane_id: harvest_lane_03
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 03 covering rows [-4.0, -2.0].
+  description: Observation stop for farm harvest aisle 03.
   pose:
-    x: -5.0
-    y: -3.0
+    x: 4.0
+    y: -4.0
     z: 0.0
     yaw: 1.5708
   observed_plant_ids:
-  - farm01_plant_18
-  - farm01_plant_26
-  - farm01_plant_19
-  - farm01_plant_27
+  - farm01_plant_07
+  - farm01_plant_08
   observed_tomato_ids:
-  - farm01_plant_18_tomato_01
-  - farm01_plant_26_tomato_01
-  - farm01_plant_19_tomato_01
-  - farm01_plant_27_tomato_01
+  - farm01_plant_07_tomato_01
+  - farm01_plant_08_tomato_01
 - waypoint_id: farm_01_lane_03_inspect_03
   display_name: Harvest Aisle 03 Inspect 03
   purpose: inspect
   lane_id: harvest_lane_03
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 03 covering rows [0.0].
+  description: Observation stop for farm harvest aisle 03.
   pose:
-    x: -5.0
-    y: 0.0
+    x: 4.0
+    y: -2.0
     z: 0.0
     yaw: 1.5708
   observed_plant_ids:
-  - farm01_plant_34
-  - farm01_plant_35
+  - farm01_plant_11
+  - farm01_plant_12
   observed_tomato_ids:
-  - farm01_plant_34_tomato_01
-  - farm01_plant_35_tomato_01
+  - farm01_plant_11_tomato_01
+  - farm01_plant_12_tomato_01
 - waypoint_id: farm_01_lane_03_inspect_04
   display_name: Harvest Aisle 03 Inspect 04
   purpose: inspect
   lane_id: harvest_lane_03
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 03 covering rows [2.0, 4.0].
+  description: Observation stop for farm harvest aisle 03.
   pose:
-    x: -5.0
-    y: 3.0
+    x: 4.0
+    y: 2.0
     z: 0.0
     yaw: 1.5708
   observed_plant_ids:
-  - farm01_plant_42
-  - farm01_plant_50
-  - farm01_plant_43
-  - farm01_plant_51
+  - farm01_plant_15
+  - farm01_plant_16
   observed_tomato_ids:
-  - farm01_plant_42_tomato_01
-  - farm01_plant_50_tomato_01
-  - farm01_plant_43_tomato_01
-  - farm01_plant_51_tomato_01
+  - farm01_plant_15_tomato_01
+  - farm01_plant_16_tomato_01
 - waypoint_id: farm_01_lane_03_inspect_05
   display_name: Harvest Aisle 03 Inspect 05
   purpose: inspect
   lane_id: harvest_lane_03
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 03 covering rows [6.0, 8.0].
+  description: Observation stop for farm harvest aisle 03.
   pose:
-    x: -5.0
-    y: 7.0
+    x: 4.0
+    y: 4.0
     z: 0.0
     yaw: 1.5708
   observed_plant_ids:
-  - farm01_plant_58
-  - farm01_plant_66
-  - farm01_plant_59
-  - farm01_plant_67
+  - farm01_plant_19
+  - farm01_plant_20
   observed_tomato_ids:
-  - farm01_plant_58_tomato_01
-  - farm01_plant_66_tomato_01
-  - farm01_plant_59_tomato_01
-  - farm01_plant_67_tomato_01
+  - farm01_plant_19_tomato_01
+  - farm01_plant_20_tomato_01
+- waypoint_id: farm_01_lane_03_inspect_06
+  display_name: Harvest Aisle 03 Inspect 06
+  purpose: inspect
+  lane_id: harvest_lane_03
+  batchable: false
+  observe_here: true
+  description: Observation stop for farm harvest aisle 03.
+  pose:
+    x: 4.0
+    y: 6.0
+    z: 0.0
+    yaw: 1.5708
+  observed_plant_ids:
+  - farm01_plant_23
+  - farm01_plant_24
+  observed_tomato_ids:
+  - farm01_plant_23_tomato_01
+  - farm01_plant_24_tomato_01
 - waypoint_id: farm_01_lane_03_north_turn
   display_name: Harvest Aisle 03 Turn
   purpose: turn
@@ -417,8 +428,8 @@ waypoints:
   observe_here: false
   description: Turn anchor at the far end of farm harvest aisle 03.
   pose:
-    x: -5.0
-    y: 8.9
+    x: 4.0
+    y: 8.6
     z: 0.0
     yaw: 1.5708
 - waypoint_id: farm_01_lane_04_north_entry
@@ -429,8 +440,8 @@ waypoints:
   observe_here: false
   description: Entry anchor for farm harvest aisle 04.
   pose:
-    x: -3.0
-    y: 8.9
+    x: 8.0
+    y: 8.6
     z: 0.0
     yaw: -1.5708
 - waypoint_id: farm_01_lane_04_inspect_01
@@ -439,106 +450,96 @@ waypoints:
   lane_id: harvest_lane_04
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 04 covering rows [6.0, 8.0].
+  description: Observation stop for farm harvest aisle 04.
   pose:
-    x: -3.0
-    y: 7.0
+    x: 8.0
+    y: 6.0
     z: 0.0
     yaw: -1.5708
   observed_plant_ids:
-  - farm01_plant_59
-  - farm01_plant_67
-  - farm01_plant_60
-  - farm01_plant_68
+  - farm01_plant_24
   observed_tomato_ids:
-  - farm01_plant_59_tomato_01
-  - farm01_plant_67_tomato_01
-  - farm01_plant_60_tomato_01
-  - farm01_plant_68_tomato_01
+  - farm01_plant_24_tomato_01
 - waypoint_id: farm_01_lane_04_inspect_02
   display_name: Harvest Aisle 04 Inspect 02
   purpose: inspect
   lane_id: harvest_lane_04
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 04 covering rows [2.0, 4.0].
+  description: Observation stop for farm harvest aisle 04.
   pose:
-    x: -3.0
-    y: 3.0
+    x: 8.0
+    y: 4.0
     z: 0.0
     yaw: -1.5708
   observed_plant_ids:
-  - farm01_plant_43
-  - farm01_plant_51
-  - farm01_plant_44
-  - farm01_plant_52
+  - farm01_plant_20
   observed_tomato_ids:
-  - farm01_plant_43_tomato_01
-  - farm01_plant_51_tomato_01
-  - farm01_plant_44_tomato_01
-  - farm01_plant_52_tomato_01
+  - farm01_plant_20_tomato_01
 - waypoint_id: farm_01_lane_04_inspect_03
   display_name: Harvest Aisle 04 Inspect 03
   purpose: inspect
   lane_id: harvest_lane_04
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 04 covering rows [0.0].
+  description: Observation stop for farm harvest aisle 04.
   pose:
-    x: -3.0
-    y: 0.0
+    x: 8.0
+    y: 2.0
     z: 0.0
     yaw: -1.5708
   observed_plant_ids:
-  - farm01_plant_35
-  - farm01_plant_36
+  - farm01_plant_16
   observed_tomato_ids:
-  - farm01_plant_35_tomato_01
-  - farm01_plant_36_tomato_01
+  - farm01_plant_16_tomato_01
 - waypoint_id: farm_01_lane_04_inspect_04
   display_name: Harvest Aisle 04 Inspect 04
   purpose: inspect
   lane_id: harvest_lane_04
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 04 covering rows [-4.0, -2.0].
+  description: Observation stop for farm harvest aisle 04.
   pose:
-    x: -3.0
-    y: -3.0
+    x: 8.0
+    y: -2.0
     z: 0.0
     yaw: -1.5708
   observed_plant_ids:
-  - farm01_plant_19
-  - farm01_plant_27
-  - farm01_plant_20
-  - farm01_plant_28
+  - farm01_plant_12
   observed_tomato_ids:
-  - farm01_plant_19_tomato_01
-  - farm01_plant_27_tomato_01
-  - farm01_plant_20_tomato_01
-  - farm01_plant_28_tomato_01
+  - farm01_plant_12_tomato_01
 - waypoint_id: farm_01_lane_04_inspect_05
   display_name: Harvest Aisle 04 Inspect 05
   purpose: inspect
   lane_id: harvest_lane_04
   batchable: false
   observe_here: true
-  description: Observation stop for farm harvest aisle 04 covering rows [-8.0, -6.0].
+  description: Observation stop for farm harvest aisle 04.
   pose:
-    x: -3.0
-    y: -7.0
+    x: 8.0
+    y: -4.0
     z: 0.0
     yaw: -1.5708
   observed_plant_ids:
-  - farm01_plant_03
-  - farm01_plant_11
-  - farm01_plant_04
-  - farm01_plant_12
+  - farm01_plant_08
   observed_tomato_ids:
-  - farm01_plant_03_tomato_01
-  - farm01_plant_11_tomato_01
+  - farm01_plant_08_tomato_01
+- waypoint_id: farm_01_lane_04_inspect_06
+  display_name: Harvest Aisle 04 Inspect 06
+  purpose: inspect
+  lane_id: harvest_lane_04
+  batchable: false
+  observe_here: true
+  description: Observation stop for farm harvest aisle 04.
+  pose:
+    x: 8.0
+    y: -6.0
+    z: 0.0
+    yaw: -1.5708
+  observed_plant_ids:
+  - farm01_plant_04
+  observed_tomato_ids:
   - farm01_plant_04_tomato_01
-  - farm01_plant_12_tomato_01
 - waypoint_id: farm_01_lane_04_south_turn
   display_name: Harvest Aisle 04 Turn
   purpose: turn
@@ -547,642 +548,10 @@ waypoints:
   observe_here: false
   description: Turn anchor at the far end of farm harvest aisle 04.
   pose:
-    x: -3.0
-    y: -8.9
+    x: 8.0
+    y: -8.6
     z: 0.0
     yaw: -1.5708
-- waypoint_id: farm_01_lane_05_south_entry
-  display_name: Harvest Aisle 05 Entry
-  purpose: entry
-  lane_id: harvest_lane_05
-  batchable: true
-  observe_here: false
-  description: Entry anchor for farm harvest aisle 05.
-  pose:
-    x: 0.0
-    y: -8.9
-    z: 0.0
-    yaw: 1.5708
-- waypoint_id: farm_01_lane_05_inspect_01
-  display_name: Harvest Aisle 05 Inspect 01
-  purpose: inspect
-  lane_id: harvest_lane_05
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 05 covering rows [-8.0, -6.0].
-  pose:
-    x: 0.0
-    y: -7.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_04
-  - farm01_plant_12
-  - farm01_plant_05
-  - farm01_plant_13
-  observed_tomato_ids:
-  - farm01_plant_04_tomato_01
-  - farm01_plant_12_tomato_01
-  - farm01_plant_05_tomato_01
-  - farm01_plant_13_tomato_01
-- waypoint_id: farm_01_lane_05_inspect_02
-  display_name: Harvest Aisle 05 Inspect 02
-  purpose: inspect
-  lane_id: harvest_lane_05
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 05 covering rows [-4.0, -2.0].
-  pose:
-    x: 0.0
-    y: -3.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_20
-  - farm01_plant_28
-  - farm01_plant_21
-  - farm01_plant_29
-  observed_tomato_ids:
-  - farm01_plant_20_tomato_01
-  - farm01_plant_28_tomato_01
-  - farm01_plant_21_tomato_01
-  - farm01_plant_29_tomato_01
-- waypoint_id: farm_01_lane_05_inspect_03
-  display_name: Harvest Aisle 05 Inspect 03
-  purpose: inspect
-  lane_id: harvest_lane_05
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 05 covering rows [0.0].
-  pose:
-    x: 0.0
-    y: 0.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_36
-  - farm01_plant_37
-  observed_tomato_ids:
-  - farm01_plant_36_tomato_01
-  - farm01_plant_37_tomato_01
-- waypoint_id: farm_01_lane_05_inspect_04
-  display_name: Harvest Aisle 05 Inspect 04
-  purpose: inspect
-  lane_id: harvest_lane_05
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 05 covering rows [2.0, 4.0].
-  pose:
-    x: 0.0
-    y: 3.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_44
-  - farm01_plant_52
-  - farm01_plant_45
-  - farm01_plant_53
-  observed_tomato_ids:
-  - farm01_plant_44_tomato_01
-  - farm01_plant_52_tomato_01
-  - farm01_plant_45_tomato_01
-  - farm01_plant_53_tomato_01
-- waypoint_id: farm_01_lane_05_inspect_05
-  display_name: Harvest Aisle 05 Inspect 05
-  purpose: inspect
-  lane_id: harvest_lane_05
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 05 covering rows [6.0, 8.0].
-  pose:
-    x: 0.0
-    y: 7.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_60
-  - farm01_plant_68
-  - farm01_plant_61
-  - farm01_plant_69
-  observed_tomato_ids:
-  - farm01_plant_60_tomato_01
-  - farm01_plant_68_tomato_01
-  - farm01_plant_61_tomato_01
-  - farm01_plant_69_tomato_01
-- waypoint_id: farm_01_lane_05_north_turn
-  display_name: Harvest Aisle 05 Turn
-  purpose: turn
-  lane_id: harvest_lane_05
-  batchable: true
-  observe_here: false
-  description: Turn anchor at the far end of farm harvest aisle 05.
-  pose:
-    x: 0.0
-    y: 8.9
-    z: 0.0
-    yaw: 1.5708
-- waypoint_id: farm_01_lane_06_north_entry
-  display_name: Harvest Aisle 06 Entry
-  purpose: entry
-  lane_id: harvest_lane_06
-  batchable: true
-  observe_here: false
-  description: Entry anchor for farm harvest aisle 06.
-  pose:
-    x: 3.0
-    y: 8.9
-    z: 0.0
-    yaw: -1.5708
-- waypoint_id: farm_01_lane_06_inspect_01
-  display_name: Harvest Aisle 06 Inspect 01
-  purpose: inspect
-  lane_id: harvest_lane_06
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 06 covering rows [6.0, 8.0].
-  pose:
-    x: 3.0
-    y: 7.0
-    z: 0.0
-    yaw: -1.5708
-  observed_plant_ids:
-  - farm01_plant_61
-  - farm01_plant_69
-  - farm01_plant_62
-  - farm01_plant_70
-  observed_tomato_ids:
-  - farm01_plant_61_tomato_01
-  - farm01_plant_69_tomato_01
-  - farm01_plant_62_tomato_01
-  - farm01_plant_70_tomato_01
-- waypoint_id: farm_01_lane_06_inspect_02
-  display_name: Harvest Aisle 06 Inspect 02
-  purpose: inspect
-  lane_id: harvest_lane_06
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 06 covering rows [2.0, 4.0].
-  pose:
-    x: 3.0
-    y: 3.0
-    z: 0.0
-    yaw: -1.5708
-  observed_plant_ids:
-  - farm01_plant_45
-  - farm01_plant_53
-  - farm01_plant_46
-  - farm01_plant_54
-  observed_tomato_ids:
-  - farm01_plant_45_tomato_01
-  - farm01_plant_53_tomato_01
-  - farm01_plant_46_tomato_01
-  - farm01_plant_54_tomato_01
-- waypoint_id: farm_01_lane_06_inspect_03
-  display_name: Harvest Aisle 06 Inspect 03
-  purpose: inspect
-  lane_id: harvest_lane_06
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 06 covering rows [0.0].
-  pose:
-    x: 3.0
-    y: 0.0
-    z: 0.0
-    yaw: -1.5708
-  observed_plant_ids:
-  - farm01_plant_37
-  - farm01_plant_38
-  observed_tomato_ids:
-  - farm01_plant_37_tomato_01
-  - farm01_plant_38_tomato_01
-- waypoint_id: farm_01_lane_06_inspect_04
-  display_name: Harvest Aisle 06 Inspect 04
-  purpose: inspect
-  lane_id: harvest_lane_06
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 06 covering rows [-4.0, -2.0].
-  pose:
-    x: 3.0
-    y: -3.0
-    z: 0.0
-    yaw: -1.5708
-  observed_plant_ids:
-  - farm01_plant_21
-  - farm01_plant_29
-  - farm01_plant_22
-  - farm01_plant_30
-  observed_tomato_ids:
-  - farm01_plant_21_tomato_01
-  - farm01_plant_29_tomato_01
-  - farm01_plant_22_tomato_01
-  - farm01_plant_30_tomato_01
-- waypoint_id: farm_01_lane_06_inspect_05
-  display_name: Harvest Aisle 06 Inspect 05
-  purpose: inspect
-  lane_id: harvest_lane_06
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 06 covering rows [-8.0, -6.0].
-  pose:
-    x: 3.0
-    y: -7.0
-    z: 0.0
-    yaw: -1.5708
-  observed_plant_ids:
-  - farm01_plant_05
-  - farm01_plant_13
-  - farm01_plant_06
-  - farm01_plant_14
-  observed_tomato_ids:
-  - farm01_plant_05_tomato_01
-  - farm01_plant_13_tomato_01
-  - farm01_plant_06_tomato_01
-  - farm01_plant_14_tomato_01
-- waypoint_id: farm_01_lane_06_south_turn
-  display_name: Harvest Aisle 06 Turn
-  purpose: turn
-  lane_id: harvest_lane_06
-  batchable: true
-  observe_here: false
-  description: Turn anchor at the far end of farm harvest aisle 06.
-  pose:
-    x: 3.0
-    y: -8.9
-    z: 0.0
-    yaw: -1.5708
-- waypoint_id: farm_01_lane_07_south_entry
-  display_name: Harvest Aisle 07 Entry
-  purpose: entry
-  lane_id: harvest_lane_07
-  batchable: true
-  observe_here: false
-  description: Entry anchor for farm harvest aisle 07.
-  pose:
-    x: 5.0
-    y: -8.9
-    z: 0.0
-    yaw: 1.5708
-- waypoint_id: farm_01_lane_07_inspect_01
-  display_name: Harvest Aisle 07 Inspect 01
-  purpose: inspect
-  lane_id: harvest_lane_07
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 07 covering rows [-8.0, -6.0].
-  pose:
-    x: 5.0
-    y: -7.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_06
-  - farm01_plant_14
-  - farm01_plant_07
-  - farm01_plant_15
-  observed_tomato_ids:
-  - farm01_plant_06_tomato_01
-  - farm01_plant_14_tomato_01
-  - farm01_plant_07_tomato_01
-  - farm01_plant_15_tomato_01
-- waypoint_id: farm_01_lane_07_inspect_02
-  display_name: Harvest Aisle 07 Inspect 02
-  purpose: inspect
-  lane_id: harvest_lane_07
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 07 covering rows [-4.0, -2.0].
-  pose:
-    x: 5.0
-    y: -3.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_22
-  - farm01_plant_30
-  - farm01_plant_23
-  - farm01_plant_31
-  observed_tomato_ids:
-  - farm01_plant_22_tomato_01
-  - farm01_plant_30_tomato_01
-  - farm01_plant_23_tomato_01
-  - farm01_plant_31_tomato_01
-- waypoint_id: farm_01_lane_07_inspect_03
-  display_name: Harvest Aisle 07 Inspect 03
-  purpose: inspect
-  lane_id: harvest_lane_07
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 07 covering rows [0.0].
-  pose:
-    x: 5.0
-    y: 0.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_38
-  - farm01_plant_39
-  observed_tomato_ids:
-  - farm01_plant_38_tomato_01
-  - farm01_plant_39_tomato_01
-- waypoint_id: farm_01_lane_07_inspect_04
-  display_name: Harvest Aisle 07 Inspect 04
-  purpose: inspect
-  lane_id: harvest_lane_07
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 07 covering rows [2.0, 4.0].
-  pose:
-    x: 5.0
-    y: 3.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_46
-  - farm01_plant_54
-  - farm01_plant_47
-  - farm01_plant_55
-  observed_tomato_ids:
-  - farm01_plant_46_tomato_01
-  - farm01_plant_54_tomato_01
-  - farm01_plant_47_tomato_01
-  - farm01_plant_55_tomato_01
-- waypoint_id: farm_01_lane_07_inspect_05
-  display_name: Harvest Aisle 07 Inspect 05
-  purpose: inspect
-  lane_id: harvest_lane_07
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 07 covering rows [6.0, 8.0].
-  pose:
-    x: 5.0
-    y: 7.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_62
-  - farm01_plant_70
-  - farm01_plant_63
-  - farm01_plant_71
-  observed_tomato_ids:
-  - farm01_plant_62_tomato_01
-  - farm01_plant_70_tomato_01
-  - farm01_plant_63_tomato_01
-  - farm01_plant_71_tomato_01
-- waypoint_id: farm_01_lane_07_north_turn
-  display_name: Harvest Aisle 07 Turn
-  purpose: turn
-  lane_id: harvest_lane_07
-  batchable: true
-  observe_here: false
-  description: Turn anchor at the far end of farm harvest aisle 07.
-  pose:
-    x: 5.0
-    y: 8.9
-    z: 0.0
-    yaw: 1.5708
-- waypoint_id: farm_01_lane_08_north_entry
-  display_name: Harvest Aisle 08 Entry
-  purpose: entry
-  lane_id: harvest_lane_08
-  batchable: true
-  observe_here: false
-  description: Entry anchor for farm harvest aisle 08.
-  pose:
-    x: 7.0
-    y: 8.9
-    z: 0.0
-    yaw: -1.5708
-- waypoint_id: farm_01_lane_08_inspect_01
-  display_name: Harvest Aisle 08 Inspect 01
-  purpose: inspect
-  lane_id: harvest_lane_08
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 08 covering rows [6.0, 8.0].
-  pose:
-    x: 7.0
-    y: 7.0
-    z: 0.0
-    yaw: -1.5708
-  observed_plant_ids:
-  - farm01_plant_63
-  - farm01_plant_71
-  - farm01_plant_64
-  - farm01_plant_72
-  observed_tomato_ids:
-  - farm01_plant_63_tomato_01
-  - farm01_plant_71_tomato_01
-  - farm01_plant_64_tomato_01
-  - farm01_plant_72_tomato_01
-- waypoint_id: farm_01_lane_08_inspect_02
-  display_name: Harvest Aisle 08 Inspect 02
-  purpose: inspect
-  lane_id: harvest_lane_08
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 08 covering rows [2.0, 4.0].
-  pose:
-    x: 7.0
-    y: 3.0
-    z: 0.0
-    yaw: -1.5708
-  observed_plant_ids:
-  - farm01_plant_47
-  - farm01_plant_55
-  - farm01_plant_48
-  - farm01_plant_56
-  observed_tomato_ids:
-  - farm01_plant_47_tomato_01
-  - farm01_plant_55_tomato_01
-  - farm01_plant_48_tomato_01
-  - farm01_plant_56_tomato_01
-- waypoint_id: farm_01_lane_08_inspect_03
-  display_name: Harvest Aisle 08 Inspect 03
-  purpose: inspect
-  lane_id: harvest_lane_08
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 08 covering rows [0.0].
-  pose:
-    x: 7.0
-    y: 0.0
-    z: 0.0
-    yaw: -1.5708
-  observed_plant_ids:
-  - farm01_plant_39
-  - farm01_plant_40
-  observed_tomato_ids:
-  - farm01_plant_39_tomato_01
-  - farm01_plant_40_tomato_01
-- waypoint_id: farm_01_lane_08_inspect_04
-  display_name: Harvest Aisle 08 Inspect 04
-  purpose: inspect
-  lane_id: harvest_lane_08
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 08 covering rows [-4.0, -2.0].
-  pose:
-    x: 7.0
-    y: -3.0
-    z: 0.0
-    yaw: -1.5708
-  observed_plant_ids:
-  - farm01_plant_23
-  - farm01_plant_31
-  - farm01_plant_24
-  - farm01_plant_32
-  observed_tomato_ids:
-  - farm01_plant_23_tomato_01
-  - farm01_plant_31_tomato_01
-  - farm01_plant_24_tomato_01
-  - farm01_plant_32_tomato_01
-- waypoint_id: farm_01_lane_08_inspect_05
-  display_name: Harvest Aisle 08 Inspect 05
-  purpose: inspect
-  lane_id: harvest_lane_08
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 08 covering rows [-8.0, -6.0].
-  pose:
-    x: 7.0
-    y: -7.0
-    z: 0.0
-    yaw: -1.5708
-  observed_plant_ids:
-  - farm01_plant_07
-  - farm01_plant_15
-  - farm01_plant_08
-  - farm01_plant_16
-  observed_tomato_ids:
-  - farm01_plant_07_tomato_01
-  - farm01_plant_15_tomato_01
-  - farm01_plant_08_tomato_01
-  - farm01_plant_16_tomato_01
-- waypoint_id: farm_01_lane_08_south_turn
-  display_name: Harvest Aisle 08 Turn
-  purpose: turn
-  lane_id: harvest_lane_08
-  batchable: true
-  observe_here: false
-  description: Turn anchor at the far end of farm harvest aisle 08.
-  pose:
-    x: 7.0
-    y: -8.9
-    z: 0.0
-    yaw: -1.5708
-- waypoint_id: farm_01_lane_09_south_entry
-  display_name: Harvest Aisle 09 Entry
-  purpose: entry
-  lane_id: harvest_lane_09
-  batchable: true
-  observe_here: false
-  description: Entry anchor for farm harvest aisle 09.
-  pose:
-    x: 9.0
-    y: -8.9
-    z: 0.0
-    yaw: 1.5708
-- waypoint_id: farm_01_lane_09_inspect_01
-  display_name: Harvest Aisle 09 Inspect 01
-  purpose: inspect
-  lane_id: harvest_lane_09
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 09 covering rows [-8.0, -6.0].
-  pose:
-    x: 9.0
-    y: -7.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_08
-  - farm01_plant_16
-  observed_tomato_ids:
-  - farm01_plant_08_tomato_01
-  - farm01_plant_16_tomato_01
-- waypoint_id: farm_01_lane_09_inspect_02
-  display_name: Harvest Aisle 09 Inspect 02
-  purpose: inspect
-  lane_id: harvest_lane_09
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 09 covering rows [-4.0, -2.0].
-  pose:
-    x: 9.0
-    y: -3.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_24
-  - farm01_plant_32
-  observed_tomato_ids:
-  - farm01_plant_24_tomato_01
-  - farm01_plant_32_tomato_01
-- waypoint_id: farm_01_lane_09_inspect_03
-  display_name: Harvest Aisle 09 Inspect 03
-  purpose: inspect
-  lane_id: harvest_lane_09
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 09 covering rows [0.0].
-  pose:
-    x: 9.0
-    y: 0.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_40
-  observed_tomato_ids:
-  - farm01_plant_40_tomato_01
-- waypoint_id: farm_01_lane_09_inspect_04
-  display_name: Harvest Aisle 09 Inspect 04
-  purpose: inspect
-  lane_id: harvest_lane_09
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 09 covering rows [2.0, 4.0].
-  pose:
-    x: 9.0
-    y: 3.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_48
-  - farm01_plant_56
-  observed_tomato_ids:
-  - farm01_plant_48_tomato_01
-  - farm01_plant_56_tomato_01
-- waypoint_id: farm_01_lane_09_inspect_05
-  display_name: Harvest Aisle 09 Inspect 05
-  purpose: inspect
-  lane_id: harvest_lane_09
-  batchable: false
-  observe_here: true
-  description: Observation stop for farm harvest aisle 09 covering rows [6.0, 8.0].
-  pose:
-    x: 9.0
-    y: 7.0
-    z: 0.0
-    yaw: 1.5708
-  observed_plant_ids:
-  - farm01_plant_64
-  - farm01_plant_72
-  observed_tomato_ids:
-  - farm01_plant_64_tomato_01
-  - farm01_plant_72_tomato_01
-- waypoint_id: farm_01_lane_09_north_turn
-  display_name: Harvest Aisle 09 Turn
-  purpose: turn
-  lane_id: harvest_lane_09
-  batchable: true
-  observe_here: false
-  description: Turn anchor at the far end of farm harvest aisle 09.
-  pose:
-    x: 9.0
-    y: 8.9
-    z: 0.0
-    yaw: 1.5708
 routes:
 - route_id: farm_01_harvest_lane_01
   display_name: Farm Harvest Aisle 01
@@ -1196,28 +565,23 @@ routes:
   - farm_01_lane_01_inspect_03
   - farm_01_lane_01_inspect_04
   - farm_01_lane_01_inspect_05
+  - farm_01_lane_01_inspect_06
   turn_pose_id: farm_01_lane_01_north_turn
   exit_pose_id: farm_01_lane_01_north_turn
   observed_plant_ids:
   - farm01_plant_01
+  - farm01_plant_05
   - farm01_plant_09
+  - farm01_plant_13
   - farm01_plant_17
-  - farm01_plant_25
-  - farm01_plant_33
-  - farm01_plant_41
-  - farm01_plant_49
-  - farm01_plant_57
-  - farm01_plant_65
+  - farm01_plant_21
   observed_tomato_ids:
   - farm01_plant_01_tomato_01
+  - farm01_plant_05_tomato_01
   - farm01_plant_09_tomato_01
+  - farm01_plant_13_tomato_01
   - farm01_plant_17_tomato_01
-  - farm01_plant_25_tomato_01
-  - farm01_plant_33_tomato_01
-  - farm01_plant_41_tomato_01
-  - farm01_plant_49_tomato_01
-  - farm01_plant_57_tomato_01
-  - farm01_plant_65_tomato_01
+  - farm01_plant_21_tomato_01
 - route_id: farm_01_harvest_lane_02
   display_name: Farm Harvest Aisle 02
   zone_id: farm_01
@@ -1230,46 +594,35 @@ routes:
   - farm_01_lane_02_inspect_03
   - farm_01_lane_02_inspect_04
   - farm_01_lane_02_inspect_05
+  - farm_01_lane_02_inspect_06
   turn_pose_id: farm_01_lane_02_south_turn
   exit_pose_id: farm_01_lane_02_south_turn
   observed_plant_ids:
-  - farm01_plant_57
-  - farm01_plant_65
-  - farm01_plant_58
-  - farm01_plant_66
-  - farm01_plant_41
-  - farm01_plant_49
-  - farm01_plant_42
-  - farm01_plant_50
-  - farm01_plant_33
-  - farm01_plant_34
+  - farm01_plant_21
+  - farm01_plant_22
   - farm01_plant_17
-  - farm01_plant_25
   - farm01_plant_18
-  - farm01_plant_26
-  - farm01_plant_01
+  - farm01_plant_13
+  - farm01_plant_14
   - farm01_plant_09
-  - farm01_plant_02
   - farm01_plant_10
+  - farm01_plant_05
+  - farm01_plant_06
+  - farm01_plant_01
+  - farm01_plant_02
   observed_tomato_ids:
-  - farm01_plant_57_tomato_01
-  - farm01_plant_65_tomato_01
-  - farm01_plant_58_tomato_01
-  - farm01_plant_66_tomato_01
-  - farm01_plant_41_tomato_01
-  - farm01_plant_49_tomato_01
-  - farm01_plant_42_tomato_01
-  - farm01_plant_50_tomato_01
-  - farm01_plant_33_tomato_01
-  - farm01_plant_34_tomato_01
+  - farm01_plant_21_tomato_01
+  - farm01_plant_22_tomato_01
   - farm01_plant_17_tomato_01
-  - farm01_plant_25_tomato_01
   - farm01_plant_18_tomato_01
-  - farm01_plant_26_tomato_01
-  - farm01_plant_01_tomato_01
+  - farm01_plant_13_tomato_01
+  - farm01_plant_14_tomato_01
   - farm01_plant_09_tomato_01
-  - farm01_plant_02_tomato_01
   - farm01_plant_10_tomato_01
+  - farm01_plant_05_tomato_01
+  - farm01_plant_06_tomato_01
+  - farm01_plant_01_tomato_01
+  - farm01_plant_02_tomato_01
 - route_id: farm_01_harvest_lane_03
   display_name: Farm Harvest Aisle 03
   zone_id: farm_01
@@ -1282,46 +635,35 @@ routes:
   - farm_01_lane_03_inspect_03
   - farm_01_lane_03_inspect_04
   - farm_01_lane_03_inspect_05
+  - farm_01_lane_03_inspect_06
   turn_pose_id: farm_01_lane_03_north_turn
   exit_pose_id: farm_01_lane_03_north_turn
   observed_plant_ids:
-  - farm01_plant_02
-  - farm01_plant_10
   - farm01_plant_03
+  - farm01_plant_04
+  - farm01_plant_07
+  - farm01_plant_08
   - farm01_plant_11
-  - farm01_plant_18
-  - farm01_plant_26
+  - farm01_plant_12
+  - farm01_plant_15
+  - farm01_plant_16
   - farm01_plant_19
-  - farm01_plant_27
-  - farm01_plant_34
-  - farm01_plant_35
-  - farm01_plant_42
-  - farm01_plant_50
-  - farm01_plant_43
-  - farm01_plant_51
-  - farm01_plant_58
-  - farm01_plant_66
-  - farm01_plant_59
-  - farm01_plant_67
+  - farm01_plant_20
+  - farm01_plant_23
+  - farm01_plant_24
   observed_tomato_ids:
-  - farm01_plant_02_tomato_01
-  - farm01_plant_10_tomato_01
   - farm01_plant_03_tomato_01
+  - farm01_plant_04_tomato_01
+  - farm01_plant_07_tomato_01
+  - farm01_plant_08_tomato_01
   - farm01_plant_11_tomato_01
-  - farm01_plant_18_tomato_01
-  - farm01_plant_26_tomato_01
+  - farm01_plant_12_tomato_01
+  - farm01_plant_15_tomato_01
+  - farm01_plant_16_tomato_01
   - farm01_plant_19_tomato_01
-  - farm01_plant_27_tomato_01
-  - farm01_plant_34_tomato_01
-  - farm01_plant_35_tomato_01
-  - farm01_plant_42_tomato_01
-  - farm01_plant_50_tomato_01
-  - farm01_plant_43_tomato_01
-  - farm01_plant_51_tomato_01
-  - farm01_plant_58_tomato_01
-  - farm01_plant_66_tomato_01
-  - farm01_plant_59_tomato_01
-  - farm01_plant_67_tomato_01
+  - farm01_plant_20_tomato_01
+  - farm01_plant_23_tomato_01
+  - farm01_plant_24_tomato_01
 - route_id: farm_01_harvest_lane_04
   display_name: Farm Harvest Aisle 04
   zone_id: farm_01
@@ -1334,288 +676,23 @@ routes:
   - farm_01_lane_04_inspect_03
   - farm_01_lane_04_inspect_04
   - farm_01_lane_04_inspect_05
+  - farm_01_lane_04_inspect_06
   turn_pose_id: farm_01_lane_04_south_turn
   exit_pose_id: farm_01_lane_04_south_turn
   observed_plant_ids:
-  - farm01_plant_59
-  - farm01_plant_67
-  - farm01_plant_60
-  - farm01_plant_68
-  - farm01_plant_43
-  - farm01_plant_51
-  - farm01_plant_44
-  - farm01_plant_52
-  - farm01_plant_35
-  - farm01_plant_36
-  - farm01_plant_19
-  - farm01_plant_27
-  - farm01_plant_20
-  - farm01_plant_28
-  - farm01_plant_03
-  - farm01_plant_11
-  - farm01_plant_04
-  - farm01_plant_12
-  observed_tomato_ids:
-  - farm01_plant_59_tomato_01
-  - farm01_plant_67_tomato_01
-  - farm01_plant_60_tomato_01
-  - farm01_plant_68_tomato_01
-  - farm01_plant_43_tomato_01
-  - farm01_plant_51_tomato_01
-  - farm01_plant_44_tomato_01
-  - farm01_plant_52_tomato_01
-  - farm01_plant_35_tomato_01
-  - farm01_plant_36_tomato_01
-  - farm01_plant_19_tomato_01
-  - farm01_plant_27_tomato_01
-  - farm01_plant_20_tomato_01
-  - farm01_plant_28_tomato_01
-  - farm01_plant_03_tomato_01
-  - farm01_plant_11_tomato_01
-  - farm01_plant_04_tomato_01
-  - farm01_plant_12_tomato_01
-- route_id: farm_01_harvest_lane_05
-  display_name: Farm Harvest Aisle 05
-  zone_id: farm_01
-  lane_side: harvest_lane_05
-  description: Serpentine harvest observation route through aisle 05.
-  entry_pose_id: farm_01_lane_05_south_entry
-  inspect_pose_ids:
-  - farm_01_lane_05_inspect_01
-  - farm_01_lane_05_inspect_02
-  - farm_01_lane_05_inspect_03
-  - farm_01_lane_05_inspect_04
-  - farm_01_lane_05_inspect_05
-  turn_pose_id: farm_01_lane_05_north_turn
-  exit_pose_id: farm_01_lane_05_north_turn
-  observed_plant_ids:
-  - farm01_plant_04
-  - farm01_plant_12
-  - farm01_plant_05
-  - farm01_plant_13
-  - farm01_plant_20
-  - farm01_plant_28
-  - farm01_plant_21
-  - farm01_plant_29
-  - farm01_plant_36
-  - farm01_plant_37
-  - farm01_plant_44
-  - farm01_plant_52
-  - farm01_plant_45
-  - farm01_plant_53
-  - farm01_plant_60
-  - farm01_plant_68
-  - farm01_plant_61
-  - farm01_plant_69
-  observed_tomato_ids:
-  - farm01_plant_04_tomato_01
-  - farm01_plant_12_tomato_01
-  - farm01_plant_05_tomato_01
-  - farm01_plant_13_tomato_01
-  - farm01_plant_20_tomato_01
-  - farm01_plant_28_tomato_01
-  - farm01_plant_21_tomato_01
-  - farm01_plant_29_tomato_01
-  - farm01_plant_36_tomato_01
-  - farm01_plant_37_tomato_01
-  - farm01_plant_44_tomato_01
-  - farm01_plant_52_tomato_01
-  - farm01_plant_45_tomato_01
-  - farm01_plant_53_tomato_01
-  - farm01_plant_60_tomato_01
-  - farm01_plant_68_tomato_01
-  - farm01_plant_61_tomato_01
-  - farm01_plant_69_tomato_01
-- route_id: farm_01_harvest_lane_06
-  display_name: Farm Harvest Aisle 06
-  zone_id: farm_01
-  lane_side: harvest_lane_06
-  description: Serpentine harvest observation route through aisle 06.
-  entry_pose_id: farm_01_lane_06_north_entry
-  inspect_pose_ids:
-  - farm_01_lane_06_inspect_01
-  - farm_01_lane_06_inspect_02
-  - farm_01_lane_06_inspect_03
-  - farm_01_lane_06_inspect_04
-  - farm_01_lane_06_inspect_05
-  turn_pose_id: farm_01_lane_06_south_turn
-  exit_pose_id: farm_01_lane_06_south_turn
-  observed_plant_ids:
-  - farm01_plant_61
-  - farm01_plant_69
-  - farm01_plant_62
-  - farm01_plant_70
-  - farm01_plant_45
-  - farm01_plant_53
-  - farm01_plant_46
-  - farm01_plant_54
-  - farm01_plant_37
-  - farm01_plant_38
-  - farm01_plant_21
-  - farm01_plant_29
-  - farm01_plant_22
-  - farm01_plant_30
-  - farm01_plant_05
-  - farm01_plant_13
-  - farm01_plant_06
-  - farm01_plant_14
-  observed_tomato_ids:
-  - farm01_plant_61_tomato_01
-  - farm01_plant_69_tomato_01
-  - farm01_plant_62_tomato_01
-  - farm01_plant_70_tomato_01
-  - farm01_plant_45_tomato_01
-  - farm01_plant_53_tomato_01
-  - farm01_plant_46_tomato_01
-  - farm01_plant_54_tomato_01
-  - farm01_plant_37_tomato_01
-  - farm01_plant_38_tomato_01
-  - farm01_plant_21_tomato_01
-  - farm01_plant_29_tomato_01
-  - farm01_plant_22_tomato_01
-  - farm01_plant_30_tomato_01
-  - farm01_plant_05_tomato_01
-  - farm01_plant_13_tomato_01
-  - farm01_plant_06_tomato_01
-  - farm01_plant_14_tomato_01
-- route_id: farm_01_harvest_lane_07
-  display_name: Farm Harvest Aisle 07
-  zone_id: farm_01
-  lane_side: harvest_lane_07
-  description: Serpentine harvest observation route through aisle 07.
-  entry_pose_id: farm_01_lane_07_south_entry
-  inspect_pose_ids:
-  - farm_01_lane_07_inspect_01
-  - farm_01_lane_07_inspect_02
-  - farm_01_lane_07_inspect_03
-  - farm_01_lane_07_inspect_04
-  - farm_01_lane_07_inspect_05
-  turn_pose_id: farm_01_lane_07_north_turn
-  exit_pose_id: farm_01_lane_07_north_turn
-  observed_plant_ids:
-  - farm01_plant_06
-  - farm01_plant_14
-  - farm01_plant_07
-  - farm01_plant_15
-  - farm01_plant_22
-  - farm01_plant_30
-  - farm01_plant_23
-  - farm01_plant_31
-  - farm01_plant_38
-  - farm01_plant_39
-  - farm01_plant_46
-  - farm01_plant_54
-  - farm01_plant_47
-  - farm01_plant_55
-  - farm01_plant_62
-  - farm01_plant_70
-  - farm01_plant_63
-  - farm01_plant_71
-  observed_tomato_ids:
-  - farm01_plant_06_tomato_01
-  - farm01_plant_14_tomato_01
-  - farm01_plant_07_tomato_01
-  - farm01_plant_15_tomato_01
-  - farm01_plant_22_tomato_01
-  - farm01_plant_30_tomato_01
-  - farm01_plant_23_tomato_01
-  - farm01_plant_31_tomato_01
-  - farm01_plant_38_tomato_01
-  - farm01_plant_39_tomato_01
-  - farm01_plant_46_tomato_01
-  - farm01_plant_54_tomato_01
-  - farm01_plant_47_tomato_01
-  - farm01_plant_55_tomato_01
-  - farm01_plant_62_tomato_01
-  - farm01_plant_70_tomato_01
-  - farm01_plant_63_tomato_01
-  - farm01_plant_71_tomato_01
-- route_id: farm_01_harvest_lane_08
-  display_name: Farm Harvest Aisle 08
-  zone_id: farm_01
-  lane_side: harvest_lane_08
-  description: Serpentine harvest observation route through aisle 08.
-  entry_pose_id: farm_01_lane_08_north_entry
-  inspect_pose_ids:
-  - farm_01_lane_08_inspect_01
-  - farm_01_lane_08_inspect_02
-  - farm_01_lane_08_inspect_03
-  - farm_01_lane_08_inspect_04
-  - farm_01_lane_08_inspect_05
-  turn_pose_id: farm_01_lane_08_south_turn
-  exit_pose_id: farm_01_lane_08_south_turn
-  observed_plant_ids:
-  - farm01_plant_63
-  - farm01_plant_71
-  - farm01_plant_64
-  - farm01_plant_72
-  - farm01_plant_47
-  - farm01_plant_55
-  - farm01_plant_48
-  - farm01_plant_56
-  - farm01_plant_39
-  - farm01_plant_40
-  - farm01_plant_23
-  - farm01_plant_31
   - farm01_plant_24
-  - farm01_plant_32
-  - farm01_plant_07
-  - farm01_plant_15
-  - farm01_plant_08
+  - farm01_plant_20
   - farm01_plant_16
-  observed_tomato_ids:
-  - farm01_plant_63_tomato_01
-  - farm01_plant_71_tomato_01
-  - farm01_plant_64_tomato_01
-  - farm01_plant_72_tomato_01
-  - farm01_plant_47_tomato_01
-  - farm01_plant_55_tomato_01
-  - farm01_plant_48_tomato_01
-  - farm01_plant_56_tomato_01
-  - farm01_plant_39_tomato_01
-  - farm01_plant_40_tomato_01
-  - farm01_plant_23_tomato_01
-  - farm01_plant_31_tomato_01
-  - farm01_plant_24_tomato_01
-  - farm01_plant_32_tomato_01
-  - farm01_plant_07_tomato_01
-  - farm01_plant_15_tomato_01
-  - farm01_plant_08_tomato_01
-  - farm01_plant_16_tomato_01
-- route_id: farm_01_harvest_lane_09
-  display_name: Farm Harvest Aisle 09
-  zone_id: farm_01
-  lane_side: harvest_lane_09
-  description: Serpentine harvest observation route through aisle 09.
-  entry_pose_id: farm_01_lane_09_south_entry
-  inspect_pose_ids:
-  - farm_01_lane_09_inspect_01
-  - farm_01_lane_09_inspect_02
-  - farm_01_lane_09_inspect_03
-  - farm_01_lane_09_inspect_04
-  - farm_01_lane_09_inspect_05
-  turn_pose_id: farm_01_lane_09_north_turn
-  exit_pose_id: farm_01_lane_09_north_turn
-  observed_plant_ids:
+  - farm01_plant_12
   - farm01_plant_08
-  - farm01_plant_16
-  - farm01_plant_24
-  - farm01_plant_32
-  - farm01_plant_40
-  - farm01_plant_48
-  - farm01_plant_56
-  - farm01_plant_64
-  - farm01_plant_72
+  - farm01_plant_04
   observed_tomato_ids:
-  - farm01_plant_08_tomato_01
-  - farm01_plant_16_tomato_01
   - farm01_plant_24_tomato_01
-  - farm01_plant_32_tomato_01
-  - farm01_plant_40_tomato_01
-  - farm01_plant_48_tomato_01
-  - farm01_plant_56_tomato_01
-  - farm01_plant_64_tomato_01
-  - farm01_plant_72_tomato_01
+  - farm01_plant_20_tomato_01
+  - farm01_plant_16_tomato_01
+  - farm01_plant_12_tomato_01
+  - farm01_plant_08_tomato_01
+  - farm01_plant_04_tomato_01
 default_patrol_sequence:
 - farm_01_home
 - farm_01_lane_01_south_entry
@@ -1624,6 +701,7 @@ default_patrol_sequence:
 - farm_01_lane_01_inspect_03
 - farm_01_lane_01_inspect_04
 - farm_01_lane_01_inspect_05
+- farm_01_lane_01_inspect_06
 - farm_01_lane_01_north_turn
 - farm_01_lane_02_north_entry
 - farm_01_lane_02_inspect_01
@@ -1631,6 +709,7 @@ default_patrol_sequence:
 - farm_01_lane_02_inspect_03
 - farm_01_lane_02_inspect_04
 - farm_01_lane_02_inspect_05
+- farm_01_lane_02_inspect_06
 - farm_01_lane_02_south_turn
 - farm_01_lane_03_south_entry
 - farm_01_lane_03_inspect_01
@@ -1638,6 +717,7 @@ default_patrol_sequence:
 - farm_01_lane_03_inspect_03
 - farm_01_lane_03_inspect_04
 - farm_01_lane_03_inspect_05
+- farm_01_lane_03_inspect_06
 - farm_01_lane_03_north_turn
 - farm_01_lane_04_north_entry
 - farm_01_lane_04_inspect_01
@@ -1645,40 +725,6 @@ default_patrol_sequence:
 - farm_01_lane_04_inspect_03
 - farm_01_lane_04_inspect_04
 - farm_01_lane_04_inspect_05
+- farm_01_lane_04_inspect_06
 - farm_01_lane_04_south_turn
-- farm_01_lane_05_south_entry
-- farm_01_lane_05_inspect_01
-- farm_01_lane_05_inspect_02
-- farm_01_lane_05_inspect_03
-- farm_01_lane_05_inspect_04
-- farm_01_lane_05_inspect_05
-- farm_01_lane_05_north_turn
-- farm_01_lane_06_north_entry
-- farm_01_lane_06_inspect_01
-- farm_01_lane_06_inspect_02
-- farm_01_lane_06_inspect_03
-- farm_01_lane_06_inspect_04
-- farm_01_lane_06_inspect_05
-- farm_01_lane_06_south_turn
-- farm_01_lane_07_south_entry
-- farm_01_lane_07_inspect_01
-- farm_01_lane_07_inspect_02
-- farm_01_lane_07_inspect_03
-- farm_01_lane_07_inspect_04
-- farm_01_lane_07_inspect_05
-- farm_01_lane_07_north_turn
-- farm_01_lane_08_north_entry
-- farm_01_lane_08_inspect_01
-- farm_01_lane_08_inspect_02
-- farm_01_lane_08_inspect_03
-- farm_01_lane_08_inspect_04
-- farm_01_lane_08_inspect_05
-- farm_01_lane_08_south_turn
-- farm_01_lane_09_south_entry
-- farm_01_lane_09_inspect_01
-- farm_01_lane_09_inspect_02
-- farm_01_lane_09_inspect_03
-- farm_01_lane_09_inspect_04
-- farm_01_lane_09_inspect_05
-- farm_01_lane_09_north_turn
 - farm_01_home
