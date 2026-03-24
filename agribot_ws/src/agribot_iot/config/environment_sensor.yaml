@@ -1,0 +1,7 @@
+environment_sensor_node:
+  ros__parameters:
+    iot_devices_file: iot_devices.yaml
+    environment_topic: /environment_data
+    zone_id_filter: ''
+    publish_hz: 1.0
+    log_every_n: 5

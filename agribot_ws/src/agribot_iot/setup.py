@@ -26,6 +26,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'environment_sensor_node = agribot_iot.environment_sensor_node:main',
+            'mqtt_bridge_node = agribot_iot.mqtt_bridge_node:main',
+            'watering_controller_node = agribot_iot.watering_controller_node:main',
         ],
     },
 )
