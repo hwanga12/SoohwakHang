@@ -105,3 +105,4 @@ zones:
           supported_commands:
             - apply_nutrient_recipe
           default_unit: ml
+          flow_rate_per_sec: 90.0
