@@ -1713,7 +1713,7 @@ button {
     left: 14px;
     z-index: 20;
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
     padding: 12px 10px;
     border: 1px solid var(--line);
