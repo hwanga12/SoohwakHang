@@ -18,20 +18,20 @@
   --line-strong: rgba(58, 58, 58, 0.14);
   --text: #3a3a3a;
   --muted: #8a8a8a;
-  --primary: #7CCEB5;
-  --primary-soft: rgba(124, 206, 181, 0.08);
-  --secondary: #8ADCE7;
-  --secondary-soft: rgba(138, 220, 231, 0.1);
-  --accent-yellow: #fbea72;
-  --accent-yellow-soft: #fffdf2;
-  --accent-pink: #ffb7c5;
-  --accent-pink-soft: #fff5f7;
-  --warning: #f1a942;
-  --warning-soft: #fff8f0;
-  --danger: #ef7a6d;
-  --danger-soft: #fff5f4;
+  --primary: #A5D6A7;
+  --primary-rgb: 165, 214, 167;
+  --primary-soft: rgba(165, 214, 167, 0.08);
+  --secondary: #BEE7E8;
+  --secondary-rgb: 190, 231, 232;
+  --secondary-soft: rgba(190, 231, 232, 0.1);
+  --warning: #FBEA72;
+  --warning-rgb: 251, 234, 114;
+  --warning-soft: rgba(251, 234, 114, 0.15);
+  --danger: #FFB7C5;
+  --danger-rgb: 255, 183, 197;
+  --danger-soft: rgba(255, 183, 197, 0.15);
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.02);
-  --shadow-bubbly: 0 16px 48px rgba(125, 178, 82, 0.08), 0 8px 16px rgba(0, 0, 0, 0.02);
+  --shadow-bubbly: 0 16px 48px rgba(165, 214, 167, 0.08), 0 8px 16px rgba(0, 0, 0, 0.02);
   --radius-xl: 40px;
   --radius-lg: 24px;
 }
@@ -501,17 +501,17 @@ button {
 
 .hero-panel--accent {
   background: #ffffff;
-  border: 2px solid var(--primary);
+  border: 2px solid rgba(var(--primary-rgb), 0.6);
 }
 
 .hero-panel--warning {
   background: #ffffff;
-  border: 2px solid var(--warning);
+  border: 2px solid rgba(var(--warning-rgb), 0.6);
 }
 
 .hero-panel--danger {
   background: #ffffff;
-  border: 2px solid var(--danger);
+  border: 2px solid rgba(var(--danger-rgb), 0.6);
 }
 
 .hero-panel--environment {
@@ -626,17 +626,17 @@ button {
 
 .metric-card--accent {
   background: #ffffff;
-  border: 2px solid var(--primary);
+  border: 2px solid rgba(var(--primary-rgb), 0.6);
 }
 
 .metric-card--warning {
   background: #ffffff;
-  border: 2px solid var(--warning);
+  border: 2px solid rgba(var(--warning-rgb), 0.6);
 }
 
 .metric-card--danger {
   background: #ffffff;
-  border: 2px solid var(--danger);
+  border: 2px solid rgba(var(--danger-rgb), 0.6);
 }
 
 .section-head {
@@ -1333,15 +1333,15 @@ button {
 }
 
 .zone-card--healthy {
-  border: 2px solid var(--primary);
+  border: 2px solid rgba(var(--primary-rgb), 0.6);
 }
 
 .zone-card--warning {
-  border: 2px solid var(--warning);
+  border: 2px solid rgba(var(--warning-rgb), 0.6);
 }
 
 .zone-card--critical {
-  border: 2px solid var(--danger);
+  border: 2px solid rgba(var(--danger-rgb), 0.6);
 }
 
 .detail-grid {
