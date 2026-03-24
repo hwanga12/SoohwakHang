@@ -500,18 +500,18 @@ button {
 }
 
 .hero-panel--accent {
-  background: var(--primary-soft);
-  border: 1px solid rgba(125, 178, 82, 0.2);
+  background: #ffffff;
+  border: 2px solid var(--primary);
 }
 
 .hero-panel--warning {
-  background: var(--warning-soft);
-  border: 1px solid rgba(241, 169, 66, 0.2);
+  background: #ffffff;
+  border: 2px solid var(--warning);
 }
 
 .hero-panel--danger {
-  background: var(--danger-soft);
-  border: 1px solid rgba(239, 122, 109, 0.2);
+  background: #ffffff;
+  border: 2px solid var(--danger);
 }
 
 .hero-panel--environment {
@@ -555,7 +555,7 @@ button {
 .table-card,
 .device-card {
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.7);
+  background: #ffffff;
   border-radius: var(--radius-lg);
 }
 
@@ -625,15 +625,18 @@ button {
 }
 
 .metric-card--accent {
-  background: var(--primary-soft);
+  background: #ffffff;
+  border: 2px solid var(--primary);
 }
 
 .metric-card--warning {
-  background: var(--warning-soft);
+  background: #ffffff;
+  border: 2px solid var(--warning);
 }
 
 .metric-card--danger {
-  background: var(--danger-soft);
+  background: #ffffff;
+  border: 2px solid var(--danger);
 }
 
 .section-head {
@@ -1305,7 +1308,7 @@ button {
 .history-item,
 .timeline-item {
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.7);
+  background: #ffffff;
   border-radius: var(--radius-lg);
 }
 
@@ -1330,17 +1333,15 @@ button {
 }
 
 .zone-card--healthy {
-  border-color: rgba(23, 107, 43, 0.14);
+  border: 2px solid var(--primary);
 }
 
 .zone-card--warning {
-  border-color: rgba(176, 113, 25, 0.18);
-  background: rgba(255, 250, 241, 0.84);
+  border: 2px solid var(--warning);
 }
 
 .zone-card--critical {
-  border-color: rgba(179, 61, 47, 0.18);
-  background: rgba(255, 244, 242, 0.84);
+  border: 2px solid var(--danger);
 }
 
 .detail-grid {
@@ -1371,7 +1372,7 @@ button {
   align-items: center;
   padding: 14px 16px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.7);
+  background: #ffffff;
   border-radius: var(--radius-lg);
 }
 
