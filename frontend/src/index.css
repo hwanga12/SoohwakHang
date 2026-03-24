@@ -20,14 +20,18 @@
   --muted: #8a8a8a;
   --primary: #7db252;
   --primary-soft: rgba(125, 178, 82, 0.14);
-  --secondary: #fbea72;
-  --warning: #d97706;
-  --warning-soft: rgba(217, 119, 6, 0.12);
-  --danger: #dc2626;
-  --danger-soft: rgba(220, 38, 38, 0.12);
-  --shadow: 0 8px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 0, 0, 0.02);
-  --radius-xl: 32px;
-  --radius-lg: 20px;
+  --secondary: #75d4e1;
+  --secondary-soft: rgba(117, 212, 225, 0.15);
+  --accent-yellow: #fbea72;
+  --accent-pink: #ffb7c5;
+  --warning: #f1a942;
+  --warning-soft: rgba(241, 169, 66, 0.12);
+  --danger: #ef7a6d;
+  --danger-soft: rgba(239, 122, 109, 0.12);
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.02);
+  --shadow-bubbly: 0 16px 48px rgba(125, 178, 82, 0.08), 0 8px 16px rgba(0, 0, 0, 0.02);
+  --radius-xl: 40px;
+  --radius-lg: 24px;
 }
 
 * {
@@ -44,6 +48,8 @@ body {
   min-height: 100vh;
   color: var(--text);
   overflow: hidden;
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M40 10c-3 0-6 3-6 7s3 7 6 7 6-3 6-7-3-7-6-7zM20 50c-2 0-4 2-4 5s2 5 4 5 4-2 4-5-2-5-4-5zM60 50c-2 0-4 2-4 5s2 5 4 5 4-2 4-5-2-5-4-5z' fill='%237db252' fill-opacity='0.02'/%3E%3C/svg%3E");
 }
 
 body::before,
@@ -114,9 +120,10 @@ button {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 16px 18px;
+  padding: 16px 20px;
   border-radius: var(--radius-xl);
-  background: rgba(255, 255, 255, 0.74);
+  background: rgba(255, 255, 255, 0.82);
+  border: 2px solid var(--primary-soft);
 }
 
 .shell-brand,
@@ -699,12 +706,27 @@ button {
 .action-button {
   gap: 8px;
   justify-content: center;
-  padding: 0.88rem 1.05rem;
-  border-radius: 16px;
+  padding: 0.95rem 1.25rem;
+  border-radius: 20px;
   color: #fff;
   background: linear-gradient(135deg, #7db252, #5a8a3a);
-  font-weight: 700;
-  box-shadow: 0 4px 14px rgba(125, 178, 82, 0.2);
+  font-weight: 800;
+  box-shadow: 0 6px 0 #4a7530, 0 10px 20px rgba(125, 178, 82, 0.25);
+  transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.1s ease;
+}
+
+.action-button:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #4a7530, 0 4px 10px rgba(125, 178, 82, 0.2);
+}
+
+.action-button--secondary {
+  background: linear-gradient(135deg, #75d4e1, #55bcc9);
+  box-shadow: 0 6px 0 #3e9ba8, 0 10px 20px rgba(117, 212, 225, 0.25);
+}
+
+.action-button--secondary:active {
+  box-shadow: 0 2px 0 #3e9ba8, 0 4px 10px rgba(117, 212, 225, 0.2);
 }
 
 .action-button--soft {

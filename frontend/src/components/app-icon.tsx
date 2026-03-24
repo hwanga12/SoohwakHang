@@ -50,6 +50,7 @@ const FurnitureLeaf = ({ size = 24, fill = "none", ...props }: LucideProps) => (
 type AppIconProps = {
   name: string
   className?: string
+  style?: React.CSSProperties
   filled?: boolean
 }
 
@@ -85,6 +86,7 @@ const iconMap: Record<string, LucideIcon> = {
 export function AppIcon({
   name,
   className,
+  style,
   filled = false,
 }: AppIconProps) {
   const IconComponent = iconMap[name] || Circle;
@@ -97,6 +99,7 @@ export function AppIcon({
     <IconComponent 
       className={className} 
       size={24} 
+      style={style}
       {...fillProps} 
     />
   )

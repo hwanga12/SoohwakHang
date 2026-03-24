@@ -48,15 +48,21 @@ export default function AppShell() {
           <div className="brand-mark">
             <AppIcon className="brand-mark-icon" filled name="eco" />
           </div>
-          <div>
+          <div style={{ position: 'relative' }}>
             <span className="brand-kicker">스마트 온실 운영</span>
-            <h1 className="brand-title">{env.appName}</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h1 className="brand-title">{env.appName}</h1>
+              <AppIcon name="potted_plant" className="brand-mark-icon" style={{ color: 'var(--primary)', width: '24px', height: '24px' }} />
+            </div>
           </div>
         </div>
 
         <div className="shell-header-actions">
-          <div className={`live-pill${liveStatus === 'connected' ? '' : ' live-pill--soft'}`}>
-            <span className="live-dot" />
+          <div 
+            className={`live-pill${liveStatus === 'connected' ? '' : ' live-pill--soft'}`}
+            style={liveStatus === 'connected' ? { backgroundColor: 'var(--primary-soft)', color: 'var(--primary)', border: '2px solid var(--primary-soft)' } : { backgroundColor: 'var(--secondary-soft)', color: 'var(--secondary)', border: '2px solid var(--secondary-soft)' }}
+          >
+            <span className="live-dot" style={liveStatus === 'connected' ? { background: 'var(--primary)' } : { background: 'var(--secondary)' }} />
             {liveLabel}
           </div>
           <NavLink
