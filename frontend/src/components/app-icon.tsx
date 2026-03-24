@@ -1,7 +1,6 @@
 import {
   AlertTriangle,
   CheckCircle,
-  Leaf,
   Bell,
   Lightbulb,
   Rocket,
@@ -26,8 +25,27 @@ import {
   FlaskConical,
   Router,
   Circle,
-  LucideIcon
+  LucideIcon,
+  LucideProps
 } from 'lucide-react';
+
+const FurnitureLeaf = ({ size = 24, fill = "none", ...props }: LucideProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill={fill}
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M12 22C12 22 20 18 20 10C20 5.58172 16.4183 2 12 2C7.58172 2 4 5.58172 4 10C4 18 12 22 12 22Z" />
+    <circle cx="17" cy="6" r="3" fill="white" stroke="none" />
+    <path d="M12 22v-4" />
+  </svg>
+);
 
 type AppIconProps = {
   name: string
@@ -38,7 +56,7 @@ type AppIconProps = {
 const iconMap: Record<string, LucideIcon> = {
   'warning': AlertTriangle,
   'task_alt': CheckCircle,
-  'eco': Leaf,
+  'eco': FurnitureLeaf as LucideIcon,
   'notifications': Bell,
   'lightbulb': Lightbulb,
   'rocket_launch': Rocket,
