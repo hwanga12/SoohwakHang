@@ -1,0 +1,4 @@
+mqtt_bridge_node:
+  ros__parameters:
+    topics_file: mqtt_topics.yaml
+    force_log_only: false

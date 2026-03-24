@@ -1,0 +1,102 @@
+schema_version: 1
+frame_id: map
+default_zone_id: farm_01
+zones:
+  - zone_id: farm_01
+    display_name: Farm 01 Greenhouse
+    mqtt_namespace: agribot
+    sensor_profile:
+      publish_hz: 1.0
+      phase_offset_sec: 0.0
+      temperature:
+        base: 24.0
+        amplitude: 2.5
+        period_sec: 90.0
+        minimum: 19.0
+        maximum: 30.0
+      humidity:
+        base: 61.0
+        amplitude: 8.0
+        period_sec: 120.0
+        minimum: 45.0
+        maximum: 80.0
+      soil_moisture:
+        base: 34.0
+        amplitude: 7.0
+        period_sec: 150.0
+        minimum: 20.0
+        maximum: 55.0
+      light_level:
+        base: 14500.0
+        amplitude: 4000.0
+        period_sec: 180.0
+        minimum: 8000.0
+        maximum: 24000.0
+      co2_level:
+        base: 520.0
+        amplitude: 45.0
+        period_sec: 210.0
+        minimum: 420.0
+        maximum: 700.0
+    devices:
+      - device_id: farm_01_watering
+        device_type: watering
+        display_name: Farm 01 Watering Pump
+        command_topic: /iot/commands/dispatch
+        state_topic: /iot/device_state
+        result_topic: /iot/command_result
+        mqtt_command_topic: agribot/commands/actuation
+        mqtt_state_topic: agribot/iot/device_state
+        mqtt_result_topic: agribot/iot/command_result
+        is_available: true
+        capabilities:
+          supported_commands:
+            - dispense_water
+            - stop_watering
+            - hold_watering
+          default_unit: ml
+          flow_rate_per_sec: 180.0
+      - device_id: farm_01_curtain
+        device_type: curtain
+        display_name: Farm 01 Ceiling Curtain
+        command_topic: /iot/commands/dispatch
+        state_topic: /iot/device_state
+        result_topic: /iot/command_result
+        mqtt_command_topic: agribot/commands/actuation
+        mqtt_state_topic: agribot/iot/device_state
+        mqtt_result_topic: agribot/iot/command_result
+        is_available: true
+        capabilities:
+          supported_commands:
+            - open_curtain
+            - close_curtain
+            - set_curtain_position
+          default_unit: percent_open
+      - device_id: farm_01_fan
+        device_type: fan
+        display_name: Farm 01 Ventilation Fan
+        command_topic: /iot/commands/dispatch
+        state_topic: /iot/device_state
+        result_topic: /iot/command_result
+        mqtt_command_topic: agribot/commands/actuation
+        mqtt_state_topic: agribot/iot/device_state
+        mqtt_result_topic: agribot/iot/command_result
+        is_available: true
+        capabilities:
+          supported_commands:
+            - set_fan_speed
+          default_unit: level
+      - device_id: farm_01_nutrient
+        device_type: nutrient
+        display_name: Farm 01 Nutrient Dispenser
+        command_topic: /iot/commands/dispatch
+        state_topic: /iot/device_state
+        result_topic: /iot/command_result
+        mqtt_command_topic: agribot/commands/actuation
+        mqtt_state_topic: agribot/iot/device_state
+        mqtt_result_topic: agribot/iot/command_result
+        is_available: true
+        capabilities:
+          supported_commands:
+            - apply_nutrient_recipe
+          default_unit: ml
