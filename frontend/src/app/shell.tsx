@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AppIcon } from '@/components/app-icon'
 import { navigationItems } from '@/app/navigation'
 import { useDevInspector } from '@/app/dev-inspector'
@@ -29,6 +29,7 @@ function formatModeLabel(mode: string) {
 export default function AppShell() {
   const [showDevInfo, setShowDevInfo] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
   const liveStatus = useLiveStatus()
   const { isDevelopment, isOverlayEnabled, toggleOverlay } = useDevInspector()
   const modeLabel = formatModeLabel(env.mode)
@@ -64,13 +65,20 @@ export default function AppShell() {
             <span className="live-dot" style={liveStatus === 'connected' ? { background: 'var(--primary)' } : { background: 'var(--secondary)' }} />
             {liveLabel}
           </div>
-          <NavLink
+          <button
             aria-label="알림 센터"
             className={`icon-button${matchCurrentPath('/alerts', location.pathname) ? ' icon-button--active' : ''}`}
-            to="/alerts"
+            onClick={() => {
+              if (location.pathname === '/alerts') {
+                navigate(-1)
+              } else {
+                navigate('/alerts')
+              }
+            }}
+            type="button"
           >
             <AppIcon name="notifications" />
-          </NavLink>
+          </button>
         </div>
       </header>
 

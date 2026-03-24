@@ -28,13 +28,7 @@ export const navigationItems: NavigationItem[] = [
     description: '생육 상태, 수확 후보, 병해 의심 개체를 같은 흐름에서 검토합니다.',
     icon: 'potted_plant',
   },
-  {
-    path: '/alerts',
-    label: '알림',
-    caption: '병해와 설비',
-    description: '병해, 센서, 장치 경고를 우선순위 큐와 타임라인으로 묶어 보여줍니다.',
-    icon: 'notifications',
-  },
+
   {
     path: '/iot',
     label: '설비',
