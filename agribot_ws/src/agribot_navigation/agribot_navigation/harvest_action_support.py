@@ -1,0 +1,163 @@
+"""Helpers for the HarvestTomato action server."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import math
+import uuid
+
+from agribot_interfaces.action import HarvestTomato
+from agribot_interfaces.msg import HarvestEvent
+
+from .harvest_routing import CropCatalog, HarvestRoutePlan
+
+
+@dataclass(frozen=True)
+class ResolvedHarvestGoal:
+    mission_id: str
+    zone_id: str
+    plant_id: str
+    tomato_id: str
+    preferred_approach_waypoint_id: str
+
+
+PHASE_PROGRESS_PCT = {
+    'PLANNING': 5.0,
+    'WAITING_FOR_PATROL_PAUSE': 10.0,
+    'APPROACHING': 35.0,
+    'ALIGNING': 55.0,
+    'PICKING': 70.0,
+    'VERIFYING': 85.0,
+    'STOWING': 95.0,
+    'COMPLETED': 100.0,
+}
+
+
+def _normalize_text(value: str | None) -> str:
+    if value is None:
+        return ''
+    normalized = str(value).strip()
+    if normalized.lower() in {'none', 'null'}:
+        return ''
+    return normalized
+
+
+def resolve_harvest_goal(
+    *,
+    mission_id: str | None,
+    zone_id: str | None,
+    plant_id: str | None,
+    fruit_id: str | None,
+    approach_waypoint_id: str | None,
+    default_zone_id: str,
+    catalog: CropCatalog,
+) -> ResolvedHarvestGoal:
+    normalized_fruit_id = _normalize_text(fruit_id)
+    if not normalized_fruit_id:
+        raise ValueError('HarvestTomato goal requires a non-empty fruit_id.')
+    if normalized_fruit_id not in catalog.tomatoes:
+        raise ValueError(f'Unknown fruit_id: {normalized_fruit_id}')
+
+    tomato = catalog.tomatoes[normalized_fruit_id]
+    normalized_zone_id = _normalize_text(zone_id) or default_zone_id
+    if normalized_zone_id != catalog.zone_id:
+        raise ValueError(
+            f'Harvest zone_id {normalized_zone_id} does not match crop catalog zone_id '
+            f'{catalog.zone_id}.'
+        )
+
+    normalized_plant_id = _normalize_text(plant_id) or tomato.parent_plant_id
+    if normalized_plant_id != tomato.parent_plant_id:
+        raise ValueError(
+            f'fruit_id {normalized_fruit_id} belongs to plant {tomato.parent_plant_id}, '
+            f'got {normalized_plant_id}.'
+        )
+
+    normalized_mission_id = _normalize_text(mission_id) or f'harvest-{uuid.uuid4()}'
+    return ResolvedHarvestGoal(
+        mission_id=normalized_mission_id,
+        zone_id=normalized_zone_id,
+        plant_id=normalized_plant_id,
+        tomato_id=normalized_fruit_id,
+        preferred_approach_waypoint_id=_normalize_text(approach_waypoint_id),
+    )
+
+
+def ensure_harvest_target_available(
+    *,
+    catalog: CropCatalog,
+    tomato_id: str,
+    harvested_tomato_ids: set[str],
+) -> None:
+    tomato = catalog.tomatoes[tomato_id]
+    if not tomato.ready_to_harvest:
+        raise ValueError(f'Tomato {tomato_id} is not marked ready_to_harvest.')
+    if tomato_id in harvested_tomato_ids:
+        raise ValueError(f'Tomato {tomato_id} was already harvested in this runtime.')
+
+
+def alignment_required(route_plan: HarvestRoutePlan) -> bool:
+    distance = math.hypot(
+        route_plan.align_pose.x - route_plan.approach_pose.x,
+        route_plan.align_pose.y - route_plan.approach_pose.y,
+    )
+    yaw_delta = math.atan2(
+        math.sin(route_plan.align_pose.yaw - route_plan.approach_pose.yaw),
+        math.cos(route_plan.align_pose.yaw - route_plan.approach_pose.yaw),
+    )
+    return distance > 0.05 or abs(yaw_delta) > math.radians(5.0)
+
+
+def build_feedback(
+    *,
+    current_phase: str,
+    progress_pct: float,
+    aligned_to_target: bool,
+    gripper_engaged: bool,
+) -> HarvestTomato.Feedback:
+    feedback = HarvestTomato.Feedback()
+    feedback.current_phase = current_phase
+    feedback.progress_pct = max(0.0, min(100.0, float(progress_pct)))
+    feedback.aligned_to_target = bool(aligned_to_target)
+    feedback.gripper_engaged = bool(gripper_engaged)
+    return feedback
+
+
+def build_result(
+    *,
+    success: bool,
+    harvest_event_id: str,
+    basket_count: int,
+    message: str,
+) -> HarvestTomato.Result:
+    result = HarvestTomato.Result()
+    result.success = bool(success)
+    result.harvest_event_id = harvest_event_id
+    result.basket_count = int(basket_count)
+    result.message = message
+    return result
+
+
+def build_harvest_event(
+    *,
+    event_id: str,
+    mission_id: str,
+    zone_id: str,
+    plant_id: str,
+    fruit_id: str,
+    frame_id: str,
+    basket_count: int,
+    success: bool,
+    failure_reason: str = '',
+) -> HarvestEvent:
+    event = HarvestEvent()
+    event.header.frame_id = frame_id
+    event.event_id = event_id
+    event.mission_id = mission_id
+    event.zone_id = zone_id
+    event.plant_id = plant_id
+    event.fruit_id = fruit_id
+    event.success = bool(success)
+    event.failure_reason = failure_reason.strip()
+    event.basket_count = int(basket_count)
+    return event
