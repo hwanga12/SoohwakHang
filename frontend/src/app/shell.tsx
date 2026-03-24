@@ -30,10 +30,7 @@ export default function AppShell() {
   const location = useLocation()
   const liveStatus = useLiveStatus()
   const modeLabel = formatModeLabel(env.mode)
-  const currentItem =
-    navigationItems.find((item) =>
-      matchCurrentPath(item.path, location.pathname),
-    ) ?? navigationItems[0]
+
   const liveLabel =
     liveStatus === 'connected'
       ? '실시간 파이프라인 연결'
@@ -141,19 +138,7 @@ export default function AppShell() {
 
         <main className="workspace">
           <div className="workspace-scroll">
-            <header className="workspace-header">
-              <div>
-                <span className="page-kicker">{currentItem.label}</span>
-                <h2 className="page-title">{currentItem.caption}</h2>
-                <p className="muted">{currentItem.description}</p>
-              </div>
-              <div className="workspace-pills">
-                <span className="mode-pill">실시간 운영</span>
-                <span className="mode-pill mode-pill--ghost">
-                  {modeLabel}
-                </span>
-              </div>
-            </header>
+
             <Outlet />
           </div>
         </main>
