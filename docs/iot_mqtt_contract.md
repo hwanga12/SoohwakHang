@@ -8,6 +8,7 @@ This document covers the minimum contract added for:
 - `S14P-502` simulated environment sensor publishing
 - `S14P-503` MQTT topic and payload agreement
 - `S14P-504` watering controller execution
+- `S14P-505` curtain controller execution
 
 ## Shared Device Mapping
 
@@ -103,4 +104,9 @@ Current canonical IDs:
   - `dispense_water`
   - `stop_watering`
   - `hold_watering`
-- Curtain, fan, and nutrient controllers can follow the same `IoTCommand` -> `IoTDeviceState` -> JSON result pattern.
+- The curtain controller currently handles:
+  - `open_curtain`
+  - `close_curtain`
+  - `set_curtain_position`
+- `set_curtain_position` accepts `percent_open`, `percent`, and `percent_closed`.
+- Curtain, fan, and nutrient controllers follow the same `IoTCommand` -> `IoTDeviceState` -> JSON result pattern.
