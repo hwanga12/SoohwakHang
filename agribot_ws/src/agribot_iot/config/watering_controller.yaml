@@ -1,0 +1,7 @@
+watering_controller_node:
+  ros__parameters:
+    iot_devices_file: iot_devices.yaml
+    command_topic: /iot/commands/dispatch
+    device_state_topic: /iot/device_state
+    command_result_topic: /iot/command_result
+    zone_id_filter: ''

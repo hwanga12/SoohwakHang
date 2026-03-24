@@ -253,7 +253,7 @@
         <pose>0 0 0 0 0 0</pose>
         <topic>agribot/lidar</topic>
         <gz_frame_id>lidar_link</gz_frame_id>
-        <update_rate>8</update_rate>
+        <update_rate>30</update_rate>
         <ray>
           <scan>
             <horizontal>
@@ -271,7 +271,7 @@
           </scan>
           <range>
             <min>0.35</min>
-            <max>7.0</max>
+            <max>20.0</max>
             <resolution>0.01</resolution>
           </range>
         </ray>
@@ -300,6 +300,191 @@
         <always_on>true</always_on>
         <visualize>false</visualize>
       </sensor>
+    </link>
+
+    <!-- ==================== HARVEST ARM (Mesh Visual + Primitive Collision) ==================== -->
+    <link name="harvest_arm_link">
+      <pose relative_to="base_link">-0.02 0 0.22 0 0 0</pose>
+      <inertial>
+        <mass>0.8</mass>
+        <inertia>
+          <ixx>0.012</ixx>
+          <iyy>0.018</iyy>
+          <izz>0.016</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <collision name="arm_column_collision">
+        <pose>0 0 0.09 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.05 0.18</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="arm_reach_collision">
+        <pose>0.12 0 0.19 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.24 0.04 0.04</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="arm_wrist_collision">
+        <pose>0.25 0 0.16 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.04 0.06 0.04</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="gripper_left_collision">
+        <pose>0.29 0.028 0.11 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.02 0.014 0.10</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="gripper_right_collision">
+        <pose>0.29 -0.028 0.11 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.02 0.014 0.10</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <visual name="arm_mesh_visual">
+        <pose>-0.025 0 0.081 0 -1.5708 -1.5708</pose>
+        <geometry>
+          <mesh>
+            <uri>meshes/robotic_arm.glb</uri>
+            <scale>5.236 6.007 2.536</scale>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+
+    <!-- ==================== HARVEST BASKET (Placeholder Geometry) ==================== -->
+    <link name="harvest_basket_link">
+      <pose relative_to="base_link">-0.14 0 0.20 0 0 0</pose>
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.008</ixx>
+          <iyy>0.010</iyy>
+          <izz>0.011</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <collision name="basket_floor_collision">
+        <pose>0 0 0.015 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.18 0.14 0.03</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="basket_left_wall_collision">
+        <pose>0 0.06 0.075 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.18 0.02 0.12</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="basket_right_wall_collision">
+        <pose>0 -0.06 0.075 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.18 0.02 0.12</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="basket_front_wall_collision">
+        <pose>0.08 0 0.075 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.02 0.14 0.12</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="basket_back_wall_collision">
+        <pose>-0.08 0 0.075 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.02 0.14 0.12</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <visual name="basket_floor_visual">
+        <pose>0 0 0.015 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.18 0.14 0.03</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.33 0.20 0.10 1</ambient>
+          <diffuse>0.46 0.28 0.16 1</diffuse>
+        </material>
+      </visual>
+      <visual name="basket_left_wall_visual">
+        <pose>0 0.06 0.075 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.18 0.02 0.12</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.33 0.20 0.10 1</ambient>
+          <diffuse>0.46 0.28 0.16 1</diffuse>
+        </material>
+      </visual>
+      <visual name="basket_right_wall_visual">
+        <pose>0 -0.06 0.075 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.18 0.02 0.12</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.33 0.20 0.10 1</ambient>
+          <diffuse>0.46 0.28 0.16 1</diffuse>
+        </material>
+      </visual>
+      <visual name="basket_front_wall_visual">
+        <pose>0.08 0 0.075 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.02 0.14 0.12</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.33 0.20 0.10 1</ambient>
+          <diffuse>0.46 0.28 0.16 1</diffuse>
+        </material>
+      </visual>
+      <visual name="basket_back_wall_visual">
+        <pose>-0.08 0 0.075 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.02 0.14 0.12</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.33 0.20 0.10 1</ambient>
+          <diffuse>0.46 0.28 0.16 1</diffuse>
+        </material>
+      </visual>
     </link>
 
     <!-- ==================== JOINTS ==================== -->
@@ -351,6 +536,18 @@
     <joint name="imu_joint" type="fixed">
       <parent>base_link</parent>
       <child>imu_link</child>
+    </joint>
+
+    <!-- Harvest Arm Joint (fixed placeholder for P0 harvesting) -->
+    <joint name="harvest_arm_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>harvest_arm_link</child>
+    </joint>
+
+    <!-- Harvest Basket Joint (fixed placeholder for P0 basket loading) -->
+    <joint name="harvest_basket_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>harvest_basket_link</child>
     </joint>
 
     <!-- ==================== PLUGINS ==================== -->

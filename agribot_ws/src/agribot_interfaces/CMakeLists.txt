@@ -22,6 +22,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PlantObservation.msg"
   "msg/RobotStatus.msg"
   "msg/HarvestEvent.msg"
+  "msg/HarvestBasketState.msg"
   "msg/MissionStatus.msg"
   "msg/IoTDeviceState.msg"
   # Actions

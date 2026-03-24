@@ -1,0 +1,25 @@
+harvest_action_server:
+  ros__parameters:
+    action_name: harvest_tomato
+    navigate_to_pose_action: navigate_to_pose
+    patrol_status_topic: patrol/status
+    patrol_stop_service: patrol/stop
+    patrol_resume_service: patrol/resume
+    harvest_event_topic: harvest/event
+    mission_status_topic: harvest/mission_status
+    nav_server_wait_sec: 5.0
+    patrol_service_wait_sec: 1.0
+    patrol_pause_timeout_sec: 8.0
+    alignment_settle_sec: 0.75
+    picking_duration_sec: 1.0
+    verify_duration_sec: 0.6
+    basket_stow_duration_sec: 0.8
+    return_mode_override: ""
+    auto_resume_patrol: true
+    phase_retry_limit: 1
+    phase_retry_backoff_sec: 0.5
+    retryable_phases: [WAITING_FOR_PATROL_PAUSE, APPROACHING, ALIGNING, RETURN_HOME, RESUME]
+    safety_stop_on_failure: true
+    reject_duplicate_targets: true
+    basket_state_topic: harvest/basket_state
+    failure_alert_topic: harvest/alerts

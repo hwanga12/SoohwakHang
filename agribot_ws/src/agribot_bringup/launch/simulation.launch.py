@@ -4,17 +4,23 @@ Brings up the complete simulation environment including:
 - Gazebo Harmonic world
 - Robot model spawn
 - ROS-Gazebo bridge
-- (Future) Nav2, sensors, IoT
+- Nav2
+- IoT status/result publishing stack
 
 Usage:
     ros2 launch agribot_bringup simulation.launch.py
 """
 
 from launch import LaunchDescription
-from launch.actions import TimerAction
-from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    SetEnvironmentVariable,
+    TimerAction,
+)
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.actions import Node
+from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 import os
 
@@ -64,6 +70,30 @@ def generate_launch_description():
             'patrol_robot_pose_topic': '/odom',
         }.items()
     )
+    use_iot_arg = DeclareLaunchArgument(
+        'use_iot',
+        default_value='true',
+        description='Launch the IoT status/result publishing stack.',
+    )
+    mqtt_force_log_only_arg = DeclareLaunchArgument(
+        'mqtt_force_log_only',
+        default_value='false',
+        description='Force the MQTT bridge into log-only mode.',
+    )
+    iot_status_pipeline = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('agribot_iot'),
+                'launch',
+                'iot_status_pipeline.launch.py'
+            )
+        ),
+        launch_arguments={
+            'use_sim_time': 'true',
+            'force_log_only': LaunchConfiguration('mqtt_force_log_only'),
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('use_iot')),
+    )
 
     delayed_navigation = TimerAction(
         period=5.0,
@@ -72,8 +102,10 @@ def generate_launch_description():
 
     return LaunchDescription([
         *env_vars,
+        use_iot_arg,
+        mqtt_force_log_only_arg,
         spawn_agribot,
         delayed_navigation,
+        iot_status_pipeline,
         # TODO: Add perception launch
-        # TODO: Add IoT launch
     ])

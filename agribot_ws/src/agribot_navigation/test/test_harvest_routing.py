@@ -58,6 +58,9 @@ def test_compute_harvest_route_uses_generic_approach_pose_for_rectangular_farm()
     assert route_plan.approach_pose.x == pytest.approx(-6.75, abs=1e-6)
     assert route_plan.approach_pose.y == pytest.approx(-6.0, abs=1e-6)
     assert route_plan.approach_pose.yaw == pytest.approx(0.0, abs=1e-6)
+    assert route_plan.align_pose.x == pytest.approx(-6.65, abs=1e-6)
+    assert route_plan.align_pose.y == pytest.approx(-6.0, abs=1e-6)
+    assert route_plan.align_pose.yaw == pytest.approx(0.0, abs=1e-6)
 
 
 def test_compute_harvest_route_can_force_home_return() -> None:
@@ -77,6 +80,9 @@ def test_compute_harvest_route_can_force_home_return() -> None:
     assert route_plan.approach_pose.x == pytest.approx(2.75, abs=1e-6)
     assert route_plan.approach_pose.y == pytest.approx(6.0, abs=1e-6)
     assert route_plan.approach_pose.yaw == pytest.approx(math.pi, abs=1e-6)
+    assert route_plan.align_pose.x == pytest.approx(2.65, abs=1e-6)
+    assert route_plan.align_pose.y == pytest.approx(6.0, abs=1e-6)
+    assert route_plan.align_pose.yaw == pytest.approx(math.pi, abs=1e-6)
 
 
 def test_compute_harvest_route_prefers_current_inspect_waypoint_when_available() -> None:
@@ -97,3 +103,6 @@ def test_compute_harvest_route_prefers_current_inspect_waypoint_when_available()
     assert route_plan.approach_pose.x == pytest.approx(-5.25, abs=1e-6)
     assert route_plan.approach_pose.y == pytest.approx(-6.0, abs=1e-6)
     assert route_plan.approach_pose.yaw == pytest.approx(math.pi, abs=1e-6)
+    assert route_plan.align_pose.x == pytest.approx(-5.35, abs=1e-6)
+    assert route_plan.align_pose.y == pytest.approx(-6.0, abs=1e-6)
+    assert route_plan.align_pose.yaw == pytest.approx(math.pi, abs=1e-6)
