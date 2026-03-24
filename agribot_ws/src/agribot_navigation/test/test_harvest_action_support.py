@@ -1,12 +1,13 @@
 from pathlib import Path
 
-from agribot_interfaces.msg import HarvestBasketState, HarvestEvent
+from agribot_interfaces.msg import HarvestBasketState, HarvestEvent, MissionStatus
 from agribot_navigation.harvest_action_support import (
     PHASE_PROGRESS_PCT,
     alignment_required,
     build_basket_state,
     build_feedback,
     build_harvest_event,
+    build_mission_status,
     build_result,
     ensure_harvest_target_available,
     resolve_harvest_goal,
@@ -199,3 +200,28 @@ def test_build_basket_state_tracks_loaded_fruits_and_remaining_count() -> None:
         'farm01_plant_01_tomato_01',
         'farm01_plant_02_tomato_01',
     ]
+
+
+def test_build_mission_status_captures_return_home_progress() -> None:
+    mission_status = build_mission_status(
+        mission_id='mission-455',
+        mission_type='HARVEST',
+        state='RUNNING',
+        current_phase='RETURN_HOME',
+        zone_id='farm_01',
+        target_id='farm_01_home',
+        progress_pct=PHASE_PROGRESS_PCT['RETURN_HOME'],
+        detail_message='Returning to home pose after harvest.',
+        retry_count=1,
+    )
+
+    assert isinstance(mission_status, MissionStatus)
+    assert mission_status.mission_id == 'mission-455'
+    assert mission_status.mission_type == 'HARVEST'
+    assert mission_status.state == 'RUNNING'
+    assert mission_status.current_phase == 'RETURN_HOME'
+    assert mission_status.zone_id == 'farm_01'
+    assert mission_status.target_id == 'farm_01_home'
+    assert mission_status.progress_pct == pytest.approx(98.0)
+    assert mission_status.retry_count == 1
+    assert mission_status.detail_message == 'Returning to home pose after harvest.'

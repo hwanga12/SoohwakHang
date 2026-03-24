@@ -7,7 +7,7 @@ import math
 import uuid
 
 from agribot_interfaces.action import HarvestTomato
-from agribot_interfaces.msg import HarvestBasketState, HarvestEvent
+from agribot_interfaces.msg import HarvestBasketState, HarvestEvent, MissionStatus
 
 from .harvest_routing import CropCatalog, HarvestRoutePlan
 
@@ -29,6 +29,8 @@ PHASE_PROGRESS_PCT = {
     'PICKING': 70.0,
     'VERIFYING': 85.0,
     'STOWING': 95.0,
+    'RETURN_HOME': 98.0,
+    'RESUME': 100.0,
     'COMPLETED': 100.0,
 }
 
@@ -184,3 +186,28 @@ def build_basket_state(
     state.last_harvested_fruit_id = last_harvested_fruit_id
     state.loaded_fruit_ids = list(loaded_fruit_ids)
     return state
+
+
+def build_mission_status(
+    *,
+    mission_id: str,
+    mission_type: str,
+    state: str,
+    current_phase: str,
+    zone_id: str,
+    target_id: str,
+    progress_pct: float,
+    detail_message: str,
+    retry_count: int = 0,
+) -> MissionStatus:
+    status = MissionStatus()
+    status.mission_id = mission_id
+    status.mission_type = mission_type
+    status.state = state
+    status.current_phase = current_phase
+    status.zone_id = zone_id
+    status.target_id = target_id
+    status.progress_pct = max(0.0, min(100.0, float(progress_pct)))
+    status.retry_count = max(0, int(retry_count))
+    status.detail_message = detail_message
+    return status
