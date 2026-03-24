@@ -92,6 +92,7 @@ class SourceBounds:
 class HarvestRoutingConfig:
     approach_margin_from_bed_edge_m: float
     max_lateral_offset_from_inspect_m: float
+    align_standoff_from_crop_m: float
     default_return_mode: str
     fallback_return_mode: str
 
@@ -185,6 +186,7 @@ def _load_harvest_routing(payload: dict[str, Any]) -> HarvestRoutingConfig:
         max_lateral_offset_from_inspect_m=float(
             payload.get('max_lateral_offset_from_inspect_m', 2.50)
         ),
+        align_standoff_from_crop_m=float(payload.get('align_standoff_from_crop_m', 0.65)),
         default_return_mode=str(return_modes.get('default', 'resume_patrol')),
         fallback_return_mode=str(return_modes.get('fallback', 'home')),
     )
@@ -211,6 +213,9 @@ def _validate_references(plan: PatrolPlan) -> None:
 
     if plan.harvest_routing.max_lateral_offset_from_inspect_m <= 0.0:
         raise ValueError('harvest_routing.max_lateral_offset_from_inspect_m must be positive.')
+
+    if plan.harvest_routing.align_standoff_from_crop_m <= 0.0:
+        raise ValueError('harvest_routing.align_standoff_from_crop_m must be positive.')
 
     allowed_return_modes = {'resume_patrol', 'home'}
     for mode_name, mode_value in (

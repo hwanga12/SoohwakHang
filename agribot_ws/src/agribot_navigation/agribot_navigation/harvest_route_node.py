@@ -29,6 +29,10 @@ from .harvest_routing import (
 from .patrol_config import Pose2D, PatrolPlan, get_default_patrol_waypoints_path, load_patrol_plan
 
 
+def _normalize_angle(angle: float) -> float:
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
 class HarvestRouteNode(Node):
     """Coordinate harvest approach and return motions around the patrol node."""
 
@@ -47,6 +51,7 @@ class HarvestRouteNode(Node):
         self.declare_parameter('nav_server_wait_sec', 5.0)
         self.declare_parameter('patrol_service_wait_sec', 1.0)
         self.declare_parameter('patrol_pause_timeout_sec', 8.0)
+        self.declare_parameter('alignment_settle_sec', 0.75)
         self.declare_parameter('harvest_dwell_sec', 2.0)
         self.declare_parameter('return_mode_override', '')
         self.declare_parameter('auto_resume_patrol', True)
@@ -57,6 +62,7 @@ class HarvestRouteNode(Node):
         self._nav_server_wait_sec = float(self.get_parameter('nav_server_wait_sec').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
         self._patrol_pause_timeout_sec = float(self.get_parameter('patrol_pause_timeout_sec').value)
+        self._alignment_settle_sec = float(self.get_parameter('alignment_settle_sec').value)
         self._harvest_dwell_sec = float(self.get_parameter('harvest_dwell_sec').value)
         self._return_mode_override = str(self.get_parameter('return_mode_override').value).strip()
         self._auto_resume_patrol = bool(self.get_parameter('auto_resume_patrol').value)
@@ -100,6 +106,7 @@ class HarvestRouteNode(Node):
         self._active_goal_handle = None
         self._goal_send_future = None
         self._goal_result_future = None
+        self._alignment_timer: Timer | None = None
         self._harvest_timer: Timer | None = None
         self._current_navigation_phase: str | None = None
         self._current_return_waypoint_id: str | None = None
@@ -277,6 +284,20 @@ class HarvestRouteNode(Node):
             ),
         )
 
+    def _start_alignment_navigation(self) -> None:
+        if self._active_plan is None:
+            self._set_error('Cannot start harvest alignment without an active harvest plan.')
+            return
+
+        self._start_navigation(
+            self._active_plan.align_pose,
+            phase='aligning',
+            message=(
+                f'Aligning harvest posture for {self._active_plan.tomato_id} '
+                f'near {self._active_plan.inspect_waypoint_name}.'
+            ),
+        )
+
     def _start_return_navigation(self, *, use_fallback: bool) -> None:
         if self._active_plan is None:
             self._set_error('Cannot start return navigation without an active harvest plan.')
@@ -343,6 +364,7 @@ class HarvestRouteNode(Node):
         self._active_goal_handle = None
         self._goal_result_future = None
         self._last_distance_remaining_m = None
+        self._current_navigation_phase = None
 
         try:
             result = future.result()
@@ -355,7 +377,13 @@ class HarvestRouteNode(Node):
 
         if status == GoalStatus.STATUS_SUCCEEDED:
             if phase == 'approaching':
+                if self._alignment_required():
+                    self._start_alignment_navigation()
+                    return
                 self._start_harvest_dwell()
+                return
+            if phase == 'aligning':
+                self._start_alignment_settle()
                 return
             if phase == 'returning':
                 self._finish_sequence_after_return()
@@ -378,6 +406,50 @@ class HarvestRouteNode(Node):
                 return
 
         self._set_error(error_msg)
+
+    def _alignment_required(self) -> bool:
+        if self._active_plan is None:
+            return False
+
+        distance = math.hypot(
+            self._active_plan.align_pose.x - self._active_plan.approach_pose.x,
+            self._active_plan.align_pose.y - self._active_plan.approach_pose.y,
+        )
+        yaw_delta = abs(
+            _normalize_angle(self._active_plan.align_pose.yaw - self._active_plan.approach_pose.yaw)
+        )
+        return distance > 0.05 or yaw_delta > math.radians(5.0)
+
+    def _start_alignment_settle(self) -> None:
+        if self._active_plan is None:
+            self._set_error('Harvest alignment finished without an active harvest plan.')
+            return
+
+        self._set_state(
+            'aligned',
+            f'Holding aligned harvest stance for {self._active_plan.tomato_id} '
+            f'for {self._alignment_settle_sec:.1f}s.',
+        )
+        if self._alignment_settle_sec <= 0.0:
+            self._finish_alignment_settle()
+            return
+
+        self._cancel_alignment_timer()
+        self._alignment_timer = self.create_timer(
+            self._alignment_settle_sec,
+            self._finish_alignment_settle,
+        )
+
+    def _finish_alignment_settle(self) -> None:
+        self._cancel_alignment_timer()
+        self._start_harvest_dwell()
+
+    def _cancel_alignment_timer(self) -> None:
+        if self._alignment_timer is None:
+            return
+        self._alignment_timer.cancel()
+        self.destroy_timer(self._alignment_timer)
+        self._alignment_timer = None
 
     def _start_harvest_dwell(self) -> None:
         if self._active_plan is None:
@@ -464,11 +536,14 @@ class HarvestRouteNode(Node):
         return stamped
 
     def _complete_sequence(self, message: str) -> None:
+        self._cancel_alignment_timer()
+        self._cancel_harvest_timer()
         if self._active_plan is not None:
             self._completed_tomato_ids.add(self._active_plan.tomato_id)
         self._resume_patrol_after_return = False
         self._patrol_pause_deadline_ns = None
         self._current_return_waypoint_id = None
+        self._current_navigation_phase = None
         self._active_plan = None
         self._set_state('completed', message)
 
@@ -479,9 +554,12 @@ class HarvestRouteNode(Node):
         self._publish_status()
 
     def _set_error(self, message: str) -> None:
+        self._cancel_alignment_timer()
+        self._cancel_harvest_timer()
         self._last_error_message = message
         self._sequence_state = 'error'
         self._sequence_message = message
+        self._current_navigation_phase = None
         self.get_logger().error(message)
         self._publish_status()
 
@@ -511,12 +589,14 @@ class HarvestRouteNode(Node):
             ),
             'return_mode': self._active_plan.return_mode if self._active_plan is not None else None,
             'current_return_waypoint_id': self._current_return_waypoint_id,
+            'navigation_phase': self._current_navigation_phase,
             'distance_remaining_m': self._last_distance_remaining_m,
             'error': self._last_error_message or None,
         }
         self._status_pub.publish(String(data=json.dumps(payload, sort_keys=True)))
 
     def destroy_node(self) -> bool:
+        self._cancel_alignment_timer()
         self._cancel_harvest_timer()
         self._navigate_client.destroy()
         return super().destroy_node()

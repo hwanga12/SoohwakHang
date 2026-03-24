@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 from agribot_navigation.harvest_routing import compute_harvest_route, load_crop_catalog
@@ -57,6 +58,9 @@ def test_compute_harvest_route_uses_generic_approach_pose_for_rectangular_farm()
     assert route_plan.approach_pose.x == pytest.approx(-8.318198, abs=1e-6)
     assert route_plan.approach_pose.y == pytest.approx(-7.681802, abs=1e-6)
     assert route_plan.approach_pose.yaw == pytest.approx(-0.785398, abs=1e-6)
+    assert route_plan.align_pose.x == pytest.approx(-8.65, abs=1e-6)
+    assert route_plan.align_pose.y == pytest.approx(-8.0, abs=1e-6)
+    assert route_plan.align_pose.yaw == pytest.approx(0.0, abs=1e-6)
 
 
 def test_compute_harvest_route_can_force_home_return() -> None:
@@ -76,6 +80,9 @@ def test_compute_harvest_route_can_force_home_return() -> None:
     assert route_plan.approach_pose.x == pytest.approx(7.681802, abs=1e-6)
     assert route_plan.approach_pose.y == pytest.approx(7.681802, abs=1e-6)
     assert route_plan.approach_pose.yaw == pytest.approx(0.785398, abs=1e-6)
+    assert route_plan.align_pose.x == pytest.approx(7.35, abs=1e-6)
+    assert route_plan.align_pose.y == pytest.approx(8.0, abs=1e-6)
+    assert route_plan.align_pose.yaw == pytest.approx(0.0, abs=1e-6)
 
 
 def test_compute_harvest_route_prefers_current_inspect_waypoint_when_available() -> None:
@@ -96,3 +103,6 @@ def test_compute_harvest_route_prefers_current_inspect_waypoint_when_available()
     assert route_plan.approach_pose.x == pytest.approx(-7.681802, abs=1e-6)
     assert route_plan.approach_pose.y == pytest.approx(-7.681802, abs=1e-6)
     assert route_plan.approach_pose.yaw == pytest.approx(-2.356194, abs=1e-6)
+    assert route_plan.align_pose.x == pytest.approx(-7.35, abs=1e-6)
+    assert route_plan.align_pose.y == pytest.approx(-8.0, abs=1e-6)
+    assert route_plan.align_pose.yaw == pytest.approx(math.pi, abs=1e-6)
