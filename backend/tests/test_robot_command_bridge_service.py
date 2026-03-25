@@ -17,6 +17,7 @@ from robot_command_bridge_service import (  # noqa: E402
     publish_robot_command,
     read_latest_command_status_payload,
 )
+from robot_runtime_state_service import control_state_file_path  # noqa: E402
 from zone_service import read_zones_payload, resolve_zone_representative_pose  # noqa: E402
 
 
@@ -104,6 +105,23 @@ def test_publish_navigate_to_pose_allows_explicit_preempt_override() -> None:
 
 
 def test_publish_pause_patrol_defaults_preempt_to_false() -> None:
+    control_state_file_path().write_text(
+        json.dumps(
+            {
+                "mode": "normal",
+                "is_latched": False,
+                "active_activity": "patrol",
+                "message": "순찰 중입니다.",
+                "resume_available": False,
+                "resume_context": None,
+                "updated_at": "2026-03-25T00:00:00+00:00",
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
     response = publish_robot_command(
         robot_id="AGR-02",
         command_type="pause_patrol",
