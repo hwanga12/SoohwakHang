@@ -1,26 +1,55 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
+import { DevSurface } from '@/components/dev-surface'
 import { MetricCard } from '@/components/metric-card'
 import {
   dashboardFallback,
   getDashboardPageData,
+  sendRobotControlAction,
 } from '@/lib/api/agribot'
+import { MockupImage } from '@/components/mockup-image'
 
 export function DashboardPage() {
+  const queryClient = useQueryClient()
   const dashboardQuery = useQuery({
     queryKey: ['page', 'dashboard'],
     queryFn: getDashboardPageData,
     initialData: dashboardFallback,
     refetchInterval: 20_000,
   })
+  const controlMutation = useMutation({
+    mutationFn: sendRobotControlAction,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] })
+      await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
+    },
+  })
   const page = dashboardQuery.data
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
+  const feedbackMessage = controlMutation.isSuccess
+    ? controlMutation.data
+    : controlMutation.isError
+      ? controlMutation.error.message
+      : null
 
   return (
     <div className="screen">
       <section className="hero-grid hero-grid--dashboard">
-        <article className="hero-panel hero-panel--accent">
+        <DevSurface
+          as="article"
+          className="hero-panel hero-panel--accent"
+          contract={{
+            title: '운영 요약 패널',
+            queries: [
+              createGetSignal('운영 요약', querySource('/dashboard/summary'), '/dashboard/summary'),
+              createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+              createGetSignal('환경 요약', querySource('/environment/latest'), '/environment/latest'),
+            ],
+          }}
+        >
           <div className="hero-topline">
-            <span className="panel-kicker">System Status</span>
+            <span className="panel-kicker">운영 상태</span>
             <span className="live-pill live-pill--soft">{page.heroStatus}</span>
           </div>
           <h3 className="hero-title">로봇 상태, 환경, 병해 알림을 운영자가 한 번에 읽는 메인 화면입니다.</h3>
@@ -38,12 +67,35 @@ export function DashboardPage() {
               <strong>{page.activeTask}</strong>
             </div>
           </div>
-        </article>
+          <div style={{ marginTop: '16px' }}>
+            <MockupImage
+              alt="온실 전경 시뮬레이션"
+              className="hero-photo"
+              height={160}
+              src="/mock-images/greenhouse-overview.png"
+            />
+          </div>
+        </DevSurface>
 
-        <article className="hero-panel hero-panel--compact">
+        <DevSurface
+          as="article"
+          className="hero-panel hero-panel--compact"
+          contract={{
+            title: '빠른 로봇 제어',
+            queries: [
+              createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+            ],
+            actions: [
+              createPostAction('정지 요청', ['/missions/patrol/stop', '/robot/commands'], 'any'),
+              createPostAction('재개 요청', ['/robot/commands']),
+              createPostAction('복귀 요청', ['/missions/return-home', '/robot/commands'], 'any'),
+              createPostAction('비상 정지', ['/robot/commands']),
+            ],
+          }}
+        >
           <div className="status-stack">
             <div className="status-pill-row">
-              <span className="panel-kicker">Battery</span>
+              <span className="panel-kicker">배터리</span>
               <span className="table-tag table-tag--healthy">{page.battery}</span>
             </div>
             <div className="status-inline">
@@ -57,19 +109,41 @@ export function DashboardPage() {
           </div>
 
           <div className="quick-action-grid">
-            <button className="action-button action-button--danger" type="button">
+            <button
+              className="action-button action-button--danger"
+              disabled={controlMutation.isPending}
+              onClick={() => {
+                controlMutation.mutate('emergency')
+              }}
+              type="button"
+            >
               <AppIcon filled name="emergency_home" />
               비상 정지
             </button>
-            <button className="action-button action-button--soft" type="button">
+            <button
+              className="action-button action-button--soft"
+              disabled={controlMutation.isPending}
+              onClick={() => {
+                controlMutation.mutate('resume')
+              }}
+              type="button"
+            >
               <AppIcon name="play_circle" />
               재개
             </button>
-            <button className="action-button action-button--soft" type="button">
+            <button
+              className="action-button action-button--soft"
+              disabled={controlMutation.isPending}
+              onClick={() => {
+                controlMutation.mutate('pause')
+              }}
+              type="button"
+            >
               <AppIcon name="pause_circle" />
               일시정지
             </button>
           </div>
+          {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
 
           <div className="mini-metric-row">
             {page.environmentStats.map((stat) => (
@@ -82,7 +156,7 @@ export function DashboardPage() {
               </article>
             ))}
           </div>
-        </article>
+        </DevSurface>
       </section>
 
       <section className="metric-row">
@@ -98,10 +172,19 @@ export function DashboardPage() {
       </section>
 
       <section className="content-grid content-grid--dashboard">
-        <article className="panel">
+        <DevSurface
+          as="article"
+          className="panel"
+          contract={{
+            title: '최근 활동 피드',
+            queries: [
+              createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+            ],
+          }}
+        >
           <div className="section-head">
             <div>
-              <span className="section-eyebrow">Live Feed</span>
+              <span className="section-eyebrow">실시간 피드</span>
               <h3 className="section-title">최근 활동</h3>
               <p className="section-description">
                 운영 개입이 필요한 이벤트만 짧고 선명하게 남깁니다.
@@ -126,12 +209,22 @@ export function DashboardPage() {
               </article>
             ))}
           </div>
-        </article>
+        </DevSurface>
 
-        <article className="panel">
+        <DevSurface
+          as="article"
+          className="panel"
+          contract={{
+            title: '운영 큐',
+            queries: [
+              createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+              createGetSignal('수확 통계', querySource('/harvests/stats'), '/harvests/stats'),
+            ],
+          }}
+        >
           <div className="section-head">
             <div>
-              <span className="section-eyebrow">Snapshot</span>
+              <span className="section-eyebrow">운영 큐</span>
               <h3 className="section-title">운영 포인트</h3>
               <p className="section-description">
                 오늘 당장 확인해야 하는 운영 큐를 별도 카드로 분리했습니다.
@@ -148,8 +241,51 @@ export function DashboardPage() {
               </article>
             ))}
           </div>
-        </article>
+        </DevSurface>
       </section>
+
+      <DevSurface
+        as="section"
+        className="panel"
+        contract={{
+          title: '구역 상태 요약',
+          queries: [
+            createGetSignal('구역 목록', querySource('/zones'), '/zones'),
+            createGetSignal('알림 목록', querySource('/alerts'), '/alerts'),
+            createGetSignal('환경 최신값', querySource('/environment/latest'), '/environment/latest'),
+          ],
+        }}
+      >
+        <div className="section-head">
+          <div>
+            <span className="section-eyebrow">구역 요약</span>
+            <h3 className="section-title">온실 구역 상태</h3>
+            <p className="section-description">
+              `zones`, `alerts`, `environment/latest` 관점에서 구역 단위 우선순위를 읽도록 구성했습니다.
+            </p>
+          </div>
+          <span className="table-tag table-tag--healthy">
+            {page.source === 'live' ? '실 API' : '준비 데이터'}
+          </span>
+        </div>
+
+        <div className="zone-grid">
+          {page.zones.map((zone) => (
+            <article className={`zone-card zone-card--${zone.tone}`} key={zone.id}>
+              <div className="split-row">
+                <div>
+                  <span className="panel-kicker">{zone.id}</span>
+                  <h4 className="list-title">{zone.name}</h4>
+                </div>
+                <span className={`table-tag table-tag--${zone.tone === 'critical' ? 'danger' : zone.tone}`}>
+                  {zone.tone === 'healthy' ? '안정' : zone.tone === 'warning' ? '확인 필요' : '우선 대응'}
+                </span>
+              </div>
+              <p>{zone.summary}</p>
+            </article>
+          ))}
+        </div>
+      </DevSurface>
     </div>
   )
 }

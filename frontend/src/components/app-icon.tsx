@@ -1,21 +1,101 @@
+import {
+  AlertTriangle,
+  CheckCircle,
+  Bell,
+  Lightbulb,
+  Rocket,
+  Navigation,
+  Plus,
+  Minus,
+  Locate,
+  Route,
+  BatteryCharging,
+  Bot,
+  AlertOctagon,
+  PlayCircle,
+  PauseCircle,
+  LayoutDashboard,
+  Sprout,
+  BellRing,
+  Radio,
+  Archive,
+  Droplets,
+  Blinds,
+  Wind,
+  FlaskConical,
+  Router,
+  Circle,
+  LucideIcon,
+  LucideProps
+} from 'lucide-react';
+
+const FurnitureLeaf = ({ size = 24, fill = "currentColor", ...props }: LucideProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 326.24 311.07"
+    fill={fill}
+    {...props}
+  >
+    <path d="M266.38 1.26c-.93 9.12-7.71 47.21-27.28 83.44a1 1 0 0 1-1.7-.06c-4-8.24-24.86-44.58-79.29-44.91C96.71 39.35 66.67 87 66.67 87s-23.45 32.93-33.49 94.89-22.61 79-22.61 79L.39 277a2.54 2.54 0 0 0 1.11 3.67c13 5.81 72.68 30.38 151.68 30.38 53.8 0 70-7.58 74.25-10.55a.61.61 0 0 0-.35-1.12c-10.55 1.16-51.2-5.26-51.2-44 0-34.79 25.3-51.62 51.81-52.83 12.56-.58 39.35 4.74 47.72 29.3 7 20.66-2.31 39.15-5.45 44.5a.62.62 0 0 0 .77.89c9.52-3.84 53.71-25.77 55.47-93.95 1.55-59.91-47.64-85.62-70.8-86.71a1.18 1.18 0 0 1-1-1.62c6.23-15.94 45-57.27 51.84-64.46a1.57 1.57 0 0 0 0-2.17A159.05 159.05 0 0 0 268.46.17a1.42 1.42 0 0 0-2.08 1.09Z" />
+  </svg>
+);
+
 type AppIconProps = {
   name: string
   className?: string
+  style?: React.CSSProperties
   filled?: boolean
 }
+
+const iconMap: Record<string, LucideIcon> = {
+  'warning': AlertTriangle,
+  'task_alt': CheckCircle,
+  'eco': FurnitureLeaf as LucideIcon,
+  'notifications': Bell,
+  'lightbulb': Lightbulb,
+  'rocket_launch': Rocket,
+  'navigation': Navigation,
+  'add': Plus,
+  'remove': Minus,
+  'my_location': Locate,
+  'route': Route,
+  'battery_charging_80': BatteryCharging,
+  'precision_manufacturing': Bot,
+  'emergency_home': AlertOctagon,
+  'play_circle': PlayCircle,
+  'pause_circle': PauseCircle,
+  'dashboard': LayoutDashboard,
+  'potted_plant': Sprout,
+  'notifications_active': BellRing,
+  'sensors': Radio,
+  'inventory_2': Archive,
+  'water_drop': Droplets,
+  'curtains': Blinds,
+  'air': Wind,
+  'science': FlaskConical,
+  'router': Router
+};
 
 export function AppIcon({
   name,
   className,
+  style,
   filled = false,
 }: AppIconProps) {
-  const classes = ['material-symbols-outlined', filled ? 'is-filled' : '', className]
-    .filter(Boolean)
-    .join(' ')
+  const IconComponent = iconMap[name] || Circle;
+
+  // lucide-react properties
+  // filled usually means fill="currentColor" if requested, otherwise "none"
+  const fillProps = filled ? { fill: "currentColor" } : {};
 
   return (
-    <span aria-hidden="true" className={classes}>
-      {name}
-    </span>
+    <IconComponent 
+      className={className} 
+      size={24} 
+      style={style}
+      {...fillProps} 
+    />
   )
 }
+
