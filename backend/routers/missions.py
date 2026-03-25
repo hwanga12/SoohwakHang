@@ -3,6 +3,7 @@ from typing import List, Literal, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from harvest_runtime_service import merge_mission_status_with_harvest_action
 from mission_bridge_service import (
     DuplicateMissionIdError,
     MissionBridgeConflictError,
@@ -160,6 +161,15 @@ def harvest_mission(req: HarvestReq):
 def get_mission_status(mission_id: str):
     """runtime bridge가 기록한 mission status 파일을 조회합니다."""
     try:
-        return {"data": read_mission_status_payload(mission_id)}
+        base_payload = read_mission_status_payload(mission_id)
+    except Exception as exc:  # pragma: no cover - HTTP status mapping helper
+        if isinstance(exc, FileNotFoundError):
+            base_payload = None
+        else:
+            _raise_mission_http_error(exc)
+            return {"data": None}
+
+    try:
+        return {"data": merge_mission_status_with_harvest_action(mission_id, base_payload)}
     except Exception as exc:  # pragma: no cover - HTTP status mapping helper
         _raise_mission_http_error(exc)
