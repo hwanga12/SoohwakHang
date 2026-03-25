@@ -13,6 +13,12 @@ CONTROL_STATE_FILENAME = "robot_control_state.json"
 MISSION_REQUEST_FILENAME = "robot_mission_request.json"
 MISSION_STATUS_FILENAME = "robot_mission_status.json"
 MISSION_STATUS_DIRNAME = "mission_statuses"
+HARVEST_BASKET_STATE_FILENAME = "harvest_basket_state.json"
+HARVEST_LATEST_EVENT_FILENAME = "harvest_latest_event.json"
+HARVEST_EVENT_DIRNAME = "harvest_events"
+HARVEST_ACTION_STATUS_FILENAME = "harvest_action_status.json"
+HARVEST_ACTION_STATUS_DIRNAME = "harvest_action_statuses"
+HARVEST_FAILURE_ALERT_FILENAME = "harvest_failure_alert.json"
 DEFAULT_COMMAND_STATUS = "idle"
 DEFAULT_MISSION_STATUS = "idle"
 DEFAULT_CONTROL_MODE = "normal"
@@ -97,6 +103,38 @@ def mission_status_record_file_path(mission_id: str) -> Path:
         / MISSION_STATUS_DIRNAME
         / f"{_sanitize_runtime_identifier(mission_id)}.json"
     )
+
+
+def harvest_basket_state_file_path() -> Path:
+    return runtime_dir_from_env() / HARVEST_BASKET_STATE_FILENAME
+
+
+def harvest_latest_event_file_path() -> Path:
+    return runtime_dir_from_env() / HARVEST_LATEST_EVENT_FILENAME
+
+
+def harvest_event_record_file_path(event_id: str) -> Path:
+    return (
+        runtime_dir_from_env()
+        / HARVEST_EVENT_DIRNAME
+        / f"{_sanitize_runtime_identifier(event_id)}.json"
+    )
+
+
+def harvest_action_status_file_path() -> Path:
+    return runtime_dir_from_env() / HARVEST_ACTION_STATUS_FILENAME
+
+
+def harvest_action_status_record_file_path(mission_id: str) -> Path:
+    return (
+        runtime_dir_from_env()
+        / HARVEST_ACTION_STATUS_DIRNAME
+        / f"{_sanitize_runtime_identifier(mission_id)}.json"
+    )
+
+
+def harvest_failure_alert_file_path() -> Path:
+    return runtime_dir_from_env() / HARVEST_FAILURE_ALERT_FILENAME
 
 
 def read_json_object(path: Path) -> dict[str, Any]:
@@ -319,6 +357,18 @@ def build_mission_status_payload(
         "available": available,
         "mission_id": _normalize_optional_string(raw_payload.get("mission_id")),
         "command_id": _normalize_optional_string(raw_payload.get("command_id")),
+        "mission_type": _normalize_optional_string(raw_payload.get("mission_type")),
+        "state": _normalize_optional_string(raw_payload.get("state")),
+        "current_phase": _normalize_optional_string(raw_payload.get("current_phase")),
+        "progress_pct": raw_payload.get("progress_pct")
+        if isinstance(raw_payload.get("progress_pct"), (int, float))
+        else None,
+        "retry_count": raw_payload.get("retry_count")
+        if isinstance(raw_payload.get("retry_count"), int)
+        else None,
+        "detail_message": _normalize_optional_string(raw_payload.get("detail_message")),
+        "zone_id": _normalize_optional_string(raw_payload.get("zone_id")),
+        "target_id": _normalize_optional_string(raw_payload.get("target_id")),
         "request_type": _normalize_optional_string(raw_payload.get("request_type")),
         "requested_type": _normalize_optional_string(raw_payload.get("request_type")),
         "robot_id": _normalize_optional_string(raw_payload.get("robot_id")),
