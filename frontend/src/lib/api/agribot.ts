@@ -118,8 +118,7 @@ export type DeviceCard = {
   name: string
   detail: string
   accent: 'primary' | 'secondary' | 'warning' | 'neutral'
-  action: 'toggle' | 'slider' | 'fan' | 'button'
-  value?: string
+  action: 'toggle' | 'button'
 }
 
 export type RecommendationItem = {
@@ -145,7 +144,6 @@ export type EnvironmentPageData = {
   recommendation: string
   metrics: MetricCardData[]
   devices: DeviceCard[]
-  healthBars: Array<{ icon: string; label: string; value: number; tone: HealthTone }>
   recommendations: RecommendationItem[]
   history: ActuationHistoryItem[]
 }
@@ -296,6 +294,52 @@ function normalizeToneFromSeverity(value: string): HealthTone {
   }
 
   return 'healthy'
+}
+
+function toCardTone(value: HealthTone): CardTone {
+  if (value === 'critical') {
+    return 'danger'
+  }
+
+  if (value === 'warning') {
+    return 'warning'
+  }
+
+  return 'accent'
+}
+
+function normalizeSearchText(...values: unknown[]) {
+  return values
+    .map((value) => readString(value).toLowerCase())
+    .filter(Boolean)
+    .join(' ')
+}
+
+function includesAnyKeyword(source: string, keywords: string[]) {
+  return keywords.some((keyword) => source.includes(keyword))
+}
+
+function isFieldRelevantText(...values: unknown[]) {
+  const normalized = normalizeSearchText(...values)
+
+  if (!normalized) {
+    return false
+  }
+
+  return !includesAnyKeyword(normalized, [
+    'curtain',
+    '차광',
+    '커튼',
+    'fan',
+    'vent',
+    '환기',
+    'temperature',
+    '온도',
+    'humidity',
+    '습도',
+    'greenhouse',
+    '온실',
+  ])
 }
 
 function buildPositionLabel(position: unknown, fallback = '좌표 정보 준비 중') {
@@ -574,90 +618,61 @@ export const environmentFallback: EnvironmentPageData = {
       '/actuations/history': 'fallback',
     },
   },
-  recommendation: '1구역 토양 수분이 낮아 급수 승인을 검토하는 것이 좋습니다.',
+  recommendation: '북쪽 밭 흙이 살짝 말라서 오후 햇살 전에 물을 한 번 더 주세요.',
   metrics: [
-    { label: '기온', value: '24.2°C', meta: '권장 범위 상단', tone: 'accent' },
-    { label: '습도', value: '62%', meta: '야간 대비 2% 감소', tone: 'warning' },
-    { label: '토양 수분', value: '18.5%', meta: '급수 권고 기준선 도달', tone: 'danger' },
+    { label: '토양 촉촉함', value: '18.5%', meta: '북쪽 밭이 조금 메말랐어요.', tone: 'danger' },
+    { label: '오늘 물주기', value: '1건', meta: '오후 햇살 전에 먼저 챙기면 됩니다.', tone: 'warning' },
+    { label: '손볼 메모', value: '2개', meta: '영양 보충과 최근 작업 기록만 남겨 두었습니다.', tone: 'accent' },
   ],
   devices: [
     {
       id: 'farm_01_watering',
       icon: 'water_drop',
-      name: '급수 펌프',
-      detail: '자동 대기 · 수동 승인 가능',
+      name: '물주기 펌프',
+      detail: '자동 대기 · 오늘 1건만 승인하면 됩니다.',
       accent: 'primary',
       action: 'toggle',
     },
     {
-      id: 'farm_01_curtain',
-      icon: 'curtains',
-      name: '차광 커튼',
-      detail: '현재 80% 개방',
-      accent: 'secondary',
-      action: 'slider',
-      value: '80%',
-    },
-    {
-      id: 'farm_01_fan',
-      icon: 'air',
-      name: '환기 팬',
-      detail: '중간 세기로 동작 중',
-      accent: 'neutral',
-      action: 'fan',
-    },
-    {
       id: 'farm_01_nutrient',
       icon: 'science',
-      name: '양액 주입기',
-      detail: '수동 실행 대기',
+      name: '영양 보충기',
+      detail: '가볍게 한 번만 보충하면 되는 상태예요.',
       accent: 'warning',
       action: 'button',
     },
   ],
-  healthBars: [
-    { icon: 'router', label: '네트워크', value: 98, tone: 'healthy' },
-    { icon: 'sensors', label: '센서 동기화', value: 64, tone: 'warning' },
-  ],
   recommendations: [
     {
       id: 'reco-water-001',
-      title: '중앙 라인 급수 승인 필요',
-      detail: '토양 수분이 기준선 아래로 내려가 400ml 급수가 추천되었습니다.',
+      title: '북쪽 밭 물주기 메모',
+      detail: '토양 수분이 기준선 아래로 내려가 350ml 정도만 가볍게 보충하면 됩니다.',
       priority: '높음',
       status: '승인 대기',
     },
     {
-      id: 'reco-curtain-001',
-      title: '차광 커튼 10% 추가 폐쇄 검토',
-      detail: '조도와 온도 상승 폭이 동시에 커지는 구간입니다.',
+      id: 'reco-nutrient-001',
+      title: '수확 전 영양 보충 살피기',
+      detail: '오후 점검 때 칼슘 계열 보충을 한 번만 보면 충분합니다.',
       priority: '보통',
-      status: '자동 적용 대기',
+      status: '메모',
     },
   ],
   history: [
     {
       id: 'history-water-001',
-      device: '급수 펌프',
-      action: '400ml 급수 실행',
+      device: '물주기 펌프',
+      action: '아침 물주기 350ml 실행',
       result: '정상 완료',
-      time: '09:16',
+      time: '06:40',
       tone: 'healthy',
     },
     {
-      id: 'history-fan-001',
-      device: '환기 팬',
-      action: '중속 유지',
-      result: '모니터링 필요',
-      time: '09:12',
-      tone: 'warning',
-    },
-    {
       id: 'history-nutrient-001',
-      device: '양액 주입기',
-      action: '칼슘 부스터 보류',
-      result: '사용자 승인 대기',
-      time: '09:04',
+      device: '영양 보충기',
+      action: '칼슘 보충은 오후 점검 뒤로 미룸',
+      result: '메모 남김',
+      time: '07:10',
       tone: 'warning',
     },
   ],
@@ -1135,26 +1150,6 @@ export async function getEnvironmentPageData(): Promise<EnvironmentPageData> {
   const devices = asArray(devicePayload)
   const recommendations = asArray(recommendationPayload)
   const history = asArray(historyPayload)
-  const metrics = [...environmentFallback.metrics]
-
-  metrics[0] = {
-    ...metrics[0],
-    value: readString(env?.temperature) || metrics[0].value,
-    meta: readString(env?.temperature_delta) || metrics[0].meta,
-  }
-  metrics[1] = {
-    ...metrics[1],
-    value: readString(env?.humidity) || metrics[1].value,
-    meta: readString(env?.humidity_delta) || metrics[1].meta,
-  }
-  metrics[2] = {
-    ...metrics[2],
-    value:
-      readString(env?.soil_moisture)
-      || readString(env?.soil_moisture_percent)
-      || metrics[2].value,
-    meta: readString(env?.soil_status) || metrics[2].meta,
-  }
 
   const parsedDevices =
     devices
@@ -1163,18 +1158,24 @@ export async function getEnvironmentPageData(): Promise<EnvironmentPageData> {
           return null
         }
 
-        const deviceType = (readString(item.device_type) || '').toLowerCase()
         const name =
           readString(item.display_name)
           || readString(item.device_name)
           || readString(item.name)
           || readString(item.device_id)
+        const signature = normalizeSearchText(
+          item.device_type,
+          item.display_name,
+          item.device_name,
+          item.name,
+          item.device_id,
+        )
 
-        if (!name) {
+        if (!name || !signature || !isFieldRelevantText(signature)) {
           return null
         }
 
-        if (deviceType.includes('water')) {
+        if (includesAnyKeyword(signature, ['water', 'watering', 'irrigation', 'pump', 'drip', '급수', '관수'])) {
           return {
             id: readString(item.id) || `device-${index + 1}`,
             icon: 'water_drop',
@@ -1185,33 +1186,7 @@ export async function getEnvironmentPageData(): Promise<EnvironmentPageData> {
           }
         }
 
-        if (deviceType.includes('curtain')) {
-          return {
-            id: readString(item.id) || `device-${index + 1}`,
-            icon: 'curtains',
-            name,
-            detail: readString(item.current_state) || readString(item.state) || '커튼 위치 제어',
-            accent: 'secondary',
-            action: 'slider',
-            value:
-              readString(item.opening_ratio)
-              || readString(item.current_value)
-              || readString(item.target_value),
-          }
-        }
-
-        if (deviceType.includes('fan')) {
-          return {
-            id: readString(item.id) || `device-${index + 1}`,
-            icon: 'air',
-            name,
-            detail: readString(item.current_state) || readString(item.state) || '환기 제어',
-            accent: 'neutral',
-            action: 'fan',
-          }
-        }
-
-        if (deviceType.includes('nutrient')) {
+        if (includesAnyKeyword(signature, ['nutrient', 'fert', 'fertilizer', '양액', '영양', '비료'])) {
           return {
             id: readString(item.id) || `device-${index + 1}`,
             icon: 'science',
@@ -1228,12 +1203,22 @@ export async function getEnvironmentPageData(): Promise<EnvironmentPageData> {
 
   const parsedRecommendations =
     recommendations
-      .slice(0, 3)
-      .map((item, index): RecommendationItem | null => {
+      .filter((item): item is UnknownRecord => {
         if (!isRecord(item)) {
-          return null
+          return false
         }
 
+        return isFieldRelevantText(
+          item.title,
+          item.detail,
+          item.message,
+          item.reason_text,
+          item.device_name,
+          item.device_type,
+        )
+      })
+      .slice(0, 3)
+      .map((item, index): RecommendationItem | null => {
         return {
           id: readString(item.id) || `recommendation-${index + 1}`,
           title:
@@ -1258,12 +1243,22 @@ export async function getEnvironmentPageData(): Promise<EnvironmentPageData> {
 
   const parsedHistory =
     history
-      .slice(0, 4)
-      .map((item, index): ActuationHistoryItem | null => {
+      .filter((item): item is UnknownRecord => {
         if (!isRecord(item)) {
-          return null
+          return false
         }
 
+        return isFieldRelevantText(
+          item.device_name,
+          item.device_id,
+          item.command_type,
+          item.action_type,
+          item.result,
+          item.status,
+        )
+      })
+      .slice(0, 3)
+      .map((item, index): ActuationHistoryItem | null => {
         const resultValue =
           readString(item.result)
           || readString(item.command_status)
@@ -1292,13 +1287,51 @@ export async function getEnvironmentPageData(): Promise<EnvironmentPageData> {
       })
       .filter((item): item is ActuationHistoryItem => item !== null)
 
-  const recommendationRecord = recommendations[0]
+  const metrics = environmentFallback.metrics.map((item) => ({ ...item }))
+  const soilValue =
+    readString(env?.soil_moisture)
+    || readString(env?.soil_moisture_percent)
+    || metrics[0].value
+  const soilPercent = readNumber(soilValue, Number.NaN)
+  const latestFieldMemo = parsedHistory[0]
+
+  metrics[0] = {
+    ...metrics[0],
+    value: soilValue,
+    meta: readString(env?.soil_status) || metrics[0].meta,
+    tone:
+      Number.isFinite(soilPercent)
+        ? soilPercent <= 20
+          ? 'danger'
+          : soilPercent <= 30
+            ? 'warning'
+            : 'accent'
+        : metrics[0].tone,
+  }
+  metrics[1] = {
+    ...metrics[1],
+    value: `${parsedRecommendations.length > 0 ? parsedRecommendations.length : environmentFallback.recommendations.length}건`,
+    meta: parsedRecommendations[0]?.title || metrics[1].meta,
+    tone:
+      parsedRecommendations.some((item) => item.priority.includes('높') || item.priority.includes('심각'))
+        ? 'warning'
+        : 'accent',
+  }
+  metrics[2] = {
+    ...metrics[2],
+    value: `${parsedHistory.length > 0 ? parsedHistory.length : environmentFallback.history.length}개`,
+    meta:
+      latestFieldMemo
+        ? `${latestFieldMemo.device} · ${latestFieldMemo.action}`
+        : metrics[2].meta,
+    tone: latestFieldMemo ? toCardTone(latestFieldMemo.tone) : metrics[2].tone,
+  }
+
+  const recommendationRecord = parsedRecommendations[0]
   const recommendationText =
-    isRecord(recommendationRecord)
-      ? readString(recommendationRecord.title)
-        || readString(recommendationRecord.message)
-        || readString(recommendationRecord.reason_text)
-      : ''
+    recommendationRecord?.detail
+    || recommendationRecord?.title
+    || (isFieldRelevantText(env?.recommendation) ? readString(env?.recommendation) : '')
 
   return {
     ...environmentFallback,
@@ -1308,10 +1341,9 @@ export async function getEnvironmentPageData(): Promise<EnvironmentPageData> {
     },
     recommendation:
       recommendationText
-      || readString(env?.recommendation)
       || environmentFallback.recommendation,
     metrics,
-    devices: parsedDevices.length > 0 ? parsedDevices.slice(0, 4) : environmentFallback.devices,
+    devices: parsedDevices.length > 0 ? parsedDevices.slice(0, 2) : environmentFallback.devices,
     recommendations:
       parsedRecommendations.length > 0 ? parsedRecommendations : environmentFallback.recommendations,
     history: parsedHistory.length > 0 ? parsedHistory : environmentFallback.history,
@@ -1576,6 +1608,46 @@ export async function requestHarvestMission({
       },
     ],
     `${fruitId} 수확 요청을 보냈습니다.`,
+  )
+}
+
+export async function startFieldPatrolMission({
+  mode,
+  zoneIds,
+}: {
+  mode: 'diagnosis' | 'harvest'
+  zoneIds: string[]
+}) {
+  const fallbackZones = zoneIds.length > 0 ? zoneIds : ['farm_01_west', 'farm_01_center', 'farm_01_east']
+  const successFallback =
+    mode === 'diagnosis'
+      ? '밭 전체 병 진단 패트롤을 시작했습니다.'
+      : '밭 전체 수확 패트롤을 시작했습니다.'
+
+  return postWithFallback(
+    [
+      {
+        path: '/missions/patrol/start',
+        body: {
+          robot_id: 'AGR-02',
+          zone_ids: fallbackZones,
+          loop_count: 1,
+          requested_by: 'frontend-operator',
+          patrol_mode: mode,
+        },
+      },
+      {
+        path: '/robot/commands',
+        body: {
+          robot_id: 'AGR-02',
+          requested_by: 'frontend-operator',
+          command_type: 'start_patrol',
+          zone_ids: fallbackZones,
+          patrol_mode: mode,
+        },
+      },
+    ],
+    successFallback,
   )
 }
 

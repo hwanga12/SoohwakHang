@@ -9,21 +9,24 @@ import {
   triggerNutrientInjection,
 } from '@/lib/api/agribot'
 
-function normalizePercent(value?: string) {
-  if (!value) {
-    return '80%'
+function recommendationTagTone(priority: string) {
+  if (priority.includes('높') || priority.includes('심각')) {
+    return 'danger'
   }
 
-  if (value.includes('%')) {
-    return value
+  if (priority.includes('보통') || priority.includes('주의')) {
+    return 'warning'
   }
 
-  const parsed = Number(value)
-  if (Number.isFinite(parsed) && parsed <= 1) {
-    return `${Math.round(parsed * 100)}%`
+  return 'healthy'
+}
+
+function historyToneToTag(tone: 'healthy' | 'warning' | 'critical') {
+  if (tone === 'critical') {
+    return 'danger'
   }
 
-  return `${value}%`
+  return tone
 }
 
 export function EnvironmentPage() {
@@ -57,39 +60,55 @@ export function EnvironmentPage() {
         : nutrientMutation.isError
           ? nutrientMutation.error.message
           : null
+  const todayNotes = page.recommendations.slice(0, 3)
+  const recentHistory = page.history.slice(0, 3)
 
   return (
-    <div className="screen">
-      <section className="hero-grid hero-grid--environment">
+    <div className="screen field-screen">
+      <section className="hero-grid hero-grid--environment field-hero-grid">
         <DevSurface
           as="article"
-          className="hero-panel hero-panel--environment"
+          className="hero-panel hero-panel--environment field-hero"
           contract={{
-            title: '환경 제어 요약',
+            title: '밭 안내소',
             queries: [
-              createGetSignal('환경 최신값', querySource('/environment/latest'), '/environment/latest'),
-              createGetSignal('제어 추천', querySource('/actuations/recommendations'), '/actuations/recommendations'),
+              createGetSignal('밭 상태', querySource('/environment/latest'), '/environment/latest'),
+              createGetSignal('작업 메모', querySource('/actuations/recommendations'), '/actuations/recommendations'),
             ],
             actions: [
-              createPostAction('급수 승인', ['/actuations/recommendations/reco-water-001/approve', '/actuations/watering'], 'any'),
+              createPostAction('물 주기 승인', ['/actuations/recommendations/reco-water-001/approve', '/actuations/watering'], 'any'),
             ],
           }}
         >
           <div className="hero-topline">
             <div>
-              <span className="panel-kicker">정밀 제어</span>
+              <span className="panel-kicker">밭 안내소</span>
               <h3 className="hero-title">{page.recommendation}</h3>
             </div>
             <span className="live-pill">
-              {page.source === 'live' ? '실시간 장치 상태' : '준비 데이터 장치 상태'}
+              {page.source === 'live' ? '실시간 밭 메모' : '포근한 샘플 메모'}
             </span>
           </div>
-          <div className="recommendation-strip">
+          <p className="hero-copy">
+            차광 커튼과 환기 팬은 빼고, 밭에서 실제로 필요한 물주기와 영양 보충만 남겼습니다.
+          </p>
+
+          <div className="field-mini-card-grid">
+            {page.metrics.map((card) => (
+              <article className={`field-mini-card field-mini-card--${card.tone}`} key={card.label}>
+                <span className="metric-label">{card.label}</span>
+                <strong className="field-mini-card-value">{card.value}</strong>
+                <p className="field-mini-card-meta">{card.meta}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className="recommendation-strip field-recommendation-strip">
             <div className="recommendation-icon">
-              <AppIcon filled name="lightbulb" />
+              <AppIcon filled name="water_drop" />
             </div>
             <div className="recommendation-copy">
-              <span className="section-eyebrow">추천 알림</span>
+              <span className="section-eyebrow">지금 먼저 할 일</span>
               <strong>{page.recommendation}</strong>
             </div>
             <div className="recommendation-actions">
@@ -101,135 +120,37 @@ export function EnvironmentPage() {
                 }}
                 type="button"
               >
-                {approveMutation.isPending ? '전송 중...' : '승인'}
-              </button>
-              <button className="ghost-chip" type="button">
-                무시
+                {approveMutation.isPending ? '물 주는 중...' : '물 주기 승인'}
               </button>
             </div>
           </div>
         </DevSurface>
-      </section>
 
-      <section className="metric-row metric-row--compact">
-        {page.metrics.map((card) => (
-          <article className={`metric-card metric-card--${card.tone}`} key={card.label}>
-            <span className="metric-label">{card.label}</span>
-            <p className="metric-value">{card.value}</p>
-            <p className="metric-meta">{card.meta}</p>
-          </article>
-        ))}
-      </section>
-
-      <section className="content-grid content-grid--environment">
         <DevSurface
-          as="article"
-          className="panel"
+          as="aside"
+          className="panel field-daybook"
           contract={{
-            title: '장치 제어와 승인 큐',
+            title: '오늘의 밭 메모',
             queries: [
-              createGetSignal('장치 목록', querySource('/iot/devices'), '/iot/devices'),
-              createGetSignal('제어 추천', querySource('/actuations/recommendations'), '/actuations/recommendations'),
-            ],
-            actions: [
-              createPostAction('급수 승인', ['/actuations/recommendations/reco-water-001/approve', '/actuations/watering'], 'any'),
-              createPostAction('양액 투입', ['/actuations/nutrients']),
+              createGetSignal('작업 메모', querySource('/actuations/recommendations'), '/actuations/recommendations'),
             ],
           }}
         >
           <div className="section-head">
             <div>
-              <span className="section-eyebrow">장치 제어</span>
-              <h3 className="section-title">기기 제어</h3>
+              <span className="section-eyebrow">오늘의 메모</span>
+              <h3 className="section-title">차분한 밭 루틴</h3>
               <p className="section-description">
-                `iot/devices`, `actuations/recommendations`, `actuations/*` 동선을 기준으로
-                장치 카드 구조를 정리했습니다.
+                지금 바로 확인할 일만 안내소 메모처럼 짧게 적어 두었습니다.
               </p>
             </div>
           </div>
 
-          <div className="device-grid">
-            {page.devices.map((device) => (
-              <article className="device-card" key={device.name}>
+          <div className="field-diary-list">
+            {todayNotes.map((item) => (
+              <article className={`field-diary-item field-diary-item--${recommendationTagTone(item.priority)}`} key={item.id}>
                 <div className="split-row">
-                  <div className={`device-icon device-icon--${device.accent}`}>
-                    <AppIcon name={device.icon} />
-                  </div>
-                  {device.action === 'toggle' ? (
-                    <span className="device-toggle is-active" />
-                  ) : null}
-                  {device.action === 'slider' ? (
-                    <span className="table-tag table-tag--healthy">
-                      {normalizePercent(device.value)}
-                    </span>
-                  ) : null}
-                  {device.action === 'button' ? (
-                    <span className="table-tag table-tag--warning">대기</span>
-                  ) : null}
-                </div>
-                <div className="device-copy">
-                  <h4 className="list-title">{device.name}</h4>
-                  <p className="list-meta">{device.detail}</p>
-                </div>
-                {device.action === 'slider' ? (
-                  <div className="slider-track">
-                    <span
-                      className="slider-fill"
-                      style={{ width: normalizePercent(device.value) }}
-                    />
-                  </div>
-                ) : null}
-                {device.action === 'fan' ? (
-                  <div className="segmented-row">
-                    <button className="segment-button" type="button">
-                      약
-                    </button>
-                    <button className="segment-button is-active" type="button">
-                      중
-                    </button>
-                    <button className="segment-button" type="button">
-                      강
-                    </button>
-                  </div>
-                ) : null}
-                {device.action === 'button' ? (
-                  <button
-                    className="action-button action-button--warning"
-                    disabled={nutrientMutation.isPending}
-                    onClick={() => {
-                      nutrientMutation.mutate()
-                    }}
-                    type="button"
-                  >
-                    {nutrientMutation.isPending ? '투입 중...' : '영양제 투입'}
-                  </button>
-                ) : null}
-              </article>
-            ))}
-          </div>
-          {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
-
-          <div className="panel-divider" />
-
-          <div className="section-head">
-            <div>
-              <span className="section-eyebrow">승인 큐</span>
-              <h3 className="section-title">제어 추천 대기열</h3>
-              <p className="section-description">
-                자동 제어 권고를 운영자가 검토하고 승인할 수 있도록 별도 큐로 분리했습니다.
-              </p>
-            </div>
-          </div>
-
-          <div className="recommendation-list">
-            {page.recommendations.map((item) => (
-              <article className="queue-card" key={item.id}>
-                <div className="split-row">
-                  <span
-                    className={`table-tag table-tag--${
-                      item.priority.includes('높') ? 'danger' : 'warning'
-                    }`}
-                  >
+                  <span className={`table-tag table-tag--${recommendationTagTone(item.priority)}`}>
                     {item.priority}
                   </span>
                   <span className="list-meta">{item.status}</span>
@@ -240,71 +161,109 @@ export function EnvironmentPage() {
             ))}
           </div>
         </DevSurface>
+      </section>
+
+      <section className="content-grid content-grid--environment field-board-grid">
+        <DevSurface
+          as="article"
+          className="panel field-tools"
+          contract={{
+            title: '작은 도구함',
+            queries: [
+              createGetSignal('장치 목록', querySource('/iot/devices'), '/iot/devices'),
+            ],
+            actions: [
+              createPostAction('물 주기 승인', ['/actuations/recommendations/reco-water-001/approve', '/actuations/watering'], 'any'),
+              createPostAction('영양 보충', ['/actuations/nutrients']),
+            ],
+          }}
+        >
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">작은 도구함</span>
+              <h3 className="section-title">두 가지만 챙기기</h3>
+              <p className="section-description">
+                밭에서는 물주기와 영양 보충만 바로 누를 수 있게 남겼습니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="field-tool-grid">
+            {page.devices.map((device) => {
+              const isWatering = device.action === 'toggle'
+              const pending = isWatering ? approveMutation.isPending : nutrientMutation.isPending
+
+              return (
+                <article className={`field-tool-card field-tool-card--${device.accent}`} key={device.id}>
+                  <div className="field-tool-top">
+                    <div className={`device-icon device-icon--${device.accent}`}>
+                      <AppIcon name={device.icon} />
+                    </div>
+                    <span className={`table-tag table-tag--${isWatering ? 'healthy' : 'warning'}`}>
+                      {isWatering ? '자동 대기' : '수동 실행'}
+                    </span>
+                  </div>
+                  <div className="field-tool-copy">
+                    <h4 className="list-title">{device.name}</h4>
+                    <p>{device.detail}</p>
+                  </div>
+                  <button
+                    className={`action-button${isWatering ? '' : ' action-button--warning'} field-tool-action`}
+                    disabled={pending}
+                    onClick={() => {
+                      if (isWatering) {
+                        approveMutation.mutate()
+                        return
+                      }
+
+                      nutrientMutation.mutate()
+                    }}
+                    type="button"
+                  >
+                    {isWatering
+                      ? pending
+                        ? '물 주는 중...'
+                        : '물 주기 승인'
+                      : pending
+                        ? '보충 중...'
+                        : '영양 보충 실행'}
+                  </button>
+                </article>
+              )
+            })}
+          </div>
+          {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
+        </DevSurface>
 
         <DevSurface
           as="article"
-          className="panel"
+          className="panel field-journal"
           contract={{
-            title: '시스템 상태와 실행 기록',
+            title: '산책 기록',
             queries: [
-              createGetSignal('환경 최신값', querySource('/environment/latest'), '/environment/latest'),
               createGetSignal('실행 이력', querySource('/actuations/history'), '/actuations/history'),
             ],
           }}
         >
           <div className="section-head">
             <div>
-              <span className="section-eyebrow">시스템 상태</span>
-              <h3 className="section-title">시스템 상태</h3>
+              <span className="section-eyebrow">산책 기록</span>
+              <h3 className="section-title">최근 손보기 메모</h3>
               <p className="section-description">
-                MQTT bridge와 센서 상태를 운영자에게 짧은 막대 그래프로 보여줍니다.
+                방금 한 일만 짧게 남겨 두고, 복잡한 시스템 상태 표는 걷어냈습니다.
               </p>
             </div>
           </div>
 
-          <div className="stacked-list">
-            {page.healthBars.map((bar) => (
-              <article className="health-row" key={bar.label}>
-                <AppIcon
-                  className={`health-row-icon health-row-icon--${bar.tone}`}
-                  name={bar.icon}
-                />
-                <div className="health-track">
-                  <span
-                    className={`health-fill health-fill--${bar.tone}`}
-                    style={{ width: `${bar.value}%` }}
-                  />
-                </div>
-                <strong>{bar.value}%</strong>
-              </article>
-            ))}
-          </div>
-
-          <div className="panel-divider" />
-
-          <div className="section-head">
-            <div>
-              <span className="section-eyebrow">제어 이력</span>
-              <h3 className="section-title">최근 실행 기록</h3>
-              <p className="section-description">
-                `actuations/history` 기준으로 어떤 장치에 어떤 명령이 갔는지 빠르게 확인합니다.
-              </p>
-            </div>
-          </div>
-
-          <div className="history-list">
-            {page.history.map((item) => (
-              <article className={`history-item history-item--${item.tone}`} key={item.id}>
+          <div className="field-journal-list">
+            {recentHistory.map((item) => (
+              <article className={`field-journal-item field-journal-item--${item.tone}`} key={item.id}>
                 <div className="split-row">
                   <div>
                     <h4 className="list-title">{item.device}</h4>
                     <p className="list-meta">{item.time}</p>
                   </div>
-                  <span
-                    className={`table-tag table-tag--${
-                      item.tone === 'critical' ? 'danger' : item.tone
-                    }`}
-                  >
+                  <span className={`table-tag table-tag--${historyToneToTag(item.tone)}`}>
                     {item.result}
                   </span>
                 </div>

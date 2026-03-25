@@ -40,24 +40,48 @@ export default function AppShell() {
       : liveStatus === 'connecting'
         ? '실시간 연결 시도 중'
         : '실시간 연결 안 됨'
+  const villageWeather =
+    liveStatus === 'connected'
+      ? '햇살 좋은 운영일'
+      : liveStatus === 'connecting'
+        ? '산책로 점검 중'
+        : '조용한 준비 시간'
 
   return (
     <div className="app-shell">
+      <div aria-hidden="true" className="shell-atmosphere">
+        <span className="shell-cloud shell-cloud--one" />
+        <span className="shell-cloud shell-cloud--two" />
+        <span className="shell-leaf shell-leaf--one" />
+        <span className="shell-leaf shell-leaf--two" />
+      </div>
+
       <header className="shell-header">
         <div className="shell-brand">
           <div className="brand-mark">
             <AppIcon className="brand-mark-icon" filled name="eco" />
           </div>
-          <div style={{ position: 'relative' }}>
+          <div className="brand-copy">
             <span className="brand-kicker">스마트 온실 운영</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="brand-heading-row">
               <h1 className="brand-title">{env.appName}</h1>
-              <AppIcon name="potted_plant" className="brand-mark-icon" style={{ color: 'var(--primary)', width: '24px', height: '24px' }} />
+              <AppIcon
+                className="brand-sprout"
+                name="potted_plant"
+                style={{ color: 'var(--primary)', width: '24px', height: '24px' }}
+              />
             </div>
+            <p className="brand-note">
+              밭, 로봇, 작물, 수확 흐름을 포근한 마을 게시판처럼 한눈에 정리했습니다.
+            </p>
           </div>
         </div>
 
         <div className="shell-header-actions">
+          <div className="season-chip">
+            <span className="season-chip__label">오늘의 온실 날씨</span>
+            <strong>{villageWeather}</strong>
+          </div>
           <div 
             className={`live-pill${liveStatus === 'connected' ? '' : ' live-pill--soft'}`}
             style={liveStatus === 'connected' ? { backgroundColor: 'var(--primary-soft)', color: 'var(--primary)', border: '2px solid var(--primary-soft)' } : { backgroundColor: 'var(--secondary-soft)', color: 'var(--secondary)', border: '2px solid var(--secondary-soft)' }}
@@ -84,6 +108,29 @@ export default function AppShell() {
 
       <div className="shell-layout">
         <aside className="sidebar">
+          <section className="sidebar-panel island-board">
+            <div>
+              <span className="panel-kicker">마을 게시판</span>
+              <h2 className="sidebar-title">오늘의 온실 산책</h2>
+            </div>
+            <p className="sidebar-copy">
+              필요한 화면을 골라 밭 상태, 순찰 동선, 자동 제어 흐름을 차례대로 둘러보세요.
+            </p>
+            <div className="village-chip-row">
+              <span className="village-chip">
+                <AppIcon name="potted_plant" />
+                작물 둘러보기
+              </span>
+              <span className="village-chip">
+                <AppIcon name="navigation" />
+                로봇 산책로 점검
+              </span>
+              <span className="village-chip">
+                <AppIcon name="water_drop" />
+                급수 추천 확인
+              </span>
+            </div>
+          </section>
 
           <nav aria-label="주요 메뉴" className="nav-list">
             {navigationItems.map((item) => (
@@ -107,6 +154,30 @@ export default function AppShell() {
               </NavLink>
             ))}
           </nav>
+
+          <section className="sidebar-panel sidebar-panel--muted field-note">
+            <div className="split-row">
+              <div>
+                <span className="panel-kicker">오늘의 메모</span>
+                <h3 className="sidebar-title sidebar-title--compact">차분한 운영 루틴</h3>
+              </div>
+              <span className="table-tag table-tag--healthy">{modeLabel}</span>
+            </div>
+            <div className="field-note-list">
+              <div className="field-note-item">
+                <AppIcon name="task_alt" />
+                미처리 알림과 검수 대상을 먼저 확인합니다.
+              </div>
+              <div className="field-note-item">
+                <AppIcon name="water_drop" />
+                밭 탭에서 물주기와 영양 보충 메모를 확인합니다.
+              </div>
+              <div className="field-note-item">
+                <AppIcon name="rocket_launch" />
+                수확 또는 순찰 미션을 차분히 이어갑니다.
+              </div>
+            </div>
+          </section>
 
           {isDevelopment && (
             <div style={{ position: 'relative', marginTop: 'auto' }}>
