@@ -24,6 +24,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'runtime_snapshot_exporter = agribot_bringup.runtime_snapshot_exporter:main',
+            'robot_manual_command_executor = agribot_bringup.robot_manual_command_executor:main',
         ],
     },
 )

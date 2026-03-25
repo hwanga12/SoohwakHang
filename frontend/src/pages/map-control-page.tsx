@@ -1,11 +1,25 @@
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
+import { DevSurface } from '@/components/dev-surface'
 import { MetricCard } from '@/components/metric-card'
+import { MockupImage } from '@/components/mockup-image'
+import {
+  RobotFacilityMap,
+  summarizeSelectedAsset,
+} from '@/components/robot-facility-map'
 import {
   getRobotPageData,
   robotFallback,
   sendRobotControlAction,
+  sendRobotZoneMove,
 } from '@/lib/api/agribot'
+import {
+  farmSemanticScene,
+  parsePoseLabel,
+  resolveSemanticTargetId,
+} from '@/lib/robot-map/farm-semantic-map'
 
 const controlActions = [
   { id: 'pause', title: '정지', icon: 'pause_circle', tone: 'soft' },
@@ -16,6 +30,8 @@ const controlActions = [
 
 export function MapControlPage() {
   const queryClient = useQueryClient()
+  const [mapZoom, setMapZoom] = useState(1)
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
   const robotQuery = useQuery({
     queryKey: ['page', 'robot'],
     queryFn: getRobotPageData,
@@ -28,12 +44,42 @@ export function MapControlPage() {
       await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
     },
   })
+  const zoneMoveMutation = useMutation({
+    mutationFn: sendRobotZoneMove,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
+    },
+  })
   const page = robotQuery.data
-  const feedbackMessage = controlMutation.isSuccess
-    ? controlMutation.data
-    : controlMutation.isError
-      ? controlMutation.error.message
-      : null
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
+  const robotPose = parsePoseLabel(page.poseLabel) ?? { x: 2, y: -5.9 }
+  const targetAssetId = resolveSemanticTargetId(page.targetLabel)
+  const selectedAsset = useMemo(
+    () => farmSemanticScene.assets.find((asset) => asset.id === selectedAssetId) ?? null,
+    [selectedAssetId],
+  )
+  const selectedSummary = summarizeSelectedAsset(selectedAsset)
+  const actionPending = controlMutation.isPending || zoneMoveMutation.isPending
+  const feedbackMessage = zoneMoveMutation.isSuccess
+    ? zoneMoveMutation.data
+    : zoneMoveMutation.isError
+      ? zoneMoveMutation.error.message
+      : controlMutation.isSuccess
+        ? controlMutation.data
+          : controlMutation.isError
+            ? controlMutation.error.message
+            : null
+
+  useEffect(() => {
+    if (!selectedAssetId && targetAssetId) {
+      setSelectedAssetId(targetAssetId)
+      return
+    }
+
+    if (!selectedAssetId && farmSemanticScene.assets[0]) {
+      setSelectedAssetId(farmSemanticScene.assets[0].id)
+    }
+  }, [selectedAssetId, targetAssetId])
 
   return (
     <div className="screen">
@@ -50,59 +96,96 @@ export function MapControlPage() {
       </section>
 
       <section className="map-layout">
-        <article className="map-board panel">
+        <DevSurface
+          as="article"
+          className="map-board panel"
+          contract={{
+            title: '지도와 카메라 보드',
+            queries: [
+              createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+              createGetSignal('로봇 위치', querySource('/robot/pose'), '/robot/pose'),
+            ],
+          }}
+        >
           <div className="map-floating-card">
             <span className="panel-kicker">현재 경유지</span>
             <strong>{page.waypoint}</strong>
-            <p>{page.zoneLabel}</p>
+            <p>{page.targetLabel}</p>
           </div>
 
           <div className="camera-peek">
             <span className="camera-live-pill">
               <span className="live-dot" />
-              실시간
+              시뮬레이션 프리뷰
             </span>
-            <div className="camera-frame" />
-          </div>
-
-          <svg
-            aria-hidden="true"
-            className="map-overlay"
-            preserveAspectRatio="xMidYMid slice"
-            viewBox="0 0 800 600"
-          >
-            <path d="M110 110 L300 110 L300 400 L610 400 L610 220" />
-            <circle cx="110" cy="110" r="7" />
-            <circle cx="300" cy="110" r="7" />
-            <circle cx="300" cy="400" r="7" />
-            <circle className="map-pulse" cx="610" cy="400" r="12" />
-            <circle cx="610" cy="400" r="8" />
-          </svg>
-
-          <div className="robot-marker">
-            <div className="robot-marker-box">
-              <AppIcon filled name="navigation" />
+            <div className="camera-frame">
+              <MockupImage
+                alt="로봇 카메라 프리뷰 시뮬레이션"
+                className="camera-frame-media"
+                height="100%"
+                src="/mock-images/robot-camera-preview.png"
+              />
             </div>
           </div>
 
+          <RobotFacilityMap
+            onSelectAsset={setSelectedAssetId}
+            pose={robotPose}
+            scene={farmSemanticScene}
+            selectedAssetId={selectedAssetId}
+            targetAssetId={targetAssetId}
+            zoom={mapZoom}
+          />
+
           <div className="map-controls">
-            <button className="icon-button" type="button">
+            <button
+              className="icon-button"
+              onClick={() => {
+                setMapZoom((current) => Math.min(current + 0.1, 1.8))
+              }}
+              type="button"
+            >
               <AppIcon name="add" />
             </button>
-            <button className="icon-button" type="button">
+            <button
+              className="icon-button"
+              onClick={() => {
+                setMapZoom((current) => Math.max(current - 0.1, 0.8))
+              }}
+              type="button"
+            >
               <AppIcon name="remove" />
             </button>
-            <button className="icon-button icon-button--active" type="button">
+            <button
+              className="icon-button icon-button--active"
+              onClick={() => {
+                setMapZoom(1)
+                if (targetAssetId) {
+                  setSelectedAssetId(targetAssetId)
+                }
+              }}
+              type="button"
+            >
               <AppIcon filled name="my_location" />
             </button>
           </div>
-        </article>
+        </DevSurface>
 
         <aside className="map-sidebar">
-          <article className="panel">
+          <DevSurface
+            as="article"
+            className="panel"
+            contract={{
+              title: '미션 진행률',
+              queries: [
+                createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+                createGetSignal('로봇 위치', querySource('/robot/pose'), '/robot/pose'),
+              ],
+            }}
+          >
             <div className="section-head">
               <div>
-                <span className="section-eyebrow">Mission Progress</span>
+                <span className="section-eyebrow">미션 진행</span>
                 <h3 className="section-title">{page.progressPct}%</h3>
                 <p className="section-description">{page.eta}</p>
               </div>
@@ -111,61 +194,181 @@ export function MapControlPage() {
             <div className="progress-track">
               <span className="progress-fill" style={{ width: `${page.progressPct}%` }} />
             </div>
-            <div className="mini-card-grid">
-              <article className="mini-metric-card">
-                <span className="mini-metric-label">배터리</span>
-                <strong className="mini-metric-value">{page.battery}</strong>
+            <div className="detail-grid">
+              <article className="detail-card">
+                <span className="detail-label">현재 구역</span>
+                <strong className="detail-value">{page.zoneLabel}</strong>
               </article>
-              <article className="mini-metric-card">
-                <span className="mini-metric-label">속도</span>
-                <strong className="mini-metric-value">{page.speed}</strong>
+              <article className="detail-card">
+                <span className="detail-label">현재 위치</span>
+                <strong className="detail-value">{page.poseLabel}</strong>
+              </article>
+              <article className="detail-card">
+                <span className="detail-label">다음 목표</span>
+                <strong className="detail-value">{page.targetLabel}</strong>
+              </article>
+              <article className="detail-card">
+                <span className="detail-label">주행 상태</span>
+                <strong className="detail-value">{page.speed} · 배터리 {page.battery}</strong>
               </article>
             </div>
-          </article>
+          </DevSurface>
 
-          <article className="panel">
+          <DevSurface
+            as="article"
+            className="panel"
+            contract={{
+              title: '지도 자산 레이어',
+              queries: [
+                createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+                createGetSignal('구역 목록', querySource('/zones'), '/zones'),
+              ],
+            }}
+          >
             <div className="section-head">
               <div>
-                <span className="section-eyebrow">Robot Control</span>
+                <span className="section-eyebrow">시설 레이어</span>
+                <h3 className="section-title">{selectedSummary.title}</h3>
+                <p className="section-description">{selectedSummary.subtitle}</p>
+              </div>
+            </div>
+            <div className="chip-row">
+              {selectedSummary.chips.map((chip) => (
+                <span className="chip chip--active" key={chip}>
+                  {chip}
+                </span>
+              ))}
+            </div>
+            <div className="detail-grid">
+              <article className="detail-card">
+                <span className="detail-label">식물 레이어</span>
+                <strong className="detail-value">24주 배치</strong>
+              </article>
+              <article className="detail-card">
+                <span className="detail-label">급수 포인트</span>
+                <strong className="detail-value">4개 헤드</strong>
+              </article>
+              <article className="detail-card">
+                <span className="detail-label">현재 타깃</span>
+                <strong className="detail-value">{targetAssetId ?? '선택 대기'}</strong>
+              </article>
+              <article className="detail-card">
+                <span className="detail-label">렌더링 기준</span>
+                <strong className="detail-value">farm_world semantic fallback</strong>
+              </article>
+            </div>
+          </DevSurface>
+
+          <DevSurface
+            as="article"
+            className="panel"
+            contract={{
+              title: '로봇 제어 센터',
+              queries: [
+                createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+              ],
+              actions: [
+                createPostAction('정지 요청', ['/missions/patrol/stop', '/robot/commands'], 'any'),
+                createPostAction('재개 요청', ['/robot/commands']),
+                createPostAction('복귀 요청', ['/missions/return-home', '/robot/commands'], 'any'),
+                createPostAction('비상 정지', ['/robot/commands']),
+              ],
+            }}
+          >
+            <div className="section-head">
+              <div>
+                <span className="section-eyebrow">로봇 제어</span>
                 <h3 className="section-title">제어 센터</h3>
                 <p className="section-description">
-                `robots/commands`, `missions/patrol/*`, `missions/return-home` 대응 버튼 구성입니다.
-              </p>
+                  `robot/commands`, `missions/patrol/*`, `missions/return-home` 흐름을 같은 패널에 모았습니다.
+                </p>
+              </div>
+              <span className="table-tag table-tag--warning">
+                {page.source === 'live' ? '실 API' : '준비 데이터'}
+              </span>
             </div>
-            <span className="table-tag table-tag--warning">
-              {page.source === 'live' ? 'live API' : 'fallback'}
-            </span>
-          </div>
-          <div className="control-tile-grid">
-            {controlActions.map((action) => (
-              <button
-                className={`control-tile${action.tone === 'danger' ? ' control-tile--danger' : ''}`}
-                key={action.title}
-                onClick={() => {
-                  controlMutation.mutate(action.id)
-                }}
-                disabled={controlMutation.isPending}
-                type="button"
-              >
-                <AppIcon
+            <div className="control-tile-grid">
+              {controlActions.map((action) => (
+                <button
+                  className={`control-tile${action.tone === 'danger' ? ' control-tile--danger' : ''}`}
+                  disabled={actionPending}
+                  key={action.title}
+                  onClick={() => {
+                    controlMutation.mutate(action.id)
+                  }}
+                  type="button"
+                >
+                  <AppIcon
                     className="control-tile-icon"
                     filled={action.tone === 'danger'}
                     name={action.icon}
-                />
-                <span>{action.title}</span>
-              </button>
-            ))}
-          </div>
-          {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
-          <button className="action-button" type="button">
-            {controlMutation.isPending ? '명령 전송 중...' : '수동 제어 모드'}
-          </button>
-        </article>
+                  />
+                  <span>{action.title}</span>
+                </button>
+              ))}
+            </div>
+            {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
+          </DevSurface>
 
-          <article className="panel">
+          <DevSurface
+            as="article"
+            className="panel"
+            contract={{
+              title: '빠른 구역 이동',
+              queries: [
+                createGetSignal('구역 목록', querySource('/zones'), '/zones'),
+              ],
+              actions: [
+                createPostAction('구역 이동', ['/robot/commands']),
+              ],
+            }}
+          >
             <div className="section-head">
               <div>
-                <span className="section-eyebrow">Event Log</span>
+                <span className="section-eyebrow">구역 이동</span>
+                <h3 className="section-title">빠른 구역 이동</h3>
+                <p className="section-description">
+                  `robot/commands`의 `move_to_zone` 계약을 기준으로 운영자가 구역 단위 이동을 요청합니다.
+                </p>
+              </div>
+            </div>
+            <div className="preset-grid">
+              {page.zonePresets.map((preset) => (
+                <button
+                  className="preset-button"
+                  disabled={actionPending}
+                  key={preset.id}
+                  onClick={() => {
+                    zoneMoveMutation.mutate(preset.id)
+                  }}
+                  type="button"
+                >
+                  <div className="split-row">
+                    <div>
+                      <span className="panel-kicker">{preset.id}</span>
+                      <h4 className="list-title">{preset.name}</h4>
+                    </div>
+                    <AppIcon className="control-tile-icon" name="route" />
+                  </div>
+                  <p>{preset.detail}</p>
+                </button>
+              ))}
+            </div>
+          </DevSurface>
+
+          <DevSurface
+            as="article"
+            className="panel"
+            contract={{
+              title: '이벤트 로그',
+              queries: [
+                createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+              ],
+            }}
+          >
+            <div className="section-head">
+              <div>
+                <span className="section-eyebrow">이벤트 로그</span>
                 <h3 className="section-title">이벤트 로그</h3>
               </div>
             </div>
@@ -179,7 +382,7 @@ export function MapControlPage() {
                 </article>
               ))}
             </div>
-          </article>
+          </DevSurface>
         </aside>
       </section>
     </div>

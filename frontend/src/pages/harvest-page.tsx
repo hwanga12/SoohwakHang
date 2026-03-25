@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import { createGetSignal } from '@/app/dev-inspector'
+import { DevSurface } from '@/components/dev-surface'
 import { MetricCard } from '@/components/metric-card'
+import { MockupImage } from '@/components/mockup-image'
 import {
   getHarvestPageData,
   harvestFallback,
@@ -25,15 +28,26 @@ export function HarvestPage() {
     refetchInterval: 20_000,
   })
   const page = harvestQuery.data
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
 
   return (
     <div className="screen">
       <section className="hero-grid hero-grid--harvest">
-        <article className="hero-panel hero-panel--warning">
+        <DevSurface
+          as="article"
+          className="hero-panel hero-panel--warning"
+          contract={{
+            title: '수확 운영 요약',
+            queries: [
+              createGetSignal('수확 통계', querySource('/harvests/stats'), '/harvests/stats'),
+              createGetSignal('수확 배치', querySource('/harvests'), '/harvests'),
+            ],
+          }}
+        >
           <div className="hero-topline">
-            <span className="panel-kicker">Harvest Mission</span>
+            <span className="panel-kicker">수확 운영</span>
             <span className="live-pill live-pill--soft">
-              {page.source === 'live' ? '실시간 수확 통계' : 'fallback 수확 통계'}
+              {page.source === 'live' ? '실시간 수확 통계' : '발표용 수확 통계'}
             </span>
           </div>
           <h3 className="hero-title">수확 미션, 적재, 검수 큐를 운영자가 같은 흐름으로 보도록 정리했습니다.</h3>
@@ -51,7 +65,16 @@ export function HarvestPage() {
               <strong>{page.nextSwap}</strong>
             </div>
           </div>
-        </article>
+          <div style={{ marginTop: '16px' }}>
+            <MockupImage
+              alt="수확 대상 토마토 시뮬레이션"
+              className="hero-photo"
+              height={156}
+              objectPosition="center 58%"
+              src="/mock-images/harvest-closeup.png"
+            />
+          </div>
+        </DevSurface>
       </section>
 
       <section className="metric-row">
@@ -67,10 +90,19 @@ export function HarvestPage() {
       </section>
 
       <section className="content-grid content-grid--harvest">
-        <article className="panel">
+        <DevSurface
+          as="article"
+          className="panel"
+          contract={{
+            title: '수확 일정 큐',
+            queries: [
+              createGetSignal('수확 배치', querySource('/harvests'), '/harvests'),
+            ],
+          }}
+        >
           <div className="section-head">
             <div>
-              <span className="section-eyebrow">Batch Queue</span>
+              <span className="section-eyebrow">배치 큐</span>
               <h3 className="section-title">수확 일정</h3>
               <p className="section-description">
                 lane 단위 수확 루트와 적재 작업을 같은 큐에서 관리하도록 구성했습니다.
@@ -91,12 +123,21 @@ export function HarvestPage() {
               </article>
             ))}
           </div>
-        </article>
+        </DevSurface>
 
-        <article className="panel">
+        <DevSurface
+          as="article"
+          className="panel"
+          contract={{
+            title: '수확 품질 지표',
+            queries: [
+              createGetSignal('수확 통계', querySource('/harvests/stats'), '/harvests/stats'),
+            ],
+          }}
+        >
           <div className="section-head">
             <div>
-              <span className="section-eyebrow">Quality KPI</span>
+              <span className="section-eyebrow">품질 KPI</span>
               <h3 className="section-title">수확 품질 지표</h3>
               <p className="section-description">
                 메인 대시보드에도 재사용 가능한 작은 KPI 카드들입니다.
@@ -112,7 +153,7 @@ export function HarvestPage() {
               </article>
             ))}
           </div>
-        </article>
+        </DevSurface>
       </section>
     </div>
   )
