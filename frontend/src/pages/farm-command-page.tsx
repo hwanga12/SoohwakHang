@@ -16,6 +16,7 @@ import {
   getEnvironmentPageData,
   getHarvestPageData,
   getLatestRobotCommandStatus,
+  getMissionStatus,
   getPlantsPageData,
   getRobotPageData,
   harvestFallback,
@@ -27,6 +28,8 @@ import {
   sendRobotZoneMove,
   startFieldPatrolMission,
   triggerNutrientInjection,
+  type MissionDispatch,
+  type MissionStatus,
   type RobotCommandStatus,
   type RobotTargetPose,
 } from '@/lib/api/agribot'
@@ -66,6 +69,48 @@ type PlantModalDetail = {
   recommendedAction: string
   health: number
   status: string
+}
+
+type HarvestMissionInput = {
+  plantId: string
+  fruitId: string
+  plantName: string
+}
+
+type PatrolMissionInput = {
+  mode: 'diagnosis' | 'harvest'
+  zoneIds: string[]
+}
+
+type PendingMissionRequest = {
+  missionId: string
+  requestedAt: number
+  acceptedMessage: string
+  mode?: 'diagnosis' | 'harvest'
+  plantId?: string
+  plantName?: string
+}
+
+type MissionFeedbackStatus = MissionStatus['status'] | 'accepted'
+
+type MissionFeedback = {
+  missionId: string | null
+  status: MissionFeedbackStatus
+  badgeLabel: string
+  title: string
+  detail: string
+  tone: ActionRecordTone
+  tagTone: 'table-tag--healthy' | 'table-tag--warning' | 'table-tag--danger'
+  isTerminal: boolean
+}
+
+type MissionCopy = {
+  acceptedTitle: string
+  pendingTitle: string
+  runningTitle: string
+  successTitle: string
+  failureTitle: string
+  canceledTitle: string
 }
 
 type DiagnoseCommandTracker = {
@@ -133,6 +178,147 @@ function selectionTag(
     label: '작물 확인',
     tone: 'warning',
   } as const
+}
+
+function missionTagTone(status: MissionFeedbackStatus): MissionFeedback['tagTone'] {
+  if (status === 'running' || status === 'succeeded') {
+    return 'table-tag--healthy'
+  }
+  if (status === 'failed') {
+    return 'table-tag--danger'
+  }
+  return 'table-tag--warning'
+}
+
+function missionResultTone(status: MissionFeedbackStatus): ActionRecordTone {
+  if (status === 'running' || status === 'succeeded') {
+    return 'accent'
+  }
+  if (status === 'failed') {
+    return 'danger'
+  }
+  return 'warning'
+}
+
+function isMissionTerminal(status: MissionStatus | null | undefined) {
+  return status?.status === 'succeeded' || status?.status === 'failed' || status?.status === 'canceled'
+}
+
+function buildMissionFeedback(
+  tracker: PendingMissionRequest | null,
+  missionStatus: MissionStatus | undefined,
+  missionError: Error | null,
+  copy: MissionCopy,
+): MissionFeedback | null {
+  if (missionError) {
+    return {
+      missionId: tracker?.missionId ?? missionStatus?.missionId ?? null,
+      status: 'failed',
+      badgeLabel: 'failed',
+      title: copy.failureTitle,
+      detail: missionError.message,
+      tone: 'danger',
+      tagTone: 'table-tag--danger',
+      isTerminal: true,
+    }
+  }
+
+  if (!tracker) {
+    return null
+  }
+
+  const pendingDelayMs = Date.now() - tracker.requestedAt
+  const statusUnavailable =
+    !missionStatus
+    || !missionStatus.available
+    || missionStatus.missionId !== tracker.missionId
+
+  if (statusUnavailable || missionStatus.status === 'idle') {
+    const detail =
+      pendingDelayMs >= 4_000
+        ? 'mission status polling 값이 아직 준비되지 않았습니다. 실제 상태가 확인될 때까지 성공으로 표시하지 않습니다.'
+        : tracker.acceptedMessage
+
+    return {
+      missionId: tracker.missionId,
+      status: 'accepted',
+      badgeLabel: 'accepted',
+      title: pendingDelayMs >= 4_000 ? '상태 반영 대기' : copy.acceptedTitle,
+      detail,
+      tone: 'warning',
+      tagTone: 'table-tag--warning',
+      isTerminal: false,
+    }
+  }
+
+  const status = missionStatus.status
+  const detail =
+    missionStatus.message
+    || missionStatus.operatorMessage
+    || tracker.acceptedMessage
+
+  if (status === 'pending') {
+    return {
+      missionId: tracker.missionId,
+      status,
+      badgeLabel: status,
+      title: copy.pendingTitle,
+      detail,
+      tone: missionResultTone(status),
+      tagTone: missionTagTone(status),
+      isTerminal: false,
+    }
+  }
+
+  if (status === 'running') {
+    return {
+      missionId: tracker.missionId,
+      status,
+      badgeLabel: status,
+      title: copy.runningTitle,
+      detail,
+      tone: missionResultTone(status),
+      tagTone: missionTagTone(status),
+      isTerminal: false,
+    }
+  }
+
+  if (status === 'succeeded') {
+    return {
+      missionId: tracker.missionId,
+      status,
+      badgeLabel: status,
+      title: copy.successTitle,
+      detail,
+      tone: missionResultTone(status),
+      tagTone: missionTagTone(status),
+      isTerminal: true,
+    }
+  }
+
+  if (status === 'canceled') {
+    return {
+      missionId: tracker.missionId,
+      status,
+      badgeLabel: status,
+      title: copy.canceledTitle,
+      detail,
+      tone: missionResultTone(status),
+      tagTone: missionTagTone(status),
+      isTerminal: true,
+    }
+  }
+
+  return {
+    missionId: tracker.missionId,
+    status: 'failed',
+    badgeLabel: 'failed',
+    title: copy.failureTitle,
+    detail: missionStatus.error ? `${detail} (${missionStatus.error})` : detail,
+    tone: 'danger',
+    tagTone: 'table-tag--danger',
+    isTerminal: true,
+  }
 }
 
 function latestCommandToken(status: RobotCommandStatus) {
@@ -326,6 +512,10 @@ export function FarmCommandPage() {
   const [uiMessage, setUiMessage] = useState<string | null>(null)
   const [actionRecords, setActionRecords] = useState<Record<string, AssetActionRecord>>({})
   const [lastPatrolAction, setLastPatrolAction] = useState<PatrolActionRecord | null>(null)
+  const [activeHarvestMission, setActiveHarvestMission] = useState<PendingMissionRequest | null>(null)
+  const [activePatrolMission, setActivePatrolMission] = useState<PendingMissionRequest | null>(null)
+  const [lastHandledHarvestMissionKey, setLastHandledHarvestMissionKey] = useState<string | null>(null)
+  const [lastHandledPatrolMissionKey, setLastHandledPatrolMissionKey] = useState<string | null>(null)
   const [activeDiagnoseCommand, setActiveDiagnoseCommand] = useState<DiagnoseCommandTracker | null>(null)
   const [observedDiagnoseState, setObservedDiagnoseState] = useState<string | null>(null)
 
@@ -364,6 +554,36 @@ export function FarmCommandPage() {
     queryFn: getHarvestPageData,
     initialData: harvestFallback,
     refetchInterval: 20_000,
+  })
+  const harvestMissionStatusQuery = useQuery({
+    queryKey: ['missions', 'status', activeHarvestMission?.missionId],
+    queryFn: async () => {
+      if (!activeHarvestMission) {
+        throw new Error('수확 미션 ID가 없습니다.')
+      }
+      return getMissionStatus(activeHarvestMission.missionId)
+    },
+    enabled: activeHarvestMission !== null,
+    retry: false,
+    refetchInterval: (query) => {
+      const status = query.state.data as MissionStatus | undefined
+      return activeHarvestMission !== null && !isMissionTerminal(status) ? 2_000 : false
+    },
+  })
+  const patrolMissionStatusQuery = useQuery({
+    queryKey: ['missions', 'status', activePatrolMission?.missionId],
+    queryFn: async () => {
+      if (!activePatrolMission) {
+        throw new Error('패트롤 미션 ID가 없습니다.')
+      }
+      return getMissionStatus(activePatrolMission.missionId)
+    },
+    enabled: activePatrolMission !== null,
+    retry: false,
+    refetchInterval: (query) => {
+      const status = query.state.data as MissionStatus | undefined
+      return activePatrolMission !== null && !isMissionTerminal(status) ? 2_000 : false
+    },
   })
 
   const zoneMoveMutation = useMutation({
@@ -418,18 +638,37 @@ export function FarmCommandPage() {
     },
   })
   const harvestMutation = useMutation({
-    mutationFn: requestHarvestMission,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['page', 'plants'] })
-      await queryClient.invalidateQueries({ queryKey: ['page', 'harvest'] })
-      await queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] })
+    mutationFn: ({ plantId, fruitId }: HarvestMissionInput) => requestHarvestMission({ plantId, fruitId }),
+    onSuccess: async (dispatch: MissionDispatch, variables) => {
+      setActiveHarvestMission({
+        missionId: dispatch.missionId,
+        requestedAt: Date.now(),
+        acceptedMessage: dispatch.operatorMessage,
+        plantId: variables.plantId,
+        plantName: variables.plantName,
+      })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['page', 'plants'] }),
+        queryClient.invalidateQueries({ queryKey: ['page', 'harvest'] }),
+        queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['missions', 'status', dispatch.missionId] }),
+      ])
     },
   })
   const patrolMutation = useMutation({
-    mutationFn: startFieldPatrolMission,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
-      await queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] })
+    mutationFn: ({ mode, zoneIds }: PatrolMissionInput) => startFieldPatrolMission({ mode, zoneIds }),
+    onSuccess: async (dispatch: MissionDispatch, variables) => {
+      setActivePatrolMission({
+        missionId: dispatch.missionId,
+        requestedAt: Date.now(),
+        acceptedMessage: dispatch.operatorMessage,
+        mode: variables.mode,
+      })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
+        queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['missions', 'status', dispatch.missionId] }),
+      ])
     },
   })
   const wateringMutation = useMutation({
@@ -453,6 +692,8 @@ export function FarmCommandPage() {
   const plants = plantsQuery.data
   const environment = environmentQuery.data
   const harvest = harvestQuery.data
+  const harvestMissionStatus = harvestMissionStatusQuery.data
+  const patrolMissionStatus = patrolMissionStatusQuery.data
 
   const mapSource = (path: string) => robot.debug.querySources[path] ?? 'fallback'
   const dashboardSource = (path: string) => dashboard.debug.querySources[path] ?? 'fallback'
@@ -628,6 +869,152 @@ export function FarmCommandPage() {
     }
   }, [harvestPlant, plants.plants, selectedAsset, selectedPlantId])
 
+  const controlMode = latestCommandStatus.controlState?.mode ?? 'normal'
+  const missionControlBlocked = controlMode === 'paused' || controlMode === 'emergency_stop'
+  const missionControlBlockMessage =
+    controlMode === 'emergency_stop'
+      ? '비상 정지 상태에서는 재개 전까지 새 미션을 시작할 수 없습니다.'
+      : controlMode === 'paused'
+        ? '일시정지 상태에서는 재개 전까지 새 미션을 시작할 수 없습니다.'
+        : null
+  const harvestMissionError =
+    harvestMutation.isError
+      ? harvestMutation.error
+      : harvestMissionStatusQuery.isError && harvestMissionStatusQuery.error instanceof Error
+        ? harvestMissionStatusQuery.error
+        : null
+  const patrolMissionError =
+    patrolMutation.isError
+      ? patrolMutation.error
+      : patrolMissionStatusQuery.isError && patrolMissionStatusQuery.error instanceof Error
+        ? patrolMissionStatusQuery.error
+        : null
+  const harvestMissionFeedback = buildMissionFeedback(
+    activeHarvestMission,
+    harvestMissionStatus,
+    harvestMissionError,
+    {
+      acceptedTitle: '수확 요청 접수',
+      pendingTitle: '수확 준비 중',
+      runningTitle: '수확 진행 중',
+      successTitle: '수확 완료',
+      failureTitle: '수확 실패',
+      canceledTitle: '수확 취소',
+    },
+  )
+  const patrolMissionFeedback = buildMissionFeedback(
+    activePatrolMission,
+    patrolMissionStatus,
+    patrolMissionError,
+    activePatrolMission?.mode === 'harvest'
+      ? {
+          acceptedTitle: '수확 패트롤 요청 접수',
+          pendingTitle: '수확 패트롤 준비 중',
+          runningTitle: '수확 패트롤 진행 중',
+          successTitle: '수확 패트롤 완료',
+          failureTitle: '수확 패트롤 실패',
+          canceledTitle: '수확 패트롤 취소',
+        }
+      : {
+          acceptedTitle: '진단 패트롤 요청 접수',
+          pendingTitle: '진단 패트롤 준비 중',
+          runningTitle: '진단 패트롤 진행 중',
+          successTitle: '진단 패트롤 완료',
+          failureTitle: '진단 패트롤 실패',
+          canceledTitle: '진단 패트롤 취소',
+        },
+  )
+  const missionRequestInFlight =
+    harvestMutation.isPending
+    || patrolMutation.isPending
+    || (harvestMissionFeedback !== null && !harvestMissionFeedback.isTerminal)
+    || (patrolMissionFeedback !== null && !patrolMissionFeedback.isTerminal)
+  const harvestActionDisabled = missionControlBlocked || missionRequestInFlight
+  const patrolActionDisabled = missionControlBlocked || missionRequestInFlight
+  const currentMissionActivity =
+    harvestMissionFeedback !== null && !harvestMissionFeedback.isTerminal
+      ? harvestMissionFeedback.status === 'running'
+        ? '수확 진행중'
+        : '수확 준비중'
+      : patrolMissionFeedback !== null && !patrolMissionFeedback.isTerminal
+        ? activePatrolMission?.mode === 'harvest'
+          ? patrolMissionFeedback.status === 'running'
+            ? '패트롤 수확중'
+            : '패트롤 수확 준비중'
+          : patrolMissionFeedback.status === 'running'
+            ? '패트롤 진단중'
+            : '패트롤 진단 준비중'
+        : null
+
+  useEffect(() => {
+    if (!activeHarvestMission || !harvestMissionFeedback?.isTerminal || !harvestMissionFeedback.missionId) {
+      return
+    }
+
+    const missionKey = `${harvestMissionFeedback.missionId}:${harvestMissionFeedback.status}`
+    if (lastHandledHarvestMissionKey === missionKey) {
+      return
+    }
+
+    setLastHandledHarvestMissionKey(missionKey)
+
+    if (harvestMissionFeedback.status === 'succeeded' && activeHarvestMission.plantId && activeHarvestMission.plantName) {
+      const plantId = activeHarvestMission.plantId
+      setActionRecords((current) => ({
+        ...current,
+        [plantId]: {
+          label: '수확 완료',
+          detail: `${activeHarvestMission.plantName} 수확이 실제 상태 기준으로 완료되었습니다.`,
+          tone: 'accent',
+        },
+      }))
+    }
+
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['page', 'plants'] }),
+      queryClient.invalidateQueries({ queryKey: ['page', 'harvest'] }),
+      queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] }),
+      queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
+    ])
+  }, [
+    activeHarvestMission,
+    harvestMissionFeedback,
+    lastHandledHarvestMissionKey,
+    queryClient,
+  ])
+
+  useEffect(() => {
+    if (!activePatrolMission || !patrolMissionFeedback?.isTerminal || !patrolMissionFeedback.missionId) {
+      return
+    }
+
+    const missionKey = `${patrolMissionFeedback.missionId}:${patrolMissionFeedback.status}`
+    if (lastHandledPatrolMissionKey === missionKey) {
+      return
+    }
+
+    setLastHandledPatrolMissionKey(missionKey)
+
+    if (patrolMissionFeedback.status === 'succeeded' && activePatrolMission.mode) {
+      setLastPatrolAction({
+        mode: activePatrolMission.mode,
+        detail: patrolMissionFeedback.detail,
+      })
+    }
+
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] }),
+      queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
+      queryClient.invalidateQueries({ queryKey: ['page', 'plants'] }),
+      queryClient.invalidateQueries({ queryKey: ['page', 'harvest'] }),
+    ])
+  }, [
+    activePatrolMission,
+    lastHandledPatrolMissionKey,
+    patrolMissionFeedback,
+    queryClient,
+  ])
+
   const weatherSummary = dashboard.environmentStats.length > 0
     ? dashboard.environmentStats.map((stat) => `${stat.label} ${stat.value}`).join(' · ')
     : '날씨 데이터 대기 중'
@@ -654,7 +1041,7 @@ export function FarmCommandPage() {
     ?? null
   const sprinklerResultPercent = lastSprinklerAction || environment.history.length > 0 ? 100 : 0
   const selectedTag = selectionTag(selectedAsset?.kind, selectedAsset?.status)
-  const currentActivity = activityState ?? robot.missionState
+  const currentActivity = currentMissionActivity ?? activityState ?? robot.missionState
   const selectedPlantTargetPose = useMemo(() => {
     if (!selectedPlantDetail) {
       return null
@@ -681,27 +1068,19 @@ export function FarmCommandPage() {
         ? zoneMoveMutation.data.message
         : zoneMoveMutation.isError
           ? zoneMoveMutation.error.message
-          : harvestMutation.isSuccess
-            ? harvestMutation.data
-            : harvestMutation.isError
-              ? harvestMutation.error.message
-              : patrolMutation.isSuccess
-                ? patrolMutation.data
-                : patrolMutation.isError
-                  ? patrolMutation.error.message
-              : wateringMutation.isSuccess
-                ? wateringMutation.data
-                : wateringMutation.isError
-                  ? wateringMutation.error.message
-                  : nutrientMutation.isSuccess
-                    ? nutrientMutation.data
-                    : nutrientMutation.isError
-                      ? nutrientMutation.error.message
-                      : controlMutation.isSuccess
-                        ? controlMutation.data
-                        : controlMutation.isError
-                          ? controlMutation.error.message
-                          : null
+          : wateringMutation.isSuccess
+            ? wateringMutation.data
+            : wateringMutation.isError
+              ? wateringMutation.error.message
+              : nutrientMutation.isSuccess
+                ? nutrientMutation.data
+                : nutrientMutation.isError
+                  ? nutrientMutation.error.message
+                  : controlMutation.isSuccess
+                    ? controlMutation.data
+                    : controlMutation.isError
+                      ? controlMutation.error.message
+                      : null
     )
 
   const selectedStatusItems = selectedAsset?.kind === 'plant' && selectedPlantDetail
@@ -770,28 +1149,21 @@ export function FarmCommandPage() {
   }
 
   const handleStartPatrol = (mode: 'diagnosis' | 'harvest') => {
-    const detail =
-      mode === 'diagnosis'
-        ? '밭 전체를 돌며 병 진단 패트롤을 시작했습니다.'
-        : '밭 전체를 돌며 수확 패트롤을 시작했습니다.'
+    if (missionControlBlocked || patrolMutation.isPending || harvestMutation.isPending) {
+      return
+    }
 
-    setActivityState(mode === 'diagnosis' ? '패트롤 진단중' : '패트롤 수확중')
     setUiMessage(null)
-    patrolMutation.mutate(
-      {
-        mode,
-        zoneIds: patrolZoneIds,
-      },
-      {
-        onSuccess: () => {
-          setLastPatrolAction({
-            mode,
-            detail,
-          })
-          setUiMessage(detail)
-        },
-      },
-    )
+    setActivityState(null)
+    if (activePatrolMission?.missionId) {
+      queryClient.removeQueries({ queryKey: ['missions', 'status', activePatrolMission.missionId] })
+    }
+    setActivePatrolMission(null)
+    patrolMutation.reset()
+    patrolMutation.mutate({
+      mode,
+      zoneIds: patrolZoneIds,
+    })
   }
 
   const handleDiagnose = () => {
@@ -829,33 +1201,24 @@ export function FarmCommandPage() {
   }
 
   const handleHarvest = () => {
-    const targetPlant = selectedAsset?.kind === 'plant'
-      ? selectedPlantDetail
-      : selectedPlantDetail
+    const targetPlant = selectedPlantDetail
 
-    if (!targetPlant) {
+    if (!targetPlant || missionControlBlocked || patrolMutation.isPending || harvestMutation.isPending) {
       return
     }
 
-    setActivityState('수확중')
     setUiMessage(null)
-    harvestMutation.mutate(
-      {
-        plantId: targetPlant.id,
-        fruitId: targetPlant.targetId,
-      },
-      {
-        onSuccess: () => {
-          rememberAction(
-            targetPlant.id,
-            '수확 요청 완료',
-            `${targetPlant.name} 수확 요청을 등록했습니다.`,
-            'accent',
-          )
-          setUiMessage(`${targetPlant.name} 수확 요청을 등록했습니다.`)
-        },
-      },
-    )
+    setActivityState(null)
+    if (activeHarvestMission?.missionId) {
+      queryClient.removeQueries({ queryKey: ['missions', 'status', activeHarvestMission.missionId] })
+    }
+    setActiveHarvestMission(null)
+    harvestMutation.reset()
+    harvestMutation.mutate({
+      plantId: targetPlant.id,
+      fruitId: targetPlant.targetId,
+      plantName: targetPlant.name,
+    })
   }
 
   useEffect(() => {
@@ -958,15 +1321,26 @@ export function FarmCommandPage() {
     })
   }
 
+  const diagnosisMissionResult =
+    activePatrolMission?.mode === 'diagnosis'
+      ? patrolMissionFeedback
+      : null
+  const harvestMissionResult =
+    activePatrolMission?.mode === 'harvest'
+      ? patrolMissionFeedback
+      : harvestMissionFeedback
+
   const resultItems = [
     {
       icon: 'warning',
-      tone: 'danger',
-      text: lastPatrolAction?.mode === 'diagnosis'
-        ? lastPatrolAction.detail
-        : lastPlantAction?.label === '진단 완료'
-        ? lastPlantAction.detail
-        : `흰가루병 개체 ${mildewPercent}% 발견했습니다.`,
+      tone: diagnosisMissionResult?.tone ?? 'danger',
+      text:
+        diagnosisMissionResult?.detail
+        ?? (lastPatrolAction?.mode === 'diagnosis'
+          ? lastPatrolAction.detail
+          : lastPlantAction?.label === '진단 완료'
+            ? lastPlantAction.detail
+            : `흰가루병 개체 ${mildewPercent}% 발견했습니다.`),
     },
     {
       icon: 'water_drop',
@@ -976,12 +1350,14 @@ export function FarmCommandPage() {
     },
     {
       icon: 'potted_plant',
-      tone: 'warning',
-      text: lastPatrolAction?.mode === 'harvest'
-        ? lastPatrolAction.detail
-        : lastPlantAction?.label === '수확 요청 완료'
-        ? lastPlantAction.detail
-        : `수확 가능 개체 ${harvestablePercent}% 발견했습니다.`,
+      tone: harvestMissionResult?.tone ?? 'warning',
+      text:
+        harvestMissionResult?.detail
+        ?? (lastPatrolAction?.mode === 'harvest'
+          ? lastPatrolAction.detail
+          : lastPlantAction?.label === '수확 완료'
+            ? lastPlantAction.detail
+            : `수확 가능 개체 ${harvestablePercent}% 발견했습니다.`),
     },
     {
       icon: 'inventory_2',
@@ -1169,25 +1545,40 @@ export function FarmCommandPage() {
               <div className="farm-action-row">
                 <button
                   className="action-button"
-                  disabled={patrolMutation.isPending}
+                  disabled={patrolActionDisabled}
                   onClick={() => {
                     handleStartPatrol('diagnosis')
                   }}
                   type="button"
                 >
-                  {patrolMutation.isPending && currentActivity === '패트롤 진단중' ? '진단 패트롤 시작 중...' : '패트롤로 병 진단'}
+                  {patrolMutation.isPending && activePatrolMission === null ? '진단 패트롤 요청 중...' : '패트롤로 병 진단'}
                 </button>
                 <button
                   className="action-button action-button--warning"
-                  disabled={patrolMutation.isPending}
+                  disabled={patrolActionDisabled}
                   onClick={() => {
                     handleStartPatrol('harvest')
                   }}
                   type="button"
                 >
-                  {patrolMutation.isPending && currentActivity === '패트롤 수확중' ? '수확 패트롤 시작 중...' : '패트롤로 전체 수확'}
+                  {patrolMutation.isPending && activePatrolMission === null ? '수확 패트롤 요청 중...' : '패트롤로 전체 수확'}
                 </button>
               </div>
+              {missionControlBlockMessage ? <p className="muted">{missionControlBlockMessage}</p> : null}
+              {patrolMissionFeedback ? (
+                <>
+                  <div className="chip-row">
+                    <span className={`table-tag ${patrolMissionFeedback.tagTone}`}>{patrolMissionFeedback.badgeLabel}</span>
+                    {activePatrolMission?.mode ? (
+                      <span className="chip">
+                        {activePatrolMission.mode === 'diagnosis' ? '병 진단' : '전체 수확'}
+                      </span>
+                    ) : null}
+                    {patrolMissionFeedback.missionId ? <span className="chip">{patrolMissionFeedback.missionId}</span> : null}
+                  </div>
+                  <p className="muted">{patrolMissionFeedback.title} · {patrolMissionFeedback.detail}</p>
+                </>
+              ) : null}
             </div>
 
             {selectedAsset ? (
@@ -1198,6 +1589,17 @@ export function FarmCommandPage() {
                     ? '식물을 누르면 이미지와 함께 `진단하기`, `수확하기` 팝업이 열립니다.'
                     : '급수 헤드를 누르면 이미지와 함께 `물주기`, `영양제 주기` 팝업이 열립니다.'}
                 </p>
+                {selectedAsset.kind === 'plant' && missionControlBlockMessage ? <p className="muted">{missionControlBlockMessage}</p> : null}
+                {selectedAsset.kind === 'plant' && harvestMissionFeedback ? (
+                  <>
+                    <div className="chip-row">
+                      <span className={`table-tag ${harvestMissionFeedback.tagTone}`}>{harvestMissionFeedback.badgeLabel}</span>
+                      {activeHarvestMission?.plantName ? <span className="chip">{activeHarvestMission.plantName}</span> : null}
+                      {harvestMissionFeedback.missionId ? <span className="chip">{harvestMissionFeedback.missionId}</span> : null}
+                    </div>
+                    <p className="muted">{harvestMissionFeedback.title} · {harvestMissionFeedback.detail}</p>
+                  </>
+                ) : null}
               </div>
             ) : (
               <div className="farm-empty-state">
@@ -1309,6 +1711,17 @@ export function FarmCommandPage() {
                 <span className="chip">{selectedPlantDetail.positionLabel}</span>
                 <span className="chip">건강도 {selectedPlantDetail.health}%</span>
               </div>
+              {missionControlBlockMessage ? <p className="muted">{missionControlBlockMessage}</p> : null}
+              {harvestMissionFeedback ? (
+                <>
+                  <div className="chip-row">
+                    <span className={`table-tag ${harvestMissionFeedback.tagTone}`}>{harvestMissionFeedback.badgeLabel}</span>
+                    {activeHarvestMission?.plantName ? <span className="chip">{activeHarvestMission.plantName}</span> : null}
+                    {harvestMissionFeedback.missionId ? <span className="chip">{harvestMissionFeedback.missionId}</span> : null}
+                  </div>
+                  <p className="muted">{harvestMissionFeedback.title} · {harvestMissionFeedback.detail}</p>
+                </>
+              ) : null}
 
               <div className="farm-plant-modal__actions">
                 <button
@@ -1323,14 +1736,14 @@ export function FarmCommandPage() {
                 </button>
                 <button
                   className="action-button action-button--warning"
-                  disabled={harvestMutation.isPending}
+                  disabled={harvestActionDisabled}
                   onClick={() => {
                     handleHarvest()
                     closeAssetModal()
                   }}
                   type="button"
                 >
-                  {harvestMutation.isPending ? '수확 중...' : '수확하기'}
+                  {harvestMutation.isPending && activeHarvestMission === null ? '수확 요청 중...' : '수확하기'}
                 </button>
               </div>
               <div className="farm-plant-modal__feedback">
