@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
+import { DevSurface } from '@/components/dev-surface'
 import {
   approveWateringRecommendation,
   environmentFallback,
@@ -45,6 +47,7 @@ export function EnvironmentPage() {
     },
   })
   const page = environmentQuery.data
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
   const feedbackMessage = approveMutation.isSuccess
     ? approveMutation.data
     : nutrientMutation.isSuccess
@@ -58,14 +61,27 @@ export function EnvironmentPage() {
   return (
     <div className="screen">
       <section className="hero-grid hero-grid--environment">
-        <article className="hero-panel hero-panel--environment">
+        <DevSurface
+          as="article"
+          className="hero-panel hero-panel--environment"
+          contract={{
+            title: '환경 제어 요약',
+            queries: [
+              createGetSignal('환경 최신값', querySource('/environment/latest'), '/environment/latest'),
+              createGetSignal('제어 추천', querySource('/actuations/recommendations'), '/actuations/recommendations'),
+            ],
+            actions: [
+              createPostAction('급수 승인', ['/actuations/recommendations/reco-water-001/approve', '/actuations/watering'], 'any'),
+            ],
+          }}
+        >
           <div className="hero-topline">
             <div>
-              <span className="panel-kicker">Precision Control</span>
+              <span className="panel-kicker">정밀 제어</span>
               <h3 className="hero-title">{page.recommendation}</h3>
             </div>
             <span className="live-pill">
-              {page.source === 'live' ? '실시간 장치 상태' : 'fallback 장치 상태'}
+              {page.source === 'live' ? '실시간 장치 상태' : '준비 데이터 장치 상태'}
             </span>
           </div>
           <div className="recommendation-strip">
@@ -92,7 +108,7 @@ export function EnvironmentPage() {
               </button>
             </div>
           </div>
-        </article>
+        </DevSurface>
       </section>
 
       <section className="metric-row metric-row--compact">
@@ -106,10 +122,24 @@ export function EnvironmentPage() {
       </section>
 
       <section className="content-grid content-grid--environment">
-        <article className="panel">
+        <DevSurface
+          as="article"
+          className="panel"
+          contract={{
+            title: '장치 제어와 승인 큐',
+            queries: [
+              createGetSignal('장치 목록', querySource('/iot/devices'), '/iot/devices'),
+              createGetSignal('제어 추천', querySource('/actuations/recommendations'), '/actuations/recommendations'),
+            ],
+            actions: [
+              createPostAction('급수 승인', ['/actuations/recommendations/reco-water-001/approve', '/actuations/watering'], 'any'),
+              createPostAction('양액 투입', ['/actuations/nutrients']),
+            ],
+          }}
+        >
           <div className="section-head">
             <div>
-              <span className="section-eyebrow">Device Control</span>
+              <span className="section-eyebrow">장치 제어</span>
               <h3 className="section-title">기기 제어</h3>
               <p className="section-description">
                 `iot/devices`, `actuations/recommendations`, `actuations/*` 동선을 기준으로
@@ -178,12 +208,53 @@ export function EnvironmentPage() {
             ))}
           </div>
           {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
-        </article>
 
-        <article className="panel">
+          <div className="panel-divider" />
+
           <div className="section-head">
             <div>
-              <span className="section-eyebrow">System Health</span>
+              <span className="section-eyebrow">승인 큐</span>
+              <h3 className="section-title">제어 추천 대기열</h3>
+              <p className="section-description">
+                자동 제어 권고를 운영자가 검토하고 승인할 수 있도록 별도 큐로 분리했습니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="recommendation-list">
+            {page.recommendations.map((item) => (
+              <article className="queue-card" key={item.id}>
+                <div className="split-row">
+                  <span
+                    className={`table-tag table-tag--${
+                      item.priority.includes('높') ? 'danger' : 'warning'
+                    }`}
+                  >
+                    {item.priority}
+                  </span>
+                  <span className="list-meta">{item.status}</span>
+                </div>
+                <h4 className="list-title">{item.title}</h4>
+                <p>{item.detail}</p>
+              </article>
+            ))}
+          </div>
+        </DevSurface>
+
+        <DevSurface
+          as="article"
+          className="panel"
+          contract={{
+            title: '시스템 상태와 실행 기록',
+            queries: [
+              createGetSignal('환경 최신값', querySource('/environment/latest'), '/environment/latest'),
+              createGetSignal('실행 이력', querySource('/actuations/history'), '/actuations/history'),
+            ],
+          }}
+        >
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">시스템 상태</span>
               <h3 className="section-title">시스템 상태</h3>
               <p className="section-description">
                 MQTT bridge와 센서 상태를 운영자에게 짧은 막대 그래프로 보여줍니다.
@@ -208,7 +279,40 @@ export function EnvironmentPage() {
               </article>
             ))}
           </div>
-        </article>
+
+          <div className="panel-divider" />
+
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">제어 이력</span>
+              <h3 className="section-title">최근 실행 기록</h3>
+              <p className="section-description">
+                `actuations/history` 기준으로 어떤 장치에 어떤 명령이 갔는지 빠르게 확인합니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="history-list">
+            {page.history.map((item) => (
+              <article className={`history-item history-item--${item.tone}`} key={item.id}>
+                <div className="split-row">
+                  <div>
+                    <h4 className="list-title">{item.device}</h4>
+                    <p className="list-meta">{item.time}</p>
+                  </div>
+                  <span
+                    className={`table-tag table-tag--${
+                      item.tone === 'critical' ? 'danger' : item.tone
+                    }`}
+                  >
+                    {item.result}
+                  </span>
+                </div>
+                <p>{item.action}</p>
+              </article>
+            ))}
+          </div>
+        </DevSurface>
       </section>
     </div>
   )

@@ -1,6 +1,7 @@
 import type { PropsWithChildren } from 'react'
 import { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { DevInspectorProvider } from '@/app/dev-inspector'
 
 export function AppProviders({ children }: PropsWithChildren) {
   const [queryClient] = useState(
@@ -17,6 +18,8 @@ export function AppProviders({ children }: PropsWithChildren) {
   )
 
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <DevInspectorProvider>{children}</DevInspectorProvider>
+    </QueryClientProvider>
   )
 }
