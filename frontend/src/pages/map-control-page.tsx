@@ -140,7 +140,7 @@ export function MapControlPage() {
     queryKey: ['page', 'robot'],
     queryFn: getRobotPageData,
     initialData: robotFallback,
-    refetchInterval: 10_000,
+    refetchInterval: 1_000,
   })
   const latestCommandStatusQuery = useQuery({
     queryKey: ['robot', 'command-status'],

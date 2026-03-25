@@ -1,28 +1,36 @@
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  type MouseEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { AppIcon } from '@/components/app-icon'
 import { env } from '@/config/env'
-import { parsePgm, type ParsedPgm } from '@/lib/robot-map/pgm'
 import {
   type RobotMapData,
+  type RobotPoseSnapshot,
   type RobotTargetPose,
 } from '@/lib/api/agribot'
+import { parsePgm, type ParsedPgm } from '@/lib/robot-map/pgm'
 import {
   type SemanticAsset,
-  type SemanticAssetKind,
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
 
 type RobotFacilityMapProps = {
-  map: RobotMapData
-  pose: RobotTargetPose
+  map?: RobotMapData
+  pose: RobotTargetPose | RobotPoseSnapshot
   scene: SemanticScene
   selectedAssetId: string | null
   targetAssetId: string | null
-  pendingTarget: RobotTargetPose | null
-  activeCommandTarget: RobotTargetPose | null
+  pendingTarget?: RobotTargetPose | null
+  activeCommandTarget?: RobotTargetPose | null
   zoom: number
   onSelectAsset: (assetId: string) => void
-  onSelectMapTarget: (target: RobotTargetPose) => void
+  onSelectGuide?: (guideId: string) => void
+  onSelectMapTarget?: (target: RobotTargetPose) => void
   onMapClickFeedback?: (message: string) => void
 }
 
@@ -30,7 +38,7 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-function countByKind(scene: SemanticScene, kind: SemanticAssetKind) {
+function countByKind(scene: SemanticScene, kind: SemanticAsset['kind']) {
   return scene.assets.filter((asset) => asset.kind === kind).length
 }
 
@@ -46,6 +54,16 @@ function resolveMapImageUrl(imageUrl: string) {
   return new URL(imageUrl, `${apiBase.origin}/`).toString()
 }
 
+function sceneToPercent(scene: SemanticScene, xValue: number, yValue: number) {
+  const width = scene.bounds.maxX - scene.bounds.minX
+  const height = scene.bounds.maxY - scene.bounds.minY
+
+  return {
+    left: `${clamp(((xValue - scene.bounds.minX) / width) * 100, 0, 100)}%`,
+    top: `${clamp((1 - ((yValue - scene.bounds.minY) / height)) * 100, 0, 100)}%`,
+  }
+}
+
 function worldToPercent(map: RobotMapData, xValue: number, yValue: number) {
   const pixelX = (xValue - map.origin.x) / map.resolution
   const pixelY = map.height - (yValue - map.origin.y) / map.resolution
@@ -54,6 +72,15 @@ function worldToPercent(map: RobotMapData, xValue: number, yValue: number) {
     left: `${clamp((pixelX / map.width) * 100, 0, 100)}%`,
     top: `${clamp((pixelY / map.height) * 100, 0, 100)}%`,
   }
+}
+
+function toOverlayPercent(
+  scene: SemanticScene,
+  map: RobotMapData | undefined,
+  xValue: number,
+  yValue: number,
+) {
+  return map ? worldToPercent(map, xValue, yValue) : sceneToPercent(scene, xValue, yValue)
 }
 
 function pixelToWorld(map: RobotMapData, pixelX: number, pixelY: number): RobotTargetPose {
@@ -76,16 +103,176 @@ function occupancyMessage(value: number) {
   return ''
 }
 
+function assetFlag(asset: SemanticAsset) {
+  if (asset.status === 'attention') {
+    return {
+      label: '조치 필요',
+      tone: 'danger',
+    } as const
+  }
+
+  if (asset.status === 'handled') {
+    return {
+      label: '조치 완료',
+      tone: 'accent',
+    } as const
+  }
+
+  if (asset.status === 'target') {
+    return {
+      label: '수확 후보',
+      tone: 'warning',
+    } as const
+  }
+
+  return null
+}
+
+function PlantGlyph({
+  status,
+}: {
+  status: SemanticAsset['status']
+}) {
+  const badgeIcon = status === 'attention' ? 'warning' : status === 'handled' ? 'task_alt' : null
+
+  return (
+    <span className={`robot-facility-map__tomato-glyph robot-facility-map__tomato-glyph--${status}`}>
+      <span className="robot-facility-map__tomato-shadow" />
+      <span className="robot-facility-map__tomato-body" />
+      <span className="robot-facility-map__tomato-shine" />
+      <span className="robot-facility-map__tomato-calyx" />
+      <span className="robot-facility-map__tomato-leaf robot-facility-map__tomato-leaf--left" />
+      <span className="robot-facility-map__tomato-leaf robot-facility-map__tomato-leaf--mid" />
+      <span className="robot-facility-map__tomato-leaf robot-facility-map__tomato-leaf--right" />
+      {status === 'target' ? <span className="robot-facility-map__tomato-sparkle" /> : null}
+      {status === 'attention' ? (
+        <>
+          <span className="robot-facility-map__tomato-bruise" />
+          <span className="robot-facility-map__tomato-mold robot-facility-map__tomato-mold--top" />
+          <span className="robot-facility-map__tomato-mold robot-facility-map__tomato-mold--bottom" />
+        </>
+      ) : null}
+      {badgeIcon ? (
+        <span className="robot-facility-map__asset-badge">
+          <AppIcon filled={status === 'attention'} name={badgeIcon} />
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
+function SprinklerGlyph({
+  status,
+}: {
+  status: SemanticAsset['status']
+}) {
+  const badgeIcon = status === 'attention' ? 'warning' : status === 'handled' ? 'task_alt' : null
+
+  return (
+    <span className={`robot-facility-map__sprinkler-glyph robot-facility-map__sprinkler-glyph--${status}`}>
+      <span className="robot-facility-map__sprinkler-base" />
+      <span className="robot-facility-map__sprinkler-neck" />
+      <span className="robot-facility-map__sprinkler-head">
+        <AppIcon name="water_drop" />
+      </span>
+      {badgeIcon ? (
+        <span className="robot-facility-map__asset-badge robot-facility-map__asset-badge--sprinkler">
+          <AppIcon filled={status === 'attention'} name={badgeIcon} />
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
+function FieldRobotGlyph() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="robot-facility-map__robot-svg"
+      viewBox="0 0 120 120"
+    >
+      <defs>
+        <radialGradient id="farmRobotBodyGlow" cx="50%" cy="32%" r="72%">
+          <stop offset="0%" stopColor="rgba(255, 252, 204, 0.96)" />
+          <stop offset="62%" stopColor="rgba(255, 232, 133, 0.44)" />
+          <stop offset="100%" stopColor="rgba(255, 232, 133, 0)" />
+        </radialGradient>
+        <linearGradient id="farmRobotShellRimGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="#f0a84b" />
+          <stop offset="50%" stopColor="#d88432" />
+          <stop offset="100%" stopColor="#b6681f" />
+        </linearGradient>
+        <linearGradient id="farmRobotShellGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="#fff8b8" />
+          <stop offset="40%" stopColor="#ffe15b" />
+          <stop offset="100%" stopColor="#f4ab3c" />
+        </linearGradient>
+        <linearGradient id="farmRobotTrackOuterGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="#95aff2" />
+          <stop offset="100%" stopColor="#536fbf" />
+        </linearGradient>
+        <linearGradient id="farmRobotTrackInnerGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="#4d61a5" />
+          <stop offset="100%" stopColor="#354579" />
+        </linearGradient>
+        <linearGradient id="farmRobotGlossGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="rgba(255, 255, 255, 0.9)" />
+          <stop offset="55%" stopColor="rgba(255, 255, 255, 0.28)" />
+          <stop offset="100%" stopColor="rgba(255, 255, 255, 0)" />
+        </linearGradient>
+      </defs>
+      <ellipse className="robot-facility-map__robot-shadow" cx="60" cy="104" rx="36" ry="9" />
+      <path className="robot-facility-map__robot-track" d="M15 18 C15 14 18 11 22 11 H37 L35 100 H22 C18 100 15 97 15 93 Z" fill="url(#farmRobotTrackOuterGradient)" />
+      <path className="robot-facility-map__robot-track" d="M83 11 H98 C102 11 105 14 105 18 V93 C105 97 102 100 98 100 H85 Z" fill="url(#farmRobotTrackOuterGradient)" />
+      <path className="robot-facility-map__robot-track-inner" d="M21 18 H33 L31 94 H21 Z" fill="url(#farmRobotTrackInnerGradient)" />
+      <path className="robot-facility-map__robot-track-inner" d="M87 18 H99 V94 H89 Z" fill="url(#farmRobotTrackInnerGradient)" />
+      <path className="robot-facility-map__robot-track-rib" d="M20 29 H34" />
+      <path className="robot-facility-map__robot-track-rib" d="M20 40 H33" />
+      <path className="robot-facility-map__robot-track-rib" d="M19 51 H33" />
+      <path className="robot-facility-map__robot-track-rib" d="M19 62 H33" />
+      <path className="robot-facility-map__robot-track-rib" d="M19 73 H32" />
+      <path className="robot-facility-map__robot-track-rib" d="M19 84 H32" />
+      <path className="robot-facility-map__robot-track-rib" d="M87 29 H100" />
+      <path className="robot-facility-map__robot-track-rib" d="M87 40 H101" />
+      <path className="robot-facility-map__robot-track-rib" d="M87 51 H101" />
+      <path className="robot-facility-map__robot-track-rib" d="M88 62 H101" />
+      <path className="robot-facility-map__robot-track-rib" d="M88 73 H101" />
+      <path className="robot-facility-map__robot-track-rib" d="M88 84 H101" />
+      <circle className="robot-facility-map__robot-track-roller" cx="28" cy="92" r="5.5" />
+      <circle className="robot-facility-map__robot-track-roller" cx="92" cy="92" r="5.5" />
+      <rect className="robot-facility-map__robot-shell-rim" fill="url(#farmRobotShellRimGradient)" height="90" rx="17" width="54" x="33" y="10" />
+      <rect className="robot-facility-map__robot-shell" fill="url(#farmRobotShellGradient)" height="82" rx="14" width="46" x="37" y="14" />
+      <rect className="robot-facility-map__robot-body-glow" fill="url(#farmRobotBodyGlow)" height="74" rx="12" width="38" x="41" y="17" />
+      <path className="robot-facility-map__robot-shell-shadow" d="M41 73 C48 80 72 80 79 73 V88 C73 94 47 94 41 88Z" />
+      <path className="robot-facility-map__robot-gloss robot-facility-map__robot-gloss--primary" d="M45 18 C53 14 66 14 78 20 C72 35 64 52 52 79 C45 62 41 40 45 18Z" fill="url(#farmRobotGlossGradient)" />
+      <path className="robot-facility-map__robot-gloss robot-facility-map__robot-gloss--secondary" d="M60 17 C69 17 76 20 80 24 C73 35 66 49 59 65 C58 52 58 35 60 17Z" fill="url(#farmRobotGlossGradient)" />
+      <path className="robot-facility-map__robot-shell-edge" d="M40 28 C47 24 73 24 80 28" />
+      <path className="robot-facility-map__robot-shell-edge robot-facility-map__robot-shell-edge--bottom" d="M42 88 C50 92 70 92 78 88" />
+      <path className="robot-facility-map__robot-arm" d="M82 72 L92 80" />
+      <path className="robot-facility-map__robot-arm-tip" d="M91 80 L97 77 M91 80 L96 85" />
+    </svg>
+  )
+}
+
+function rotationDegreesForPose(pose: RobotTargetPose | RobotPoseSnapshot) {
+  if ('yawDeg' in pose) {
+    return pose.yawDeg ?? 0
+  }
+
+  return (pose.yaw * 180) / Math.PI
+}
+
 export function RobotFacilityMap({
   map,
   pose,
   scene,
   selectedAssetId,
   targetAssetId,
-  pendingTarget,
-  activeCommandTarget,
+  pendingTarget = null,
+  activeCommandTarget = null,
   zoom,
   onSelectAsset,
+  onSelectGuide,
   onSelectMapTarget,
   onMapClickFeedback,
 }: RobotFacilityMapProps) {
@@ -98,20 +285,31 @@ export function RobotFacilityMap({
   const surfaceRef = useRef<HTMLDivElement | null>(null)
   const plantCount = useMemo(() => countByKind(scene, 'plant'), [scene])
   const sprinklerCount = useMemo(() => countByKind(scene, 'sprinkler'), [scene])
+  const robotStyle: CSSProperties = toOverlayPercent(scene, map, pose.x, pose.y)
+  const robotCoreStyle: CSSProperties = {
+    transform: `translate(-50%, -50%) rotate(${rotationDegreesForPose(pose)}deg)`,
+  }
 
   useEffect(() => {
+    if (!map) {
+      setParsedMap(null)
+      setMapLoadError(null)
+      return
+    }
+
     let cancelled = false
     const controller = new AbortController()
+    const activeMap = map
 
     async function loadRawMap() {
-      if (!map.imageUrl) {
+      if (!activeMap.imageUrl) {
         setParsedMap(null)
         setMapLoadError('정적 지도 원본 경로가 아직 준비되지 않았습니다.')
         return
       }
 
       try {
-        const response = await fetch(resolveMapImageUrl(map.imageUrl), {
+        const response = await fetch(resolveMapImageUrl(activeMap.imageUrl), {
           signal: controller.signal,
           headers: {
             Accept: 'image/x-portable-graymap',
@@ -122,11 +320,11 @@ export function RobotFacilityMap({
         }
 
         const buffer = await response.arrayBuffer()
-        const parsed = parsePgm(buffer)
+        const nextParsedMap = parsePgm(buffer)
         if (cancelled) {
           return
         }
-        setParsedMap(parsed)
+        setParsedMap(nextParsedMap)
         setMapLoadError(null)
       } catch (error) {
         if (controller.signal.aborted || cancelled) {
@@ -147,7 +345,7 @@ export function RobotFacilityMap({
       cancelled = true
       controller.abort()
     }
-  }, [map.imageUrl])
+  }, [map])
 
   useEffect(() => {
     if (!canvasRef.current || !parsedMap) {
@@ -173,6 +371,10 @@ export function RobotFacilityMap({
   }, [parsedMap])
 
   function handleMapClick(event: MouseEvent<HTMLDivElement>) {
+    if (!map || !onSelectMapTarget) {
+      return
+    }
+
     if (!surfaceRef.current || !parsedMap) {
       onMapClickFeedback?.('정적 지도를 불러오는 중입니다. 잠시 후 다시 눌러 주세요.')
       return
@@ -197,7 +399,7 @@ export function RobotFacilityMap({
     }
 
     const target = pixelToWorld(map, pixelX, pixelY)
-    target.yaw = pose.yaw
+    target.yaw = 'yaw' in pose ? pose.yaw : ((pose.yawDeg ?? 0) * Math.PI) / 180
     onSelectMapTarget(target)
   }
 
@@ -206,56 +408,81 @@ export function RobotFacilityMap({
       <div className="robot-facility-map" style={{ transform: `scale(${zoom})` }}>
         <div
           className={`robot-facility-map__surface${mapLoadError ? ' is-fallback' : ''}`}
-          onClick={handleMapClick}
+          onClick={map && onSelectMapTarget ? handleMapClick : undefined}
           ref={surfaceRef}
         >
-          <canvas
-            className="robot-facility-map__canvas"
-            height={parsedMap?.height ?? map.height}
-            ref={canvasRef}
-            width={parsedMap?.width ?? map.width}
-          />
+          {map ? (
+            <canvas
+              className="robot-facility-map__canvas"
+              height={parsedMap?.height ?? map.height}
+              ref={canvasRef}
+              width={parsedMap?.width ?? map.width}
+            />
+          ) : null}
           <div className="robot-facility-map__boundary" />
 
-          {scene.rowGuides.map((guide) => (
-            <div
-              className="robot-facility-map__row-guide"
-              key={guide.id}
-              style={{ left: worldToPercent(map, guide.value, map.origin.y).left }}
-            >
-              <span>{guide.label}</span>
-            </div>
-          ))}
+          {scene.rowGuides.map((guide) => {
+            const style = {
+              left: toOverlayPercent(scene, map, guide.value, map?.origin.y ?? scene.bounds.minY).left,
+            }
+
+            if (!onSelectGuide) {
+              return (
+                <div className="robot-facility-map__row-guide" key={guide.id} style={style}>
+                  <span>{guide.label}</span>
+                </div>
+              )
+            }
+
+            return (
+              <button
+                className="robot-facility-map__row-guide is-clickable"
+                key={guide.id}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onSelectGuide(guide.id)
+                }}
+                style={style}
+                type="button"
+              >
+                <span>{guide.label}</span>
+              </button>
+            )
+          })}
+
           {scene.laneGuides.map((guide) => (
             <div
               className={`robot-facility-map__lane-guide${
                 guide.id === 'lane-mid' ? ' robot-facility-map__lane-guide--primary' : ''
               }`}
               key={guide.id}
-              style={{ top: worldToPercent(map, map.origin.x, guide.value).top }}
+              style={{ top: toOverlayPercent(scene, map, map?.origin.x ?? scene.bounds.minX, guide.value).top }}
             >
               <span>{guide.label}</span>
             </div>
           ))}
 
           {scene.assets.map((asset) => {
-            if (asset.kind === 'plant' && !showPlants) {
-              return null
-            }
-            if (asset.kind === 'sprinkler' && !showDevices) {
-              return null
+            if (map) {
+              if (asset.kind === 'plant' && !showPlants) {
+                return null
+              }
+              if (asset.kind === 'sprinkler' && !showDevices) {
+                return null
+              }
             }
 
             const isSelected = selectedAssetId === asset.id
             const isTarget = targetAssetId === asset.id
-            const style = worldToPercent(map, asset.position.x, asset.position.y)
+            const style = toOverlayPercent(scene, map, asset.position.x, asset.position.y)
+            const flag = assetFlag(asset)
 
             return (
               <button
                 className={`robot-facility-map__asset robot-facility-map__asset--${asset.kind}${
                   isSelected ? ' is-selected' : ''
-                }${isTarget ? ' is-target' : ''}${
-                  asset.status === 'attention' ? ' is-attention' : ''
+                }${isTarget ? ' is-target' : ''}${asset.status === 'attention' ? ' is-attention' : ''}${
+                  asset.status === 'handled' ? ' is-handled' : ''
                 }`}
                 key={asset.id}
                 onClick={(event) => {
@@ -266,11 +493,20 @@ export function RobotFacilityMap({
                 type="button"
               >
                 <span className="robot-facility-map__asset-icon">
-                  <AppIcon name={asset.kind === 'plant' ? 'potted_plant' : 'water_drop'} />
+                  {asset.kind === 'plant' ? (
+                    <PlantGlyph status={asset.status} />
+                  ) : (
+                    <SprinklerGlyph status={asset.status} />
+                  )}
                 </span>
                 <span className="robot-facility-map__asset-label">
                   {showLabels || isSelected || isTarget ? asset.label : asset.shortLabel}
                 </span>
+                {flag ? (
+                  <span className={`robot-facility-map__asset-flag robot-facility-map__asset-flag--${flag.tone}`}>
+                    {flag.label}
+                  </span>
+                ) : null}
               </button>
             )
           })}
@@ -278,7 +514,7 @@ export function RobotFacilityMap({
           {activeCommandTarget ? (
             <div
               className="robot-facility-map__target robot-facility-map__target--active"
-              style={worldToPercent(map, activeCommandTarget.x, activeCommandTarget.y)}
+              style={toOverlayPercent(scene, map, activeCommandTarget.x, activeCommandTarget.y)}
             >
               <span className="robot-facility-map__target-dot" />
               <span className="robot-facility-map__target-label">요청 목표</span>
@@ -288,30 +524,32 @@ export function RobotFacilityMap({
           {pendingTarget ? (
             <div
               className="robot-facility-map__target robot-facility-map__target--pending"
-              style={worldToPercent(map, pendingTarget.x, pendingTarget.y)}
+              style={toOverlayPercent(scene, map, pendingTarget.x, pendingTarget.y)}
             >
               <span className="robot-facility-map__target-dot" />
               <span className="robot-facility-map__target-label">선택 좌표</span>
             </div>
           ) : null}
 
-          <div
-            className="robot-facility-map__robot"
-            style={{
-              ...worldToPercent(map, pose.x, pose.y),
-              transform: `translate(-50%, -50%) rotate(${pose.yaw}rad)`,
-            }}
-          >
-            <span className="robot-facility-map__robot-ring" />
-            <span className="robot-facility-map__robot-core">
-              <AppIcon filled name="navigation" />
+          <div className="robot-facility-map__robot" style={robotStyle}>
+            <span className="robot-facility-map__robot-ping robot-facility-map__robot-ping--outer" />
+            <span className="robot-facility-map__robot-ping robot-facility-map__robot-ping--inner" />
+            <span className="robot-facility-map__robot-origin">
+              <span className="robot-facility-map__robot-origin-dot" />
             </span>
+            <span className="robot-facility-map__robot-ring" />
+            <span className="robot-facility-map__robot-core" style={robotCoreStyle}>
+              <FieldRobotGlyph />
+            </span>
+            <span className="robot-facility-map__robot-label">AGR-02</span>
           </div>
 
-          <div className="robot-facility-map__hint">
-            <strong>이동 목표 지정</strong>
-            <p>빈 지도 영역을 클릭하면 시연용 목표 좌표가 잡힙니다. 식물과 급수 포인트는 클릭해도 선택만 됩니다.</p>
-          </div>
+          {map && onSelectMapTarget ? (
+            <div className="robot-facility-map__hint">
+              <strong>이동 목표 지정</strong>
+              <p>빈 지도 영역을 클릭하면 시연용 목표 좌표가 잡힙니다. 식물과 급수 포인트는 클릭해도 선택만 됩니다.</p>
+            </div>
+          ) : null}
 
           {mapLoadError ? (
             <div className="robot-facility-map__status">
@@ -321,41 +559,45 @@ export function RobotFacilityMap({
           ) : null}
         </div>
 
-        <div className="robot-facility-map__legend">
-          <span className="robot-facility-map__legend-chip">식물 {plantCount}주</span>
-          <span className="robot-facility-map__legend-chip">급수 포인트 {sprinklerCount}개</span>
-          <span className="robot-facility-map__legend-chip">occupancy map + semantic overlay</span>
-        </div>
+        {map ? (
+          <>
+            <div className="robot-facility-map__legend">
+              <span className="robot-facility-map__legend-chip">식물 {plantCount}주</span>
+              <span className="robot-facility-map__legend-chip">급수 포인트 {sprinklerCount}개</span>
+              <span className="robot-facility-map__legend-chip">occupancy map + semantic overlay</span>
+            </div>
 
-        <div className="robot-facility-map__toggles">
-          <button
-            className={`ghost-chip${showPlants ? ' ghost-chip--active' : ''}`}
-            onClick={() => {
-              setShowPlants((current) => !current)
-            }}
-            type="button"
-          >
-            식물
-          </button>
-          <button
-            className={`ghost-chip${showDevices ? ' ghost-chip--active' : ''}`}
-            onClick={() => {
-              setShowDevices((current) => !current)
-            }}
-            type="button"
-          >
-            급수
-          </button>
-          <button
-            className={`ghost-chip${showLabels ? ' ghost-chip--active' : ''}`}
-            onClick={() => {
-              setShowLabels((current) => !current)
-            }}
-            type="button"
-          >
-            라벨
-          </button>
-        </div>
+            <div className="robot-facility-map__toggles">
+              <button
+                className={`ghost-chip${showPlants ? ' ghost-chip--active' : ''}`}
+                onClick={() => {
+                  setShowPlants((current) => !current)
+                }}
+                type="button"
+              >
+                식물
+              </button>
+              <button
+                className={`ghost-chip${showDevices ? ' ghost-chip--active' : ''}`}
+                onClick={() => {
+                  setShowDevices((current) => !current)
+                }}
+                type="button"
+              >
+                급수
+              </button>
+              <button
+                className={`ghost-chip${showLabels ? ' ghost-chip--active' : ''}`}
+                onClick={() => {
+                  setShowLabels((current) => !current)
+                }}
+                type="button"
+              >
+                라벨
+              </button>
+            </div>
+          </>
+        ) : null}
       </div>
     </>
   )
@@ -371,10 +613,18 @@ export function summarizeSelectedAsset(asset: SemanticAsset | null) {
   }
 
   const chips = [
-    asset.kind === 'plant' ? '작물' : '설비',
+    asset.kind === 'plant' ? '작물' : '급수 헤드',
     `zone ${asset.zoneId}`,
     `x ${asset.position.x.toFixed(1)} / y ${asset.position.y.toFixed(1)}`,
   ]
+
+  if (asset.status === 'attention') {
+    chips.unshift('조치 필요')
+  } else if (asset.status === 'handled') {
+    chips.unshift('조치 완료')
+  } else if (asset.status === 'target') {
+    chips.unshift('수확 후보')
+  }
 
   if (asset.linkedId) {
     chips.push(asset.linkedId)

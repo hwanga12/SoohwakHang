@@ -1,5 +1,5 @@
 export type SemanticAssetKind = 'plant' | 'sprinkler'
-export type SemanticAssetStatus = 'normal' | 'target' | 'attention'
+export type SemanticAssetStatus = 'normal' | 'target' | 'attention' | 'handled'
 
 export type SemanticAsset = {
   id: string
@@ -88,10 +88,10 @@ function buildSprinklerAssets(): SemanticAsset[] {
     id: `sprinkler_${index}`,
     linkedId: 'farm_01_watering',
     kind: 'sprinkler',
-    label: `급수 헤드 ${index + 1}`,
-    shortLabel: `W${index + 1}`,
+    label: `${index}번 급수 헤드`,
+    shortLabel: `H${index}`,
     zoneId: 'farm_01',
-    description: 'farm_01_watering 장치와 연결된 급수 포인트',
+    description: '물주기나 영양제 주기를 직접 실행할 수 있는 급수 포인트',
     position: {
       x: xValue,
       y: 0,
@@ -111,14 +111,14 @@ export const farmSemanticScene: SemanticScene = {
     id: `row-${index + 1}`,
     axis: 'x',
     value: xValue,
-    label: `재배열 ${index + 1}`,
+    label: `${index + 1}번 이랑`,
   })),
   laneGuides: [
-    { id: 'lane-bottom-1', axis: 'y', value: -8, label: '하단 통로' },
-    { id: 'lane-bottom-2', axis: 'y', value: -5, label: '하단 점검 라인' },
-    { id: 'lane-mid', axis: 'y', value: 0, label: '중앙 급수 라인' },
-    { id: 'lane-top-1', axis: 'y', value: 5, label: '상단 점검 라인' },
-    { id: 'lane-top-2', axis: 'y', value: 8, label: '상단 통로' },
+    { id: 'lane-bottom-1', axis: 'y', value: -8, label: '1번 고랑' },
+    { id: 'lane-bottom-2', axis: 'y', value: -5, label: '2번 고랑' },
+    { id: 'lane-mid', axis: 'y', value: 0, label: '중앙 고랑' },
+    { id: 'lane-top-1', axis: 'y', value: 5, label: '3번 고랑' },
+    { id: 'lane-top-2', axis: 'y', value: 8, label: '4번 고랑' },
   ],
   assets: [...buildPlantAssets(), ...buildSprinklerAssets()],
 }
