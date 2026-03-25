@@ -1,7 +1,9 @@
 from agribot_bringup.robot_manual_command_executor import (
     CommandValidationError,
+    describe_manual_navigation_label,
     parse_manual_command_payload,
     resolve_return_home_target,
+    should_retry_goal_rejection,
 )
 from agribot_navigation.patrol_config import get_default_patrol_waypoints_path, load_patrol_plan
 
@@ -91,3 +93,19 @@ def test_resolve_return_home_target_allows_waypoint_override() -> None:
     assert waypoint_id == 'farm_01_lane_01_south_entry'
     assert target_pose.x == patrol_plan.waypoints[waypoint_id].pose.x
     assert target_pose.y == patrol_plan.waypoints[waypoint_id].pose.y
+
+
+def test_describe_manual_navigation_label_uses_home_waypoint_when_present() -> None:
+    assert describe_manual_navigation_label('navigate_to_pose') == '수동 목표점'
+    assert describe_manual_navigation_label('return_home') == '홈 복귀'
+    assert (
+        describe_manual_navigation_label('return_home', 'farm_01_home')
+        == '홈 복귀(farm_01_home)'
+    )
+
+
+def test_should_retry_goal_rejection_respects_retry_limit() -> None:
+    assert should_retry_goal_rejection(0, 4) is True
+    assert should_retry_goal_rejection(3, 4) is True
+    assert should_retry_goal_rejection(4, 4) is False
+    assert should_retry_goal_rejection(0, 0) is False

@@ -144,6 +144,18 @@ def _extract_target_pose(raw_payload: dict[str, Any], default_frame: str) -> Com
     raise ValueError('navigate_to_pose 명령에는 map frame x, y, yaw가 필요합니다.')
 
 
+def describe_manual_navigation_label(command_type: str, home_waypoint_id: str | None = None) -> str:
+    if command_type == 'return_home':
+        if home_waypoint_id:
+            return f'홈 복귀({home_waypoint_id})'
+        return '홈 복귀'
+    return '수동 목표점'
+
+
+def should_retry_goal_rejection(retry_count: int, retry_limit: int) -> bool:
+    return retry_limit > 0 and retry_count < retry_limit
+
+
 def parse_manual_command_payload(
     raw_payload: dict[str, Any],
     *,
@@ -249,6 +261,8 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('patrol_resume_service', '/patrol/resume')
         self.declare_parameter('nav_server_wait_sec', 5.0)
         self.declare_parameter('patrol_service_wait_sec', 1.0)
+        self.declare_parameter('goal_reject_retry_sec', 0.75)
+        self.declare_parameter('goal_reject_retry_limit', 4)
         self.declare_parameter(
             'patrol_waypoints_file',
             str(get_default_patrol_waypoints_path()),
@@ -265,6 +279,8 @@ class RobotManualCommandExecutor(Node):
         self._action_name = str(self.get_parameter('navigate_to_pose_action').value)
         self._nav_server_wait_sec = float(self.get_parameter('nav_server_wait_sec').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
+        self._goal_reject_retry_sec = max(0.0, float(self.get_parameter('goal_reject_retry_sec').value))
+        self._goal_reject_retry_limit = max(0, int(self.get_parameter('goal_reject_retry_limit').value))
         history_size = max(8, int(self.get_parameter('processed_command_history_size').value))
 
         self._plan = self._load_patrol_plan()
@@ -284,6 +300,8 @@ class RobotManualCommandExecutor(Node):
         self._active_goal_handle = None
         self._goal_send_future = None
         self._goal_result_future = None
+        self._goal_retry_timer = None
+        self._goal_reject_retry_count = 0
         self._service_future = None
         self._last_status_payload: dict[str, Any] | None = None
         self._last_seen_command_signature: tuple[int, int] | None = None
@@ -452,7 +470,11 @@ class RobotManualCommandExecutor(Node):
         self._write_status(self._build_status_payload(context, 'pending', '명령을 수락했습니다.'))
 
         if command.command_type == 'navigate_to_pose':
-            self._start_navigation_command(context, target_pose=command.target_pose, label='수동 목표점')
+            self._start_navigation_command(
+                context,
+                target_pose=command.target_pose,
+                label=describe_manual_navigation_label(command.command_type),
+            )
             return
 
         if command.command_type == 'return_home':
@@ -462,7 +484,11 @@ class RobotManualCommandExecutor(Node):
                 self._finish_active_command('failed', str(exc), error='home_waypoint_not_found')
                 return
             context.home_waypoint_id = home_waypoint_id
-            self._start_navigation_command(context, target_pose=target_pose, label=f'홈 복귀({home_waypoint_id})')
+            self._start_navigation_command(
+                context,
+                target_pose=target_pose,
+                label=describe_manual_navigation_label(command.command_type, home_waypoint_id),
+            )
             return
 
         if command.command_type == 'pause_patrol':
@@ -512,6 +538,23 @@ class RobotManualCommandExecutor(Node):
             )
             return
 
+        self._goal_reject_retry_count = 0
+        self._cancel_goal_retry_timer()
+        self._dispatch_navigation_goal(
+            context,
+            target_pose=target_pose,
+            label=label,
+            is_retry=False,
+        )
+
+    def _dispatch_navigation_goal(
+        self,
+        context: ActiveCommandContext,
+        *,
+        target_pose: CommandPose,
+        label: str,
+        is_retry: bool,
+    ) -> None:
         if not self._navigate_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
             self._finish_active_command(
                 'failed',
@@ -521,18 +564,20 @@ class RobotManualCommandExecutor(Node):
             return
 
         context.target_pose = target_pose
-        context.started_at = _iso_now()
+        if context.started_at is None:
+            context.started_at = _iso_now()
+
         goal = NavigateToPose.Goal()
         goal.pose = self._build_pose_stamped(target_pose.as_pose2d())
         goal.behavior_tree = ''
 
-        self._write_status(
-            self._build_status_payload(
-                context,
-                'running',
-                f'{label} 명령을 실행 중입니다.',
+        message = f'{label} 명령을 실행 중입니다.'
+        if is_retry:
+            message = (
+                f'{label} 명령 재시도 중입니다. '
+                f'({self._goal_reject_retry_count}/{self._goal_reject_retry_limit})'
             )
-        )
+        self._write_status(self._build_status_payload(context, 'running', message))
         self._goal_send_future = self._navigate_client.send_goal_async(goal)
         self._goal_send_future.add_done_callback(self._handle_navigation_goal_response)
 
@@ -582,14 +627,18 @@ class RobotManualCommandExecutor(Node):
             return
 
         if not goal_handle.accepted:
+            if self._schedule_goal_reject_retry():
+                return
             self._finish_active_command(
                 'failed',
-                'NavigateToPose goal이 거부되었습니다.',
+                'NavigateToPose goal이 반복해서 거부되었습니다. 현재 로봇 위치 추정과 TF 상태를 확인하세요.',
                 error='goal_rejected',
             )
             return
 
         self._active_goal_handle = goal_handle
+        self._goal_reject_retry_count = 0
+        self._cancel_goal_retry_timer()
         self._goal_result_future = goal_handle.get_result_async()
         self._goal_result_future.add_done_callback(self._handle_navigation_result)
 
@@ -660,6 +709,8 @@ class RobotManualCommandExecutor(Node):
         if self._active_context is None:
             return
 
+        self._cancel_goal_retry_timer()
+        self._goal_reject_retry_count = 0
         payload = self._build_status_payload(
             self._active_context,
             status,
@@ -715,7 +766,57 @@ class RobotManualCommandExecutor(Node):
             yaw_value=pose.yaw,
         )
 
+    def _schedule_goal_reject_retry(self) -> bool:
+        context = self._active_context
+        if context is None or context.target_pose is None:
+            return False
+        if self._goal_reject_retry_sec <= 0.0:
+            return False
+        if not should_retry_goal_rejection(
+            self._goal_reject_retry_count,
+            self._goal_reject_retry_limit,
+        ):
+            return False
+
+        self._goal_reject_retry_count += 1
+        self._cancel_goal_retry_timer()
+        retry_message = (
+            'NavigateToPose goal이 일시적으로 거부되어 '
+            f'{self._goal_reject_retry_sec:.2f}s 후 재시도합니다. '
+            f'({self._goal_reject_retry_count}/{self._goal_reject_retry_limit})'
+        )
+        self.get_logger().warning(retry_message)
+        self._write_status(self._build_status_payload(context, 'running', retry_message))
+        self._goal_retry_timer = self.create_timer(
+            self._goal_reject_retry_sec,
+            self._retry_active_navigation_goal,
+        )
+        return True
+
+    def _retry_active_navigation_goal(self) -> None:
+        self._cancel_goal_retry_timer()
+        context = self._active_context
+        if context is None or context.target_pose is None:
+            return
+        self._dispatch_navigation_goal(
+            context,
+            target_pose=context.target_pose,
+            label=describe_manual_navigation_label(
+                context.command.command_type,
+                context.home_waypoint_id,
+            ),
+            is_retry=True,
+        )
+
+    def _cancel_goal_retry_timer(self) -> None:
+        if self._goal_retry_timer is None:
+            return
+        self._goal_retry_timer.cancel()
+        self.destroy_timer(self._goal_retry_timer)
+        self._goal_retry_timer = None
+
     def destroy_node(self) -> bool:
+        self._cancel_goal_retry_timer()
         self._navigate_client.destroy()
         return super().destroy_node()
 
