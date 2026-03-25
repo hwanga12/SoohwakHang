@@ -1,0 +1,48 @@
+{
+  "model_filename": "best.pt",
+  "sample_image": "samples/597124_20211019_2_1_a5_3_2_12_2_75.jpg",
+  "preferred_env": {
+    "model_path": "AGRIBOT_TOMATO_DISEASE_MODEL_PATH",
+    "model_device": "AGRIBOT_TOMATO_DISEASE_DEVICE"
+  },
+  "ignored_labels": [
+    "healthy",
+    "healthy_leaf",
+    "normal",
+    "normal_leaf"
+  ],
+  "canonical_label_aliases": {
+    "gray_mold": "tomato_gray_mold_disease",
+    "gray mold": "tomato_gray_mold_disease",
+    "tomato_gray_mold": "tomato_gray_mold_disease",
+    "response_gray_mold": "tomato_gray_mold_disease",
+    "powdery_mildew": "tomato_powdery_mildew_disease",
+    "powdery mildew": "tomato_powdery_mildew_disease",
+    "tomato_powdery_mildew": "tomato_powdery_mildew_disease",
+    "response_powdery_mildew": "tomato_powdery_mildew_disease",
+    "macro_npk_deficiency": "tomato_macro_npk_deficiency_disease",
+    "macro npk deficiency": "tomato_macro_npk_deficiency_disease",
+    "fruit_cracking": "tomato_fruit_cracking_disease",
+    "fruit cracking": "tomato_fruit_cracking_disease",
+    "fruit_crack": "tomato_fruit_cracking_disease",
+    "tomato_crack": "tomato_fruit_cracking_disease",
+    "calcium_deficiency": "tomato_calcium_deficiency_disease",
+    "calcium deficiency": "tomato_calcium_deficiency_disease",
+    "tomato_calcium_deficiency": "tomato_calcium_deficiency_disease",
+    "blossom_end_rot": "tomato_calcium_deficiency_disease"
+  },
+  "backend_rule_label_aliases": {
+    "tomato_gray_mold_disease": "tomato_gray_mold",
+    "tomato_powdery_mildew_disease": "tomato_powdery_mildew",
+    "tomato_macro_npk_deficiency_disease": "tomato_macro_npk_deficiency_disease",
+    "tomato_fruit_cracking_disease": "tomato_crack",
+    "tomato_calcium_deficiency_disease": "tomato_calcium_deficiency"
+  },
+  "display_names_ko": {
+    "tomato_gray_mold_disease": "토마토 잿빛곰팡이병",
+    "tomato_powdery_mildew_disease": "토마토 흰가루병",
+    "tomato_macro_npk_deficiency_disease": "토마토 다량원소 결핍",
+    "tomato_fruit_cracking_disease": "토마토 열과",
+    "tomato_calcium_deficiency_disease": "토마토 칼슘 결핍"
+  }
+}

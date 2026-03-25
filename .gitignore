@@ -72,6 +72,7 @@ docs/ai/portfolio_notes.md
 # ─── Local AI artifacts ───
 artifacts/models/**/*.pt
 artifacts/models/**/*.zip
+!artifacts/models/tomato_disease/v1/best.pt
 artifacts/runtime/**/*.jpg
 artifacts/runtime/**/*.jpeg
 artifacts/runtime/**/*.png
