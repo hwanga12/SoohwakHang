@@ -24,6 +24,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'runtime_snapshot_exporter = agribot_bringup.runtime_snapshot_exporter:main',
         ],
     },
 )

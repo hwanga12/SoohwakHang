@@ -21,6 +21,7 @@ from launch.actions import (
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
 
@@ -100,11 +101,23 @@ def generate_launch_description():
         actions=[navigation],
     )
 
+    runtime_snapshot_exporter = Node(
+        package='agribot_bringup',
+        executable='runtime_snapshot_exporter',
+        name='runtime_snapshot_exporter',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'map_id': 'farm_map',
+        }],
+    )
+
     return LaunchDescription([
         *env_vars,
         use_iot_arg,
         mqtt_force_log_only_arg,
         spawn_agribot,
+        runtime_snapshot_exporter,
         delayed_navigation,
         iot_status_pipeline,
         # TODO: Add perception launch
