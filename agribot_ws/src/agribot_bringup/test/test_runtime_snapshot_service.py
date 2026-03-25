@@ -1,7 +1,11 @@
 from agribot_bringup.runtime_snapshot_service import (
     build_pose_snapshot_payload,
+    build_manual_command_status_payload,
     build_semantic_layer_snapshot,
+    manual_command_path,
+    manual_command_status_path,
     read_map_metadata,
+    runtime_dir_from_env,
 )
 
 
@@ -49,3 +53,29 @@ def test_build_pose_snapshot_payload_preserves_expected_contract() -> None:
     assert payload['linear_speed_mps'] == 0.42
     assert payload['source_mode'] == 'tf_map'
     assert payload['timestamp'] > 0
+
+
+def test_manual_command_paths_and_status_payload_follow_runtime_contract() -> None:
+    runtime_dir = runtime_dir_from_env()
+
+    assert manual_command_path(runtime_dir).name == 'robot_manual_command.json'
+    assert manual_command_status_path(runtime_dir).name == 'robot_manual_command_status.json'
+
+    payload = build_manual_command_status_payload(
+        command_id='cmd-001',
+        command_type='return_home',
+        robot_id='AGR-02',
+        requested_by='frontend-operator',
+        status='running',
+        message='홈 복귀 명령을 실행 중입니다.',
+        target_pose={'x': 0.0, 'y': 0.0, 'yaw': 0.0, 'frame_id': 'map'},
+        home_waypoint_id='farm_01_home',
+        received_at='2026-03-25T00:00:00+00:00',
+        started_at='2026-03-25T00:00:01+00:00',
+    )
+
+    assert payload['command_id'] == 'cmd-001'
+    assert payload['status'] == 'running'
+    assert payload['target_pose']['frame_id'] == 'map'
+    assert payload['home_waypoint_id'] == 'farm_01_home'
+    assert payload['received_at'] == '2026-03-25T00:00:00+00:00'

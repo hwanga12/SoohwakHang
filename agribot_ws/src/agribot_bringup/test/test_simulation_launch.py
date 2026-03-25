@@ -40,4 +40,4 @@ def test_simulation_launch_declares_iot_arguments_and_includes_iot_pipeline() ->
 
     assert len(declare_args) == 2
     assert len(includes) == 2
-    assert len(nodes) == 1
+    assert len(nodes) == 2
