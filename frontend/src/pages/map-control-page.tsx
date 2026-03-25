@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
@@ -5,11 +6,20 @@ import { DevSurface } from '@/components/dev-surface'
 import { MetricCard } from '@/components/metric-card'
 import { MockupImage } from '@/components/mockup-image'
 import {
+  RobotFacilityMap,
+  summarizeSelectedAsset,
+} from '@/components/robot-facility-map'
+import {
   getRobotPageData,
   robotFallback,
   sendRobotControlAction,
   sendRobotZoneMove,
 } from '@/lib/api/agribot'
+import {
+  farmSemanticScene,
+  parsePoseLabel,
+  resolveSemanticTargetId,
+} from '@/lib/robot-map/farm-semantic-map'
 
 const controlActions = [
   { id: 'pause', title: '정지', icon: 'pause_circle', tone: 'soft' },
@@ -20,6 +30,8 @@ const controlActions = [
 
 export function MapControlPage() {
   const queryClient = useQueryClient()
+  const [mapZoom, setMapZoom] = useState(1)
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
   const robotQuery = useQuery({
     queryKey: ['page', 'robot'],
     queryFn: getRobotPageData,
@@ -40,6 +52,13 @@ export function MapControlPage() {
   })
   const page = robotQuery.data
   const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
+  const robotPose = parsePoseLabel(page.poseLabel) ?? { x: 2, y: -5.9 }
+  const targetAssetId = resolveSemanticTargetId(page.targetLabel)
+  const selectedAsset = useMemo(
+    () => farmSemanticScene.assets.find((asset) => asset.id === selectedAssetId) ?? null,
+    [selectedAssetId],
+  )
+  const selectedSummary = summarizeSelectedAsset(selectedAsset)
   const actionPending = controlMutation.isPending || zoneMoveMutation.isPending
   const feedbackMessage = zoneMoveMutation.isSuccess
     ? zoneMoveMutation.data
@@ -47,9 +66,20 @@ export function MapControlPage() {
       ? zoneMoveMutation.error.message
       : controlMutation.isSuccess
         ? controlMutation.data
-        : controlMutation.isError
-          ? controlMutation.error.message
-          : null
+          : controlMutation.isError
+            ? controlMutation.error.message
+            : null
+
+  useEffect(() => {
+    if (!selectedAssetId && targetAssetId) {
+      setSelectedAssetId(targetAssetId)
+      return
+    }
+
+    if (!selectedAssetId && farmSemanticScene.assets[0]) {
+      setSelectedAssetId(farmSemanticScene.assets[0].id)
+    }
+  }, [selectedAssetId, targetAssetId])
 
   return (
     <div className="screen">
@@ -98,34 +128,44 @@ export function MapControlPage() {
             </div>
           </div>
 
-          <svg
-            aria-hidden="true"
-            className="map-overlay"
-            preserveAspectRatio="xMidYMid slice"
-            viewBox="0 0 800 600"
-          >
-            <path d="M110 110 L300 110 L300 400 L610 400 L610 220" />
-            <circle cx="110" cy="110" r="7" />
-            <circle cx="300" cy="110" r="7" />
-            <circle cx="300" cy="400" r="7" />
-            <circle className="map-pulse" cx="610" cy="400" r="12" />
-            <circle cx="610" cy="400" r="8" />
-          </svg>
-
-          <div className="robot-marker">
-            <div className="robot-marker-box">
-              <AppIcon filled name="navigation" />
-            </div>
-          </div>
+          <RobotFacilityMap
+            onSelectAsset={setSelectedAssetId}
+            pose={robotPose}
+            scene={farmSemanticScene}
+            selectedAssetId={selectedAssetId}
+            targetAssetId={targetAssetId}
+            zoom={mapZoom}
+          />
 
           <div className="map-controls">
-            <button className="icon-button" type="button">
+            <button
+              className="icon-button"
+              onClick={() => {
+                setMapZoom((current) => Math.min(current + 0.1, 1.8))
+              }}
+              type="button"
+            >
               <AppIcon name="add" />
             </button>
-            <button className="icon-button" type="button">
+            <button
+              className="icon-button"
+              onClick={() => {
+                setMapZoom((current) => Math.max(current - 0.1, 0.8))
+              }}
+              type="button"
+            >
               <AppIcon name="remove" />
             </button>
-            <button className="icon-button icon-button--active" type="button">
+            <button
+              className="icon-button icon-button--active"
+              onClick={() => {
+                setMapZoom(1)
+                if (targetAssetId) {
+                  setSelectedAssetId(targetAssetId)
+                }
+              }}
+              type="button"
+            >
               <AppIcon filled name="my_location" />
             </button>
           </div>
@@ -170,6 +210,51 @@ export function MapControlPage() {
               <article className="detail-card">
                 <span className="detail-label">주행 상태</span>
                 <strong className="detail-value">{page.speed} · 배터리 {page.battery}</strong>
+              </article>
+            </div>
+          </DevSurface>
+
+          <DevSurface
+            as="article"
+            className="panel"
+            contract={{
+              title: '지도 자산 레이어',
+              queries: [
+                createGetSignal('로봇 상태', querySource('/robot/status'), '/robot/status'),
+                createGetSignal('구역 목록', querySource('/zones'), '/zones'),
+              ],
+            }}
+          >
+            <div className="section-head">
+              <div>
+                <span className="section-eyebrow">시설 레이어</span>
+                <h3 className="section-title">{selectedSummary.title}</h3>
+                <p className="section-description">{selectedSummary.subtitle}</p>
+              </div>
+            </div>
+            <div className="chip-row">
+              {selectedSummary.chips.map((chip) => (
+                <span className="chip chip--active" key={chip}>
+                  {chip}
+                </span>
+              ))}
+            </div>
+            <div className="detail-grid">
+              <article className="detail-card">
+                <span className="detail-label">식물 레이어</span>
+                <strong className="detail-value">24주 배치</strong>
+              </article>
+              <article className="detail-card">
+                <span className="detail-label">급수 포인트</span>
+                <strong className="detail-value">4개 헤드</strong>
+              </article>
+              <article className="detail-card">
+                <span className="detail-label">현재 타깃</span>
+                <strong className="detail-value">{targetAssetId ?? '선택 대기'}</strong>
+              </article>
+              <article className="detail-card">
+                <span className="detail-label">렌더링 기준</span>
+                <strong className="detail-value">farm_world semantic fallback</strong>
               </article>
             </div>
           </DevSurface>
