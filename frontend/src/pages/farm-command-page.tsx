@@ -11,11 +11,13 @@ import {
 import {
   approveWateringRecommendation,
   dashboardFallback,
+  emptyPlantObservationFeed,
   environmentFallback,
   getDashboardPageData,
   getEnvironmentPageData,
   getHarvestPageData,
   getLatestRobotCommandStatus,
+  getPlantObservations,
   getMissionStatus,
   getPlantsPageData,
   getRobotPageData,
@@ -69,6 +71,10 @@ type PlantModalDetail = {
   recommendedAction: string
   health: number
   status: string
+  lastObserved: string
+  latestLabel: string
+  latestDisplayLabel: string
+  latestImageUrl: string
 }
 
 type HarvestMissionInput = {
@@ -861,6 +867,10 @@ export function FarmCommandPage() {
         recommendedAction: harvestPlant.recommendedAction,
         health: harvestPlant.health,
         status: harvestPlant.status,
+        lastObserved: harvestPlant.lastObserved,
+        latestLabel: harvestPlant.latestLabel,
+        latestDisplayLabel: harvestPlant.latestDisplayLabel,
+        latestImageUrl: harvestPlant.latestImageUrl,
       }
     }
 
@@ -876,6 +886,10 @@ export function FarmCommandPage() {
         recommendedAction: plant.recommendedAction,
         health: plant.health,
         status: plant.status,
+        lastObserved: plant.lastObserved,
+        latestLabel: plant.latestLabel,
+        latestDisplayLabel: plant.latestDisplayLabel,
+        latestImageUrl: plant.latestImageUrl,
       }
     }
 
@@ -888,8 +902,20 @@ export function FarmCommandPage() {
       recommendedAction: asset.status === 'target' ? '수확 요청 가능' : '개별 진단 권장',
       health: asset.status === 'attention' ? 62 : asset.status === 'target' ? 91 : 84,
       status: asset.status === 'attention' ? '재확인 필요' : asset.status === 'target' ? '수확 후보' : '관찰 중',
+      lastObserved: '',
+      latestLabel: '',
+      latestDisplayLabel: '',
+      latestImageUrl: '',
     }
   }, [harvestPlant, mapScene.assets, plantLookup, selectedAsset, selectedPlantId])
+  const selectedPlantObservationQuery = useQuery({
+    queryKey: ['plants', 'observations', selectedPlantDetail?.id ?? selectedPlantId],
+    queryFn: async () => getPlantObservations(selectedPlantDetail?.id ?? selectedPlantId ?? ''),
+    enabled: Boolean(selectedPlantDetail?.id ?? selectedPlantId),
+    refetchInterval: 20_000,
+  })
+  const selectedPlantObservationFeed = selectedPlantObservationQuery.data ?? emptyPlantObservationFeed
+  const selectedPlantObservation = selectedPlantObservationFeed.items[0] ?? null
 
   useEffect(() => {
     if (selectedAssetId && mapScene.assets.some((asset) => asset.id === selectedAssetId)) {
@@ -1094,6 +1120,18 @@ export function FarmCommandPage() {
     ?? null
   const sprinklerResultPercent = lastSprinklerAction || environment.history.length > 0 ? 100 : 0
   const selectedTag = selectionTag(selectedAsset?.kind, selectedAsset?.status)
+  const selectedPlantPreviewImage =
+    selectedPlantObservation?.imageUrl
+    || selectedPlantDetail?.latestImageUrl
+    || ''
+  const selectedAssetPreviewImage =
+    selectedAsset?.kind === 'plant'
+      ? selectedPlantPreviewImage || previewImageForAsset('plant', selectedAsset.status)
+      : previewImageForAsset(selectedAsset?.kind, selectedAsset?.status)
+  const selectedAssetPreviewLabel =
+    selectedAsset?.kind === 'plant'
+      ? selectedPlantObservation?.displayLabel || selectedPlantDetail?.latestDisplayLabel || selectedTag.label
+      : selectedTag.label
   const currentActivity = currentMissionActivity ?? activityState ?? robot.missionState
   const selectedPlantTargetPose = useMemo(() => {
     if (!selectedPlantDetail) {
@@ -1139,6 +1177,20 @@ export function FarmCommandPage() {
   const selectedStatusItems = selectedAsset?.kind === 'plant' && selectedPlantDetail
     ? [
         { label: '상태', value: selectedPlantDetail.status },
+        {
+          label: '최근 진단',
+          value:
+            selectedPlantObservation?.displayLabel
+            || selectedPlantDetail.latestDisplayLabel
+            || '진단 결과 대기',
+        },
+        {
+          label: '진단 시각',
+          value:
+            selectedPlantObservation?.reviewedAt
+            || selectedPlantDetail.lastObserved
+            || '기록 없음',
+        },
         { label: '권장 조치', value: selectedPlantDetail.recommendedAction },
         { label: '건강도', value: `${selectedPlantDetail.health}%` },
         {
@@ -1391,6 +1443,8 @@ export function FarmCommandPage() {
         diagnosisMissionResult?.detail
         ?? (lastPatrolAction?.mode === 'diagnosis'
           ? lastPatrolAction.detail
+          : selectedPlantObservation
+            ? `${selectedPlantObservation.displayLabel} · ${selectedPlantObservation.detail}`
           : lastPlantAction?.label === '진단 완료'
             ? lastPlantAction.detail
             : `흰가루병 개체 ${mildewPercent}% 발견했습니다.`),
@@ -1473,7 +1527,8 @@ export function FarmCommandPage() {
                 alt="선택 객체 이미지"
                 className="camera-frame-media"
                 height="100%"
-                src={previewImageForAsset(selectedAsset?.kind, selectedAsset?.status)}
+                label={selectedAssetPreviewLabel}
+                src={selectedAssetPreviewImage}
               />
             </div>
           </div>
@@ -1744,7 +1799,8 @@ export function FarmCommandPage() {
                 alt={`${selectedPlantDetail.name} 확인 이미지`}
                 className="farm-plant-modal__image"
                 height="100%"
-                src={previewImageForAsset('plant', selectedPlantAsset.status)}
+                label={selectedPlantObservation?.displayLabel || selectedPlantDetail.latestDisplayLabel || '발표용 이미지'}
+                src={selectedPlantPreviewImage || previewImageForAsset('plant', selectedPlantAsset.status)}
               />
             </div>
 
@@ -1757,12 +1813,17 @@ export function FarmCommandPage() {
                 <span className={`table-tag table-tag--${selectedTag.tone}`}>{selectedTag.label}</span>
               </div>
 
-              <p className="farm-helper-copy">{selectedPlantDetail.status} · {selectedPlantDetail.recommendedAction}</p>
+              <p className="farm-helper-copy">
+                {selectedPlantObservation
+                  ? `상태가 좋지 않은 잎을 진단한 결과 ${selectedPlantObservation.displayLabel}로 기록되었습니다. ${selectedPlantDetail.recommendedAction}`
+                  : `${selectedPlantDetail.status} · ${selectedPlantDetail.recommendedAction}`}
+              </p>
 
               <div className="chip-row">
                 <span className="chip">{selectedPlantDetail.zoneLabel}</span>
                 <span className="chip">{selectedPlantDetail.positionLabel}</span>
                 <span className="chip">건강도 {selectedPlantDetail.health}%</span>
+                {selectedPlantObservation?.reviewedAt ? <span className="chip">{selectedPlantObservation.reviewedAt}</span> : null}
               </div>
               {missionControlBlockMessage ? <p className="muted">{missionControlBlockMessage}</p> : null}
               {harvestMissionFeedback ? (
@@ -1775,6 +1836,24 @@ export function FarmCommandPage() {
                   <p className="muted">{harvestMissionFeedback.title} · {harvestMissionFeedback.detail}</p>
                 </>
               ) : null}
+
+              <div className="farm-plant-modal__feedback">
+                <div className="farm-plant-modal__feedback-head">
+                  <strong>최근 진단 결과</strong>
+                  <span className={`table-tag ${selectedPlantObservation ? 'table-tag--danger' : 'table-tag--warning'}`}>
+                    {selectedPlantObservation ? 'live' : '대기'}
+                  </span>
+                </div>
+                <p className="muted">
+                  {selectedPlantObservation
+                    ? `${selectedPlantObservation.displayLabel} · ${selectedPlantObservation.reviewedAt || '시각 기록 대기'}`
+                    : '상태가 좋지 않은 잎을 진단하면 사진과 라벨이 여기 표시됩니다.'}
+                </p>
+                <p className="muted">
+                  {selectedPlantObservation?.detail
+                    || 'backend에서 실제 진단 결과가 들어오면 mock 이미지 대신 실제 사진이 우선 표시됩니다.'}
+                </p>
+              </div>
 
               <div className="farm-plant-modal__actions">
                 <button
