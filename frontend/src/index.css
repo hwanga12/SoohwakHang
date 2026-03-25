@@ -1858,6 +1858,25 @@ button {
   gap: 6px;
 }
 
+.command-transition-note {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 2px solid rgba(var(--warning-rgb), 0.45);
+  border-radius: var(--radius-lg);
+  background: var(--warning-soft);
+}
+
+.command-transition-note strong,
+.command-transition-note p {
+  margin: 0;
+}
+
+.command-transition-note p {
+  color: color-mix(in srgb, var(--ink) 78%, white);
+}
+
 .detail-value {
   margin: 0;
   font-size: 1rem;

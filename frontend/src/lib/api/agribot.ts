@@ -100,6 +100,7 @@ export type RobotCommandStatus = {
   commandId: string | null
   requestedCommandType: string
   commandType: string
+  preemptCurrentNavigation: boolean
   status: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
   message: string
   updatedAt: string
@@ -111,6 +112,7 @@ export type RobotCommandDispatch = {
   message: string
   requestedCommandType: string
   commandType: string
+  preemptCurrentNavigation: boolean
   targetPose: RobotTargetPose | null
   targetZoneId: string | null
 }
@@ -525,6 +527,7 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
     commandId: readString(record.command_id) || null,
     requestedCommandType: readString(record.requested_command_type),
     commandType: readString(record.command_type),
+    preemptCurrentNavigation: readBoolean(record.preempt_current_navigation, false),
     status: normalizedStatus,
     message: readString(record.message) || readString(record.note) || '명령 상태 정보가 준비되지 않았습니다.',
     updatedAt: readString(record.updated_at),
@@ -616,6 +619,7 @@ function parseCommandDispatch(payload: unknown, fallbackMessage: string): RobotC
       || fallbackMessage,
     requestedCommandType: readString(record.requested_command_type),
     commandType: readString(record.command_type),
+    preemptCurrentNavigation: readBoolean(record.preempt_current_navigation, false),
     targetPose: record.target_pose
       ? readRobotTargetPose(record.target_pose, robotFallbackPose)
       : null,
@@ -752,6 +756,7 @@ const robotFallbackCommandStatus: RobotCommandStatus = {
   commandId: null,
   requestedCommandType: '',
   commandType: '',
+  preemptCurrentNavigation: false,
   status: 'idle',
   message: '이동 명령 상태를 아직 받지 못했습니다.',
   updatedAt: '',
