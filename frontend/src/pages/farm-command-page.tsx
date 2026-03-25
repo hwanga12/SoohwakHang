@@ -15,6 +15,7 @@ import {
   getDashboardPageData,
   getEnvironmentPageData,
   getHarvestPageData,
+  getLatestRobotCommandStatus,
   getPlantsPageData,
   getRobotPageData,
   harvestFallback,
@@ -22,12 +23,16 @@ import {
   requestHarvestMission,
   robotFallback,
   sendRobotControlAction,
+  sendRobotNavigateCommand,
   sendRobotZoneMove,
   startFieldPatrolMission,
   triggerNutrientInjection,
+  type RobotCommandStatus,
+  type RobotTargetPose,
 } from '@/lib/api/agribot'
 import {
   farmSemanticScene,
+  parsePoseLabel,
   resolveSemanticTargetId,
   type SemanticAssetStatus,
   type SemanticScene,
@@ -61,6 +66,23 @@ type PlantModalDetail = {
   recommendedAction: string
   health: number
   status: string
+}
+
+type DiagnoseCommandTracker = {
+  commandId: string
+  plantId: string
+  plantName: string
+  baselineToken: string
+  requestedAt: number
+}
+
+type DiagnoseUiState = {
+  title: string
+  detail: string
+  badgeLabel: string
+  badgeTone: 'table-tag--healthy' | 'table-tag--warning' | 'table-tag--danger'
+  buttonLabel: string
+  buttonDisabled: boolean
 }
 
 function plantNeedsAttention(recommendedAction: string, status: string) {
@@ -113,6 +135,188 @@ function selectionTag(
   } as const
 }
 
+function latestCommandToken(status: RobotCommandStatus) {
+  return `${status.commandId ?? 'none'}:${status.status}:${status.updatedAt}`
+}
+
+function buildPlantTargetPose(
+  plantId: string,
+  preferredScene: SemanticScene,
+  fallbackScene: SemanticScene,
+  fallbackPositionLabel: string,
+): RobotTargetPose | null {
+  const targetAsset =
+    preferredScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
+    ?? fallbackScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
+
+  if (targetAsset) {
+    return {
+      x: targetAsset.position.x,
+      y: targetAsset.position.y,
+      z: 0,
+      yaw: 0,
+      frameId: 'map',
+    }
+  }
+
+  const parsedPose = parsePoseLabel(fallbackPositionLabel)
+  if (!parsedPose) {
+    return null
+  }
+
+  return {
+    x: parsedPose.x,
+    y: parsedPose.y,
+    z: 0,
+    yaw: 0,
+    frameId: 'map',
+  }
+}
+
+function buildDiagnoseBlockedMessage(status: RobotCommandStatus) {
+  if (status.controlState?.mode === 'emergency_stop') {
+    return '비상 정지 상태에서는 새 진단 이동 명령을 보낼 수 없습니다.'
+  }
+
+  if (status.controlState?.mode === 'paused') {
+    return '일시정지 상태에서는 재개 전까지 새 진단 이동 명령을 보낼 수 없습니다.'
+  }
+
+  return null
+}
+
+function buildDiagnoseUiState(
+  latestCommandStatus: RobotCommandStatus,
+  activeDiagnoseCommand: DiagnoseCommandTracker | null,
+  currentPlantId: string | null,
+  targetPose: RobotTargetPose | null,
+  mutationPending: boolean,
+): DiagnoseUiState {
+  if (mutationPending) {
+    return {
+      title: '진단 이동 요청 전송 중',
+      detail: 'backend에 `navigate_to_pose` 요청을 보내는 중입니다.',
+      badgeLabel: '전송 중',
+      badgeTone: 'table-tag--warning',
+      buttonLabel: '진단 요청 전송 중...',
+      buttonDisabled: true,
+    }
+  }
+
+  if (targetPose === null) {
+    return {
+      title: '좌표 정보 필요',
+      detail: '선택한 식물의 live semantic layer 좌표를 찾지 못했습니다. 잠시 후 다시 시도하세요.',
+      badgeLabel: '좌표 없음',
+      badgeTone: 'table-tag--danger',
+      buttonLabel: '진단하기',
+      buttonDisabled: true,
+    }
+  }
+
+  const blockedMessage = buildDiagnoseBlockedMessage(latestCommandStatus)
+  const trackingCurrentPlant =
+    activeDiagnoseCommand !== null && activeDiagnoseCommand.plantId === currentPlantId
+
+  if (trackingCurrentPlant) {
+    const commandObserved = latestCommandStatus.commandId === activeDiagnoseCommand.commandId
+
+    if (!commandObserved) {
+      const pollingDelayed = Date.now() - activeDiagnoseCommand.requestedAt >= 4_000
+      const commandStatusShifted =
+        latestCommandToken(latestCommandStatus) !== activeDiagnoseCommand.baselineToken
+      return {
+        title: pollingDelayed ? 'backend 상태 반영 대기' : '진단 이동 명령 접수',
+        detail: pollingDelayed
+          ? '명령은 접수됐지만 `/robot/commands/latest` polling 결과가 아직 바뀌지 않았습니다. 실제 상태가 확인될 때까지 성공으로 표시하지 않습니다.'
+          : commandStatusShifted
+            ? '최신 상태 파일은 갱신됐지만 방금 보낸 `command_id`가 아직 authoritative 값으로 확인되지는 않았습니다.'
+            : '명령은 접수됐고 executor가 최신 상태 파일에 반영하는 중입니다.',
+        badgeLabel: pollingDelayed ? '반영 대기' : '접수됨',
+        badgeTone: 'table-tag--warning',
+        buttonLabel: '진단 요청 확인 중...',
+        buttonDisabled: true,
+      }
+    }
+
+    switch (latestCommandStatus.status) {
+      case 'pending':
+        return {
+          title: '진단 이동 준비 중',
+          detail: latestCommandStatus.message || 'executor가 목표 좌표 이동을 준비 중입니다.',
+          badgeLabel: 'pending',
+          badgeTone: 'table-tag--warning',
+          buttonLabel: '진단 요청 확인 중...',
+          buttonDisabled: true,
+        }
+      case 'running':
+        return {
+          title: '진단 위치로 이동 중',
+          detail: latestCommandStatus.message || '로봇이 선택한 식물의 진단 위치로 이동 중입니다.',
+          badgeLabel: 'running',
+          badgeTone: 'table-tag--warning',
+          buttonLabel: '진단 위치로 이동 중...',
+          buttonDisabled: true,
+        }
+      case 'succeeded':
+        return {
+          title: '진단 위치 도착 완료',
+          detail: latestCommandStatus.message || '선택한 식물 진단 위치까지 이동을 완료했습니다.',
+          badgeLabel: 'succeeded',
+          badgeTone: 'table-tag--healthy',
+          buttonLabel: '다시 진단하기',
+          buttonDisabled: blockedMessage !== null,
+        }
+      case 'failed':
+        return {
+          title: '진단 이동 실패',
+          detail: latestCommandStatus.message || 'backend 또는 executor가 진단 이동 실패를 기록했습니다.',
+          badgeLabel: 'failed',
+          badgeTone: 'table-tag--danger',
+          buttonLabel: '다시 진단하기',
+          buttonDisabled: blockedMessage !== null,
+        }
+      case 'canceled':
+        return {
+          title: '진단 이동 취소됨',
+          detail: latestCommandStatus.message || '진단 이동 명령이 취소되었거나 중단되었습니다.',
+          badgeLabel: 'canceled',
+          badgeTone: 'table-tag--warning',
+          buttonLabel: '다시 진단하기',
+          buttonDisabled: blockedMessage !== null,
+        }
+      default:
+        break
+    }
+  }
+
+  if (blockedMessage) {
+    return {
+      title: '새 진단 이동 차단됨',
+      detail: blockedMessage,
+      badgeLabel:
+        latestCommandStatus.controlState?.mode === 'emergency_stop'
+          ? '비상 정지'
+          : '일시정지',
+      badgeTone:
+        latestCommandStatus.controlState?.mode === 'emergency_stop'
+          ? 'table-tag--danger'
+          : 'table-tag--warning',
+      buttonLabel: '진단하기',
+      buttonDisabled: true,
+    }
+  }
+
+  return {
+    title: '진단 이동 준비',
+    detail: '버튼을 누르면 선택한 식물 좌표로 `navigate_to_pose`를 보내고 `/robot/commands/latest` 상태를 추적합니다.',
+    badgeLabel: '대기',
+    badgeTone: 'table-tag--healthy',
+    buttonLabel: '진단하기',
+    buttonDisabled: false,
+  }
+}
+
 export function FarmCommandPage() {
   const queryClient = useQueryClient()
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
@@ -122,6 +326,8 @@ export function FarmCommandPage() {
   const [uiMessage, setUiMessage] = useState<string | null>(null)
   const [actionRecords, setActionRecords] = useState<Record<string, AssetActionRecord>>({})
   const [lastPatrolAction, setLastPatrolAction] = useState<PatrolActionRecord | null>(null)
+  const [activeDiagnoseCommand, setActiveDiagnoseCommand] = useState<DiagnoseCommandTracker | null>(null)
+  const [observedDiagnoseState, setObservedDiagnoseState] = useState<string | null>(null)
 
   const dashboardQuery = useQuery({
     queryKey: ['page', 'dashboard'],
@@ -134,6 +340,12 @@ export function FarmCommandPage() {
     queryFn: getRobotPageData,
     initialData: robotFallback,
     refetchInterval: 1_000,
+  })
+  const latestCommandStatusQuery = useQuery({
+    queryKey: ['robot', 'command-status'],
+    queryFn: getLatestRobotCommandStatus,
+    initialData: robotFallback.latestCommandStatus,
+    refetchInterval: 2_000,
   })
   const plantsQuery = useQuery({
     queryKey: ['page', 'plants'],
@@ -165,6 +377,44 @@ export function FarmCommandPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
       await queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] })
+    },
+  })
+  const diagnoseMutation = useMutation({
+    mutationFn: sendRobotNavigateCommand,
+    onSuccess: async (response, targetPose) => {
+      const targetPlant =
+        selectedAsset?.kind === 'plant' && selectedPlantDetail
+          ? selectedPlantDetail
+          : attentionPlant
+
+      if (targetPlant) {
+        setActiveDiagnoseCommand({
+          commandId: response.commandId,
+          plantId: targetPlant.id,
+          plantName: targetPlant.name,
+          baselineToken: latestCommandToken(latestCommandStatus),
+          requestedAt: Date.now(),
+        })
+        setObservedDiagnoseState(null)
+        setActivityState('진단 이동 준비중')
+        setSelectedPlantId(targetPlant.id)
+        setSelectedAssetId(targetPlant.id)
+        setUiMessage(
+          `${targetPlant.name} 진단 이동 요청을 접수했습니다. /robot/commands/latest 가 pending/running으로 바뀌는지 확인합니다.`,
+        )
+      } else {
+        setUiMessage(
+          `선택 좌표 x ${targetPose.x.toFixed(1)} / y ${targetPose.y.toFixed(1)} 진단 이동 요청을 접수했습니다.`,
+        )
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
+        queryClient.invalidateQueries({ queryKey: ['robot', 'command-status'] }),
+      ])
+    },
+    onError: (error: Error) => {
+      setUiMessage(error.message)
     },
   })
   const harvestMutation = useMutation({
@@ -199,6 +449,7 @@ export function FarmCommandPage() {
 
   const dashboard = dashboardQuery.data
   const robot = robotQuery.data
+  const latestCommandStatus = latestCommandStatusQuery.data ?? robot.latestCommandStatus
   const plants = plantsQuery.data
   const environment = environmentQuery.data
   const harvest = harvestQuery.data
@@ -238,10 +489,16 @@ export function FarmCommandPage() {
     plants.plants.find((plant) => plant.status.includes('수확'))
     ?? plants.plants[0]
   const patrolZoneIds = robot.zonePresets.map((preset) => preset.id).filter(Boolean)
+  const liveScene = useMemo<SemanticScene>(() => ({
+    bounds: robot.scene.bounds,
+    rowGuides: robot.scene.rowGuides.length > 0 ? robot.scene.rowGuides : farmSemanticScene.rowGuides,
+    laneGuides: robot.scene.laneGuides.length > 0 ? robot.scene.laneGuides : farmSemanticScene.laneGuides,
+    assets: robot.scene.assets.length > 0 ? robot.scene.assets : farmSemanticScene.assets,
+  }), [robot.scene.assets, robot.scene.bounds, robot.scene.laneGuides, robot.scene.rowGuides])
 
   const mapScene = useMemo<SemanticScene>(() => ({
-    ...farmSemanticScene,
-    assets: farmSemanticScene.assets.map((asset) => {
+    ...liveScene,
+    assets: liveScene.assets.map((asset) => {
       const actionRecord = actionRecords[asset.id]
 
       if (asset.kind === 'plant') {
@@ -278,7 +535,7 @@ export function FarmCommandPage() {
         status,
       }
     }),
-  }), [actionRecords, plantLookup])
+  }), [actionRecords, liveScene, plantLookup])
 
   const selectedAsset = useMemo(
     () => mapScene.assets.find((asset) => asset.id === selectedAssetId) ?? null,
@@ -398,6 +655,25 @@ export function FarmCommandPage() {
   const sprinklerResultPercent = lastSprinklerAction || environment.history.length > 0 ? 100 : 0
   const selectedTag = selectionTag(selectedAsset?.kind, selectedAsset?.status)
   const currentActivity = activityState ?? robot.missionState
+  const selectedPlantTargetPose = useMemo(() => {
+    if (!selectedPlantDetail) {
+      return null
+    }
+
+    return buildPlantTargetPose(
+      selectedPlantDetail.id,
+      liveScene,
+      mapScene,
+      selectedPlantDetail.positionLabel,
+    )
+  }, [liveScene, mapScene, selectedPlantDetail])
+  const diagnoseUiState = buildDiagnoseUiState(
+    latestCommandStatus,
+    activeDiagnoseCommand,
+    selectedPlantDetail?.id ?? null,
+    selectedPlantTargetPose,
+    diagnoseMutation.isPending,
+  )
 
   const feedbackMessage = uiMessage
     ?? (
@@ -527,16 +803,29 @@ export function FarmCommandPage() {
       return
     }
 
-    setActivityState('진단중')
+    const targetPose = buildPlantTargetPose(
+      targetPlant.id,
+      liveScene,
+      mapScene,
+      targetPlant.positionLabel,
+    )
+
+    if (targetPose === null) {
+      setUiMessage(`${targetPlant.name} live 좌표를 찾지 못해 진단 이동을 시작할 수 없습니다.`)
+      return
+    }
+
+    const blockedMessage = buildDiagnoseBlockedMessage(latestCommandStatus)
+    if (blockedMessage) {
+      setUiMessage(blockedMessage)
+      return
+    }
+
+    setActivityState('진단 이동 준비중')
+    setUiMessage(null)
     setSelectedPlantId(targetPlant.id)
     setSelectedAssetId(targetPlant.id)
-    rememberAction(
-      targetPlant.id,
-      '진단 완료',
-      `${targetPlant.name} 조치가 필요해 보여 진단 경로를 등록했습니다.`,
-      'accent',
-    )
-    setUiMessage(`${targetPlant.name} 진단 경로를 등록했습니다.`)
+    diagnoseMutation.mutate(targetPose)
   }
 
   const handleHarvest = () => {
@@ -568,6 +857,66 @@ export function FarmCommandPage() {
       },
     )
   }
+
+  useEffect(() => {
+    if (activeDiagnoseCommand === null) {
+      return
+    }
+
+    const commandObserved = latestCommandStatus.commandId === activeDiagnoseCommand.commandId
+    if (!commandObserved) {
+      return
+    }
+
+    const stateToken = `${latestCommandStatus.commandId}:${latestCommandStatus.status}:${latestCommandStatus.updatedAt}`
+    if (observedDiagnoseState === stateToken) {
+      return
+    }
+
+    setObservedDiagnoseState(stateToken)
+
+    if (latestCommandStatus.status === 'pending') {
+      setActivityState('진단 이동 준비중')
+      return
+    }
+
+    if (latestCommandStatus.status === 'running') {
+      setActivityState('진단 이동중')
+      return
+    }
+
+    if (latestCommandStatus.status === 'succeeded') {
+      setActivityState('진단 위치 도착')
+      rememberAction(
+        activeDiagnoseCommand.plantId,
+        '진단 완료',
+        `${activeDiagnoseCommand.plantName} 진단 위치까지 실제 이동을 완료했습니다.`,
+        'accent',
+      )
+      setUiMessage(
+        latestCommandStatus.message
+        || `${activeDiagnoseCommand.plantName} 진단 위치까지 이동을 완료했습니다.`,
+      )
+      return
+    }
+
+    if (latestCommandStatus.status === 'failed') {
+      setActivityState(null)
+      setUiMessage(
+        latestCommandStatus.message
+        || `${activeDiagnoseCommand.plantName} 진단 위치 이동이 실패했습니다.`,
+      )
+      return
+    }
+
+    if (latestCommandStatus.status === 'canceled') {
+      setActivityState(null)
+      setUiMessage(
+        latestCommandStatus.message
+        || `${activeDiagnoseCommand.plantName} 진단 위치 이동이 취소되었습니다.`,
+      )
+    }
+  }, [activeDiagnoseCommand, latestCommandStatus, observedDiagnoseState])
 
   const handleWatering = () => {
     if (selectedAsset?.kind !== 'sprinkler') {
@@ -964,13 +1313,13 @@ export function FarmCommandPage() {
               <div className="farm-plant-modal__actions">
                 <button
                   className="action-button"
+                  disabled={diagnoseUiState.buttonDisabled}
                   onClick={() => {
                     handleDiagnose()
-                    closeAssetModal()
                   }}
                   type="button"
                 >
-                  진단하기
+                  {diagnoseUiState.buttonLabel}
                 </button>
                 <button
                   className="action-button action-button--warning"
@@ -983,6 +1332,15 @@ export function FarmCommandPage() {
                 >
                   {harvestMutation.isPending ? '수확 중...' : '수확하기'}
                 </button>
+              </div>
+              <div className="farm-plant-modal__feedback">
+                <div className="farm-plant-modal__feedback-head">
+                  <strong>{diagnoseUiState.title}</strong>
+                  <span className={`table-tag ${diagnoseUiState.badgeTone}`}>
+                    {diagnoseUiState.badgeLabel}
+                  </span>
+                </div>
+                <p className="muted">{diagnoseUiState.detail}</p>
               </div>
             </div>
           </div>
