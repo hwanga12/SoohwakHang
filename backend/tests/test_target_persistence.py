@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:
 
 from services.actuation.schemas import Point3D
 from services.actuation.schemas import ActuationDispatchResult
-from services.perception.inference_service import MainInferenceService
+from services.perception.inference_service import Detection, MainInferenceService
 from services.perception.schemas import ThinInferenceConfirmRequest
 
 
@@ -59,9 +59,9 @@ def test_confirm_detection_uses_test_override_and_persists(monkeypatch, tmp_path
         plant_id='farm01_plant_10',
         target_position=Point3D(x=-6.0, y=-6.0, z=0.75),
         requested_by='pytest',
-        preliminary_label='tomato_gray_mold',
+        preliminary_label='gray_mold',
         preliminary_confidence=0.2,
-        test_override_final_label='tomato_powdery_mildew',
+        test_override_final_label='powdery_mildew',
         test_override_final_confidence=0.97,
         image_base64=base64.b64encode(b'fake-image-bytes').decode('ascii'),
         image_format='jpg',
@@ -69,9 +69,42 @@ def test_confirm_detection_uses_test_override_and_persists(monkeypatch, tmp_path
 
     response = service.confirm_detection(request)
 
-    assert response.final_label == 'tomato_powdery_mildew'
+    assert response.preliminary_label == 'tomato_gray_mold_disease'
+    assert response.final_label == 'tomato_powdery_mildew_disease'
     assert response.decision_source == 'test_override'
     assert len(dummy_persistence.calls) == 1
     persisted = dummy_persistence.calls[0]
-    assert persisted['final_label'] == 'tomato_powdery_mildew'
+    assert persisted['final_label'] == 'tomato_powdery_mildew_disease'
     assert persisted['request'].plant_id == 'farm01_plant_10'
+
+
+def test_confirm_detection_normalizes_backend_model_output(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv('AGRIBOT_BACKEND_RUNTIME_DIR', str(tmp_path))
+    service = MainInferenceService()
+    service._infer = lambda image_path: [  # type: ignore[method-assign]
+        Detection(
+            label='gray_mold',
+            confidence=0.83,
+            bbox=(1.0, 2.0, 3.0, 4.0),
+        )
+    ]
+    dummy_persistence = _DummyPersistenceService()
+    service._persistence_service = dummy_persistence
+
+    request = ThinInferenceConfirmRequest(
+        observation_id='normalize-test',
+        robot_id='agribot',
+        zone_id='farm_01',
+        plant_id='farm01_plant_06',
+        requested_by='pytest',
+        preliminary_label='gray_mold',
+        preliminary_confidence=0.8,
+        image_base64=base64.b64encode(b'fake-image-bytes').decode('ascii'),
+        image_format='jpg',
+    )
+
+    response = service.confirm_detection(request)
+
+    assert response.preliminary_label == 'tomato_gray_mold_disease'
+    assert response.final_label == 'tomato_gray_mold_disease'
+    assert response.decision_source == 'backend_model'
