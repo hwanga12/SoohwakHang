@@ -68,6 +68,14 @@ class RobotCommandReq(BaseModel):
         ),
         examples=[TARGET_POSE_EXAMPLE, {"home_waypoint_id": "farm_01_home"}],
     )
+    preempt_current_navigation: Optional[bool] = Field(
+        default=None,
+        description=(
+            "true 이면 현재 주행 중인 patrol/manual NavigateToPose 를 선점합니다. "
+            "생략 시 navigate_to_pose, move_to_zone, return_home 은 기본 true 입니다."
+        ),
+        examples=[True],
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -88,6 +96,7 @@ class RobotCommandReq(BaseModel):
                     "requested_by": "frontend-operator",
                     "command_type": "navigate_to_pose",
                     "target_pose": TARGET_POSE_EXAMPLE["target_pose"],
+                    "preempt_current_navigation": True,
                 },
             ]
         }
@@ -158,6 +167,7 @@ def post_robot_command(command: RobotCommandReq):
             map_id=command.map_id,
             payload=command.payload,
             target_pose=command.target_pose,
+            preempt_current_navigation=command.preempt_current_navigation,
         )
     except DuplicateCommandIdError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

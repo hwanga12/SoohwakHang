@@ -19,6 +19,7 @@ from rclpy.timer import Timer
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
+from .nav_goal_utils import build_latest_pose_stamped
 from .patrol_config import (
     PatrolPlan,
     Pose2D,
@@ -959,15 +960,13 @@ class PatrolNode(Node):
         return self._build_pose_stamped_from_pose(self._effective_waypoint_pose(waypoint_index))
 
     def _build_pose_stamped_from_pose(self, pose_2d: Pose2D) -> PoseStamped:
-        pose = PoseStamped()
-        pose.header.stamp = self.get_clock().now().to_msg()
-        pose.header.frame_id = self._plan.frame_id
-        pose.pose.position.x = pose_2d.x
-        pose.pose.position.y = pose_2d.y
-        pose.pose.position.z = pose_2d.z
-        pose.pose.orientation.z = math.sin(pose_2d.yaw / 2.0)
-        pose.pose.orientation.w = math.cos(pose_2d.yaw / 2.0)
-        return pose
+        return build_latest_pose_stamped(
+            frame_id=self._plan.frame_id,
+            x_value=pose_2d.x,
+            y_value=pose_2d.y,
+            z_value=pose_2d.z,
+            yaw_value=pose_2d.yaw,
+        )
 
     def _pose_2d_from_stamped(self, pose: PoseStamped) -> Pose2D:
         orientation = pose.pose.orientation

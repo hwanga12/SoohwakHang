@@ -40,7 +40,8 @@ class RuntimeSnapshotExporter(Node):
     def __init__(self) -> None:
         super().__init__('runtime_snapshot_exporter')
 
-        self.declare_parameter('use_sim_time', True)
+        if not self.has_parameter('use_sim_time'):
+            self.declare_parameter('use_sim_time', True)
         self.declare_parameter('map_id', DEFAULT_MAP_ID)
         self.declare_parameter('robot_id', 'AGR-02')
         self.declare_parameter('map_frame', 'map')
