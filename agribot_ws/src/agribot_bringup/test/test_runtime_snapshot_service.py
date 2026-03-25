@@ -1,7 +1,13 @@
+from agribot_bringup.control_state import (
+    ControlMode,
+    MotionActivity,
+    build_control_state_payload,
+)
 from agribot_bringup.runtime_snapshot_service import (
     build_pose_snapshot_payload,
     build_manual_command_status_payload,
     build_semantic_layer_snapshot,
+    control_state_path,
     manual_command_path,
     manual_command_status_path,
     read_map_metadata,
@@ -60,6 +66,14 @@ def test_manual_command_paths_and_status_payload_follow_runtime_contract() -> No
 
     assert manual_command_path(runtime_dir).name == 'robot_manual_command.json'
     assert manual_command_status_path(runtime_dir).name == 'robot_manual_command_status.json'
+    assert control_state_path(runtime_dir).name == 'robot_control_state.json'
+
+    control_state = build_control_state_payload(
+        mode=ControlMode.PAUSED,
+        active_activity=MotionActivity.IDLE,
+        blocking_reason='pause_motion',
+        message='일시정지가 활성화되었습니다.',
+    )
 
     payload = build_manual_command_status_payload(
         command_id='cmd-001',
@@ -68,14 +82,33 @@ def test_manual_command_paths_and_status_payload_follow_runtime_contract() -> No
         requested_by='frontend-operator',
         status='running',
         message='홈 복귀 명령을 실행 중입니다.',
+        result='executed',
         target_pose={'x': 0.0, 'y': 0.0, 'yaw': 0.0, 'frame_id': 'map'},
         home_waypoint_id='farm_01_home',
+        control_state=control_state,
         received_at='2026-03-25T00:00:00+00:00',
         started_at='2026-03-25T00:00:01+00:00',
     )
 
     assert payload['command_id'] == 'cmd-001'
     assert payload['status'] == 'running'
+    assert payload['result'] == 'executed'
     assert payload['target_pose']['frame_id'] == 'map'
     assert payload['home_waypoint_id'] == 'farm_01_home'
+    assert payload['control_state']['mode'] == 'paused'
     assert payload['received_at'] == '2026-03-25T00:00:00+00:00'
+
+
+def test_resume_without_context_uses_no_op_status_result_contract() -> None:
+    payload = build_manual_command_status_payload(
+        command_id='cmd-resume-noop',
+        command_type='resume_motion',
+        robot_id='AGR-02',
+        requested_by='frontend-operator',
+        status='succeeded',
+        message='저장된 재개 문맥이 없어 제어 latch만 해제했습니다.',
+        result='no_op',
+    )
+
+    assert payload['status'] == 'succeeded'
+    assert payload['result'] == 'no_op'

@@ -15,6 +15,7 @@ POSE_SNAPSHOT_FILENAME = 'robot_pose_snapshot.json'
 SEMANTIC_LAYER_SNAPSHOT_FILENAME = 'robot_map_layers_snapshot.json'
 MANUAL_COMMAND_FILENAME = 'robot_manual_command.json'
 MANUAL_COMMAND_STATUS_FILENAME = 'robot_manual_command_status.json'
+CONTROL_STATE_FILENAME = 'robot_control_state.json'
 
 
 def runtime_dir_from_env() -> Path:
@@ -37,6 +38,10 @@ def manual_command_path(runtime_dir: Path | None = None) -> Path:
 
 def manual_command_status_path(runtime_dir: Path | None = None) -> Path:
     return (runtime_dir or runtime_dir_from_env()) / MANUAL_COMMAND_STATUS_FILENAME
+
+
+def control_state_path(runtime_dir: Path | None = None) -> Path:
+    return (runtime_dir or runtime_dir_from_env()) / CONTROL_STATE_FILENAME
 
 
 def _package_share(package_name: str) -> Path:
@@ -481,6 +486,8 @@ def build_manual_command_status_payload(
     error: str | None = None,
     target_pose: dict[str, Any] | None = None,
     home_waypoint_id: str | None = None,
+    result: str | None = None,
+    control_state: dict[str, Any] | None = None,
     received_at: str | None = None,
     started_at: str | None = None,
     completed_at: str | None = None,
@@ -496,8 +503,10 @@ def build_manual_command_status_payload(
         'status': status,
         'message': message,
         'error': error,
+        'result': result,
         'target_pose': target_pose,
         'home_waypoint_id': home_waypoint_id,
+        'control_state': control_state,
         'received_at': received_at,
         'started_at': started_at,
         'completed_at': completed_at,

@@ -1,10 +1,20 @@
+from agribot_bringup.control_state import ControlMode
 from agribot_bringup.robot_manual_command_executor import (
+    ActiveCommandContext,
+    CommandPose,
     CommandValidationError,
+    ManualCommand,
+    PatrolStatusSnapshot,
+    build_manual_resume_context,
+    build_patrol_resume_context,
     describe_manual_navigation_label,
     is_navigation_command_type,
+    is_pause_command_type,
+    is_resume_command_type,
     parse_manual_command_payload,
     resolve_preempt_current_navigation,
     resolve_return_home_target,
+    should_block_command_for_control_mode,
     should_retry_goal_rejection,
 )
 from agribot_navigation.patrol_config import get_default_patrol_waypoints_path, load_patrol_plan
@@ -133,6 +143,28 @@ def test_parse_manual_command_payload_defaults_non_navigation_preempt_to_false()
     assert command.preempt_current_navigation is False
 
 
+def test_parse_manual_command_payload_supports_emergency_stop_and_resume_motion() -> None:
+    emergency_command = parse_manual_command_payload(
+        {
+            'command_id': 'cmd-estop-01',
+            'command_type': 'emergency_stop',
+            'robot_id': 'AGR-02',
+            'requested_by': 'frontend-operator',
+        }
+    )
+    resume_command = parse_manual_command_payload(
+        {
+            'command_id': 'cmd-resume-01',
+            'command_type': 'resume_motion',
+            'robot_id': 'AGR-02',
+            'requested_by': 'frontend-operator',
+        }
+    )
+
+    assert emergency_command.preempt_current_navigation is False
+    assert resume_command.preempt_current_navigation is False
+
+
 def test_describe_manual_navigation_label_uses_home_waypoint_when_present() -> None:
     assert describe_manual_navigation_label('navigate_to_pose') == '수동 목표점'
     assert describe_manual_navigation_label('return_home') == '홈 복귀'
@@ -153,6 +185,8 @@ def test_is_navigation_command_type_matches_manual_navigation_commands() -> None
     assert is_navigation_command_type('navigate_to_pose') is True
     assert is_navigation_command_type('return_home') is True
     assert is_navigation_command_type('pause_patrol') is False
+    assert is_pause_command_type('pause_motion') is True
+    assert is_resume_command_type('resume_motion') is True
 
 
 def test_resolve_preempt_current_navigation_prefers_explicit_values() -> None:
@@ -172,3 +206,69 @@ def test_resolve_preempt_current_navigation_prefers_explicit_values() -> None:
         )
         is True
     )
+
+
+def test_manual_navigation_emergency_stop_scenario_captures_resume_context() -> None:
+    context = ActiveCommandContext(
+        command=ManualCommand(
+            command_id='cmd-nav-live',
+            command_type='return_home',
+            robot_id='AGR-02',
+            requested_by='frontend-operator',
+            target_pose=None,
+            home_waypoint_id='farm_01_home',
+            preempt_current_navigation=True,
+        ),
+        received_at='2026-03-25T00:00:00+00:00',
+        target_pose=CommandPose(
+            x=1.0,
+            y=2.0,
+            z=0.0,
+            yaw=0.5,
+            frame_id='map',
+        ),
+        home_waypoint_id='farm_01_home',
+    )
+
+    resume_context = build_manual_resume_context(
+        context,
+        captured_at='2026-03-25T00:00:10+00:00',
+    )
+
+    assert resume_context is not None
+    assert resume_context.context_type.value == 'manual_navigation'
+    assert resume_context.command_type == 'return_home'
+    assert resume_context.home_waypoint_id == 'farm_01_home'
+    assert resume_context.target_pose is not None
+    assert resume_context.target_pose['frame_id'] == 'map'
+
+
+def test_patrol_emergency_stop_scenario_captures_resume_context() -> None:
+    patrol_status = PatrolStatusSnapshot(
+        state='running',
+        message='Navigating to lane 03.',
+        current_waypoint_id='farm_01_home',
+        next_waypoint_id='farm_01_lane_03_north',
+        current_waypoint_index=0,
+        next_waypoint_index=4,
+        total_waypoints=10,
+        active_navigation_kind='single',
+        active_batch_end_waypoint_id='',
+        segment_target_waypoint_id='',
+    )
+
+    resume_context = build_patrol_resume_context(
+        patrol_status,
+        captured_at='2026-03-25T00:00:15+00:00',
+    )
+
+    assert resume_context is not None
+    assert resume_context.context_type.value == 'patrol'
+    assert resume_context.patrol_snapshot is not None
+    assert resume_context.patrol_snapshot['next_waypoint_id'] == 'farm_01_lane_03_north'
+
+
+def test_latched_emergency_stop_blocks_new_navigation_until_resume() -> None:
+    assert should_block_command_for_control_mode(ControlMode.EMERGENCY_STOP, 'navigate_to_pose') is True
+    assert should_block_command_for_control_mode(ControlMode.EMERGENCY_STOP, 'return_home') is True
+    assert should_block_command_for_control_mode(ControlMode.EMERGENCY_STOP, 'resume_motion') is False
