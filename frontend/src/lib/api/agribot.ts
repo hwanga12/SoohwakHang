@@ -128,6 +128,8 @@ export type RobotPoseSnapshot = {
   y: number
   yawDeg: number
   linearSpeedMps: number
+  updatedAt: string
+}
 
 export type RobotControlState = {
   mode: 'normal' | 'paused' | 'emergency_stop'
