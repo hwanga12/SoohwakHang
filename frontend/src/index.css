@@ -112,7 +112,7 @@ button {
 .sidebar,
 .panel,
 .metric-card {
-  border: 1px solid var(--line);
+  border: 2px solid rgba(var(--primary-rgb), 0.6);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
 }
@@ -125,7 +125,6 @@ button {
   padding: 16px 20px;
   border-radius: var(--radius-xl);
   background: rgba(255, 255, 255, 0.82);
-  border: 2px solid var(--primary-soft);
 }
 
 .shell-brand,
@@ -216,7 +215,7 @@ button {
   border-radius: 14px;
   color: var(--muted);
   background: rgba(244, 247, 240, 0.92);
-  border: 1px solid var(--line);
+  border: 2px solid rgba(var(--primary-rgb), 0.4);
   transition:
     transform 160ms ease,
     background-color 160ms ease,
@@ -296,7 +295,7 @@ button {
   padding: 16px;
   border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.72);
-  border: 1px solid var(--line);
+  border: 2px solid rgba(var(--primary-rgb), 0.5);
 }
 
 .sidebar-panel--muted {
@@ -308,7 +307,7 @@ button {
   gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid var(--line);
+  border-top: 2px solid rgba(var(--primary-rgb), 0.15);
 }
 
 .sidebar-title {
@@ -361,7 +360,7 @@ button {
 .nav-item:hover,
 .nav-item.active {
   color: var(--text);
-  border-color: var(--line);
+  border-color: rgba(var(--primary-rgb), 0.5);
   background: var(--surface-muted);
 }
 
@@ -663,7 +662,7 @@ button {
 .alert-card,
 .table-card,
 .device-card {
-  border: 1px solid var(--line);
+  border: 2px solid rgba(var(--primary-rgb), 0.6);
   background: #ffffff;
   border-radius: var(--radius-lg);
 }
@@ -930,7 +929,7 @@ button {
   position: relative;
   overflow: hidden;
   min-height: 120px;
-  border: 1px solid rgba(18, 33, 23, 0.08);
+  border: 1px solid rgba(var(--primary-rgb), 0.15);
   border-radius: 18px;
   background:
     linear-gradient(160deg, rgba(244, 248, 242, 0.98), rgba(230, 237, 226, 0.98));
@@ -1030,7 +1029,7 @@ button {
 
 .table-row {
   align-items: center;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid rgba(var(--primary-rgb), 0.18);
 }
 
 .table-row h4,
@@ -1197,7 +1196,7 @@ button {
   padding: 0.56rem 0;
   border-radius: 12px;
   color: var(--muted);
-  border: 1px solid var(--line);
+  border: 2px solid rgba(var(--primary-rgb), 0.3);
   background: rgba(243, 246, 240, 0.92);
   font-weight: 700;
 }
@@ -1245,7 +1244,7 @@ button {
 .camera-peek {
   position: absolute;
   z-index: 1;
-  border: 1px solid var(--line);
+  border: 2px solid rgba(var(--primary-rgb), 0.5);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.84);
   backdrop-filter: blur(14px);
@@ -1477,7 +1476,7 @@ button {
   flex-wrap: wrap;
   gap: 8px;
   padding: 12px;
-  border: 1px solid var(--line);
+  border: 2px solid rgba(var(--primary-rgb), 0.5);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(14px);
@@ -1587,7 +1586,7 @@ button {
   place-items: center;
   padding: 16px 12px;
   border-radius: 18px;
-  border: 1px solid var(--line);
+  border: 2px solid rgba(var(--primary-rgb), 0.4);
   background: rgba(243, 246, 240, 0.86);
   color: var(--text);
   font-weight: 700;
@@ -1689,7 +1688,7 @@ button {
 .preset-button,
 .history-item,
 .timeline-item {
-  border: 1px solid var(--line);
+  border: 2px solid rgba(var(--primary-rgb), 0.6);
   background: #ffffff;
   border-radius: var(--radius-lg);
 }
@@ -1753,7 +1752,7 @@ button {
   gap: 12px;
   align-items: center;
   padding: 14px 16px;
-  border: 1px solid var(--line);
+  border: 2px solid rgba(var(--primary-rgb), 0.35);
   background: #ffffff;
   border-radius: var(--radius-lg);
 }
@@ -1765,7 +1764,7 @@ button {
 .panel-divider {
   height: 1px;
   margin: 20px 0;
-  background: var(--line);
+  background: rgba(var(--primary-rgb), 0.18);
 }
 
 .preset-grid {
@@ -1915,7 +1914,7 @@ button {
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
     padding: 12px 10px;
-    border: 1px solid var(--line);
+    border: 2px solid rgba(var(--primary-rgb), 0.7);
     border-radius: 24px;
     background: rgba(255, 255, 255, 0.88);
     box-shadow: 0 18px 32px rgba(18, 33, 23, 0.14);
