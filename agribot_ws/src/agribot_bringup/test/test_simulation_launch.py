@@ -2,6 +2,7 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch_ros.actions import Node
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -33,6 +34,10 @@ def test_simulation_launch_declares_iot_arguments_and_includes_iot_pipeline() ->
     includes = [
         entity for entity in launch_description.entities if isinstance(entity, IncludeLaunchDescription)
     ]
+    nodes = [
+        entity for entity in launch_description.entities if isinstance(entity, Node)
+    ]
 
     assert len(declare_args) == 4
-    assert len(includes) == 4
+    assert len(includes) == 3
+    assert len(nodes) == 1

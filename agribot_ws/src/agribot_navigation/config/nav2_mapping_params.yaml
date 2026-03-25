@@ -88,7 +88,7 @@ local_costmap:
       origin_x: -3.0
       origin_y: -3.0
       resolution: 0.07
-      footprint: "[[0.17, 0.13], [0.17, -0.13], [-0.17, -0.13], [-0.17, 0.13]]"
+      footprint: "[[0.31, 0.20], [0.31, -0.20], [-0.24, -0.20], [-0.24, 0.20]]"
       footprint_padding: 0.0
       transform_tolerance: 0.50
       plugins: ["obstacle_layer", "inflation_layer"]
@@ -127,7 +127,7 @@ global_costmap:
       origin_y: -12.0
       resolution: 0.10
       track_unknown_space: true
-      footprint: "[[0.17, 0.13], [0.17, -0.13], [-0.17, -0.13], [-0.17, 0.13]]"
+      footprint: "[[0.31, 0.20], [0.31, -0.20], [-0.24, -0.20], [-0.24, 0.20]]"
       footprint_padding: 0.0
       transform_tolerance: 0.50
       plugins: ["obstacle_layer", "inflation_layer"]

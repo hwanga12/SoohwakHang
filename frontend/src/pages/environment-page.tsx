@@ -1,104 +1,318 @@
-import { MetricCard } from '@/components/metric-card'
-import { SectionCard } from '@/components/section-card'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createGetSignal, createPostAction } from '@/app/dev-inspector'
+import { AppIcon } from '@/components/app-icon'
+import { DevSurface } from '@/components/dev-surface'
+import {
+  approveWateringRecommendation,
+  environmentFallback,
+  getEnvironmentPageData,
+  triggerNutrientInjection,
+} from '@/lib/api/agribot'
 
-const environmentCards = [
-  { label: '온실 평균 온도', value: '24.6°C', meta: '목표 범위 안쪽', tone: 'accent' },
-  { label: '평균 습도', value: '67%', meta: '오전 대비 4% 상승', tone: 'warning' },
-  { label: '토양 수분', value: '41%', meta: 'C Zone은 추가 급수 권장', tone: 'accent' },
-  { label: '광량', value: '38 klux', meta: 'B Zone 보정 필요', tone: 'warning' },
-] as const
+function normalizePercent(value?: string) {
+  if (!value) {
+    return '80%'
+  }
 
-const sensors = [
-  {
-    label: '온도',
-    value: '24.6°C',
-    detail: '세트포인트 24°C',
-    fill: 72,
-    tone: 'accent',
-  },
-  {
-    label: '습도',
-    value: '67%',
-    detail: '환기량 소폭 증가 권장',
-    fill: 61,
-    tone: 'warning',
-  },
-  {
-    label: '토양수분',
-    value: '41%',
-    detail: 'C-04와 C-05가 하한선 근접',
-    fill: 43,
-    tone: 'warning',
-  },
-  {
-    label: 'CO2',
-    value: '542 ppm',
-    detail: '양호한 범위 유지',
-    fill: 58,
-    tone: 'accent',
-  },
-] as const
+  if (value.includes('%')) {
+    return value
+  }
 
-const recommendations = [
-  '환기팬 2번을 15분간 20% 상향',
-  'C Zone 점적 관수 6분 실행',
-  'B Zone 차광막 10% 닫힘 권장',
-] as const
+  const parsed = Number(value)
+  if (Number.isFinite(parsed) && parsed <= 1) {
+    return `${Math.round(parsed * 100)}%`
+  }
+
+  return `${value}%`
+}
 
 export function EnvironmentPage() {
+  const queryClient = useQueryClient()
+  const environmentQuery = useQuery({
+    queryKey: ['page', 'environment'],
+    queryFn: getEnvironmentPageData,
+    initialData: environmentFallback,
+    refetchInterval: 15_000,
+  })
+  const approveMutation = useMutation({
+    mutationFn: approveWateringRecommendation,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['page', 'environment'] })
+    },
+  })
+  const nutrientMutation = useMutation({
+    mutationFn: triggerNutrientInjection,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['page', 'environment'] })
+    },
+  })
+  const page = environmentQuery.data
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
+  const feedbackMessage = approveMutation.isSuccess
+    ? approveMutation.data
+    : nutrientMutation.isSuccess
+      ? nutrientMutation.data
+      : approveMutation.isError
+        ? approveMutation.error.message
+        : nutrientMutation.isError
+          ? nutrientMutation.error.message
+          : null
+
   return (
-    <div className="page-grid">
-      <section className="metrics-grid">
-        {environmentCards.map((metric) => (
-          <MetricCard
-            key={metric.label}
-            label={metric.label}
-            meta={metric.meta}
-            tone={metric.tone}
-            value={metric.value}
-          />
+    <div className="screen">
+      <section className="hero-grid hero-grid--environment">
+        <DevSurface
+          as="article"
+          className="hero-panel hero-panel--environment"
+          contract={{
+            title: '환경 제어 요약',
+            queries: [
+              createGetSignal('환경 최신값', querySource('/environment/latest'), '/environment/latest'),
+              createGetSignal('제어 추천', querySource('/actuations/recommendations'), '/actuations/recommendations'),
+            ],
+            actions: [
+              createPostAction('급수 승인', ['/actuations/recommendations/reco-water-001/approve', '/actuations/watering'], 'any'),
+            ],
+          }}
+        >
+          <div className="hero-topline">
+            <div>
+              <span className="panel-kicker">정밀 제어</span>
+              <h3 className="hero-title">{page.recommendation}</h3>
+            </div>
+            <span className="live-pill">
+              {page.source === 'live' ? '실시간 장치 상태' : '준비 데이터 장치 상태'}
+            </span>
+          </div>
+          <div className="recommendation-strip">
+            <div className="recommendation-icon">
+              <AppIcon filled name="lightbulb" />
+            </div>
+            <div className="recommendation-copy">
+              <span className="section-eyebrow">추천 알림</span>
+              <strong>{page.recommendation}</strong>
+            </div>
+            <div className="recommendation-actions">
+              <button
+                className="action-button"
+                disabled={approveMutation.isPending}
+                onClick={() => {
+                  approveMutation.mutate()
+                }}
+                type="button"
+              >
+                {approveMutation.isPending ? '전송 중...' : '승인'}
+              </button>
+              <button className="ghost-chip" type="button">
+                무시
+              </button>
+            </div>
+          </div>
+        </DevSurface>
+      </section>
+
+      <section className="metric-row metric-row--compact">
+        {page.metrics.map((card) => (
+          <article className={`metric-card metric-card--${card.tone}`} key={card.label}>
+            <span className="metric-label">{card.label}</span>
+            <p className="metric-value">{card.value}</p>
+            <p className="metric-meta">{card.meta}</p>
+          </article>
         ))}
       </section>
 
-      <section className="layout-two-col">
-        <SectionCard
-          description="실시간 센서 값과 목표 범위를 나란히 놓을 수 있도록 카드 구조를 준비했습니다."
-          eyebrow="Sensors"
-          title="환경 상태"
+      <section className="content-grid content-grid--environment">
+        <DevSurface
+          as="article"
+          className="panel"
+          contract={{
+            title: '장치 제어와 승인 큐',
+            queries: [
+              createGetSignal('장치 목록', querySource('/iot/devices'), '/iot/devices'),
+              createGetSignal('제어 추천', querySource('/actuations/recommendations'), '/actuations/recommendations'),
+            ],
+            actions: [
+              createPostAction('급수 승인', ['/actuations/recommendations/reco-water-001/approve', '/actuations/watering'], 'any'),
+              createPostAction('양액 투입', ['/actuations/nutrients']),
+            ],
+          }}
         >
-          <div className="sensor-list">
-            {sensors.map((sensor) => (
-              <article className="sensor-card" key={sensor.label}>
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">장치 제어</span>
+              <h3 className="section-title">기기 제어</h3>
+              <p className="section-description">
+                `iot/devices`, `actuations/recommendations`, `actuations/*` 동선을 기준으로
+                장치 카드 구조를 정리했습니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="device-grid">
+            {page.devices.map((device) => (
+              <article className="device-card" key={device.name}>
                 <div className="split-row">
-                  <strong>{sensor.label}</strong>
-                  <span className="numeric-emphasis">{sensor.value}</span>
+                  <div className={`device-icon device-icon--${device.accent}`}>
+                    <AppIcon name={device.icon} />
+                  </div>
+                  {device.action === 'toggle' ? (
+                    <span className="device-toggle is-active" />
+                  ) : null}
+                  {device.action === 'slider' ? (
+                    <span className="table-tag table-tag--healthy">
+                      {normalizePercent(device.value)}
+                    </span>
+                  ) : null}
+                  {device.action === 'button' ? (
+                    <span className="table-tag table-tag--warning">대기</span>
+                  ) : null}
                 </div>
-                <p className="muted">{sensor.detail}</p>
-                <div className="progress-track">
+                <div className="device-copy">
+                  <h4 className="list-title">{device.name}</h4>
+                  <p className="list-meta">{device.detail}</p>
+                </div>
+                {device.action === 'slider' ? (
+                  <div className="slider-track">
+                    <span
+                      className="slider-fill"
+                      style={{ width: normalizePercent(device.value) }}
+                    />
+                  </div>
+                ) : null}
+                {device.action === 'fan' ? (
+                  <div className="segmented-row">
+                    <button className="segment-button" type="button">
+                      약
+                    </button>
+                    <button className="segment-button is-active" type="button">
+                      중
+                    </button>
+                    <button className="segment-button" type="button">
+                      강
+                    </button>
+                  </div>
+                ) : null}
+                {device.action === 'button' ? (
+                  <button
+                    className="action-button action-button--warning"
+                    disabled={nutrientMutation.isPending}
+                    onClick={() => {
+                      nutrientMutation.mutate()
+                    }}
+                    type="button"
+                  >
+                    {nutrientMutation.isPending ? '투입 중...' : '영양제 투입'}
+                  </button>
+                ) : null}
+              </article>
+            ))}
+          </div>
+          {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
+
+          <div className="panel-divider" />
+
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">승인 큐</span>
+              <h3 className="section-title">제어 추천 대기열</h3>
+              <p className="section-description">
+                자동 제어 권고를 운영자가 검토하고 승인할 수 있도록 별도 큐로 분리했습니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="recommendation-list">
+            {page.recommendations.map((item) => (
+              <article className="queue-card" key={item.id}>
+                <div className="split-row">
                   <span
-                    className={`progress-fill${sensor.tone === 'warning' ? ' progress-fill--warning' : ''}`}
-                    style={{ width: `${sensor.fill}%` }}
+                    className={`table-tag table-tag--${
+                      item.priority.includes('높') ? 'danger' : 'warning'
+                    }`}
+                  >
+                    {item.priority}
+                  </span>
+                  <span className="list-meta">{item.status}</span>
+                </div>
+                <h4 className="list-title">{item.title}</h4>
+                <p>{item.detail}</p>
+              </article>
+            ))}
+          </div>
+        </DevSurface>
+
+        <DevSurface
+          as="article"
+          className="panel"
+          contract={{
+            title: '시스템 상태와 실행 기록',
+            queries: [
+              createGetSignal('환경 최신값', querySource('/environment/latest'), '/environment/latest'),
+              createGetSignal('실행 이력', querySource('/actuations/history'), '/actuations/history'),
+            ],
+          }}
+        >
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">시스템 상태</span>
+              <h3 className="section-title">시스템 상태</h3>
+              <p className="section-description">
+                MQTT bridge와 센서 상태를 운영자에게 짧은 막대 그래프로 보여줍니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="stacked-list">
+            {page.healthBars.map((bar) => (
+              <article className="health-row" key={bar.label}>
+                <AppIcon
+                  className={`health-row-icon health-row-icon--${bar.tone}`}
+                  name={bar.icon}
+                />
+                <div className="health-track">
+                  <span
+                    className={`health-fill health-fill--${bar.tone}`}
+                    style={{ width: `${bar.value}%` }}
                   />
                 </div>
+                <strong>{bar.value}%</strong>
               </article>
             ))}
           </div>
-        </SectionCard>
 
-        <SectionCard
-          description="추천 로직을 backend에서 계산하더라도 이 영역에 그대로 연결할 수 있습니다."
-          eyebrow="Automation"
-          title="자동 제어 추천"
-        >
-          <div className="schedule-list">
-            {recommendations.map((item) => (
-              <article className="schedule-item" key={item}>
-                <span className="badge badge--accent">recommendation</span>
-                <p className="schedule-copy">{item}</p>
+          <div className="panel-divider" />
+
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">제어 이력</span>
+              <h3 className="section-title">최근 실행 기록</h3>
+              <p className="section-description">
+                `actuations/history` 기준으로 어떤 장치에 어떤 명령이 갔는지 빠르게 확인합니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="history-list">
+            {page.history.map((item) => (
+              <article className={`history-item history-item--${item.tone}`} key={item.id}>
+                <div className="split-row">
+                  <div>
+                    <h4 className="list-title">{item.device}</h4>
+                    <p className="list-meta">{item.time}</p>
+                  </div>
+                  <span
+                    className={`table-tag table-tag--${
+                      item.tone === 'critical' ? 'danger' : item.tone
+                    }`}
+                  >
+                    {item.result}
+                  </span>
+                </div>
+                <p>{item.action}</p>
               </article>
             ))}
           </div>
-        </SectionCard>
+        </DevSurface>
       </section>
     </div>
   )

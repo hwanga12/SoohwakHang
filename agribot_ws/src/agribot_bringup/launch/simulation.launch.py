@@ -12,10 +12,16 @@ Usage:
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    SetEnvironmentVariable,
+    TimerAction,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
 
@@ -42,7 +48,13 @@ def generate_launch_description():
                 'launch',
                 'spawn_agribot.launch.py'
             )
-        )
+        ),
+        launch_arguments={
+            # AMCL / startup_map_tf_broadcaster own map -> odom during
+            # static-map localization. Keeping the spawn-time identity TF here
+            # forces the saved map to stay aligned with raw odom.
+            'publish_map_to_odom_tf': 'false',
+        }.items(),
     )
 
     navigation = IncludeLaunchDescription(
@@ -55,7 +67,8 @@ def generate_launch_description():
         ),
         launch_arguments={
             'use_sim_time': 'true',
-            'use_rviz': 'true'
+            'use_rviz': 'true',
+            'patrol_robot_pose_topic': '/odom',
         }.items()
     )
     use_iot_arg = DeclareLaunchArgument(
@@ -107,6 +120,22 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('use_perception')),
     )
 
+    delayed_navigation = TimerAction(
+        period=5.0,
+        actions=[navigation],
+    )
+
+    runtime_snapshot_exporter = Node(
+        package='agribot_bringup',
+        executable='runtime_snapshot_exporter',
+        name='runtime_snapshot_exporter',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'map_id': 'farm_map',
+        }],
+    )
+
     return LaunchDescription([
         *env_vars,
         use_iot_arg,
@@ -114,7 +143,8 @@ def generate_launch_description():
         backend_confirm_url_arg,
         mqtt_force_log_only_arg,
         spawn_agribot,
-        navigation,
+        runtime_snapshot_exporter,
+        delayed_navigation,
         iot_status_pipeline,
         perception,
     ])

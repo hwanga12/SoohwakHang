@@ -131,6 +131,11 @@ def generate_launch_description():
         default_value='false',
         description='Start the patrol automatically after the stack launches.',
     )
+    patrol_robot_pose_topic_arg = DeclareLaunchArgument(
+        'patrol_robot_pose_topic',
+        default_value='/odometry/filtered',
+        description='Odometry topic used by patrol_node to track the robot pose.',
+    )
     use_harvest_route_arg = DeclareLaunchArgument(
         'use_harvest_route',
         default_value='true',
@@ -288,6 +293,7 @@ def generate_launch_description():
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'patrol_waypoints_file': LaunchConfiguration('patrol_waypoints_file'),
             'auto_start': LaunchConfiguration('patrol_autostart'),
+            'robot_pose_topic': LaunchConfiguration('patrol_robot_pose_topic'),
         }],
         condition=IfCondition(LaunchConfiguration('use_patrol')),
     )
@@ -321,6 +327,7 @@ def generate_launch_description():
         use_patrol_arg,
         patrol_waypoints_arg,
         patrol_autostart_arg,
+        patrol_robot_pose_topic_arg,
         use_harvest_route_arg,
         crop_instances_arg,
         harvest_return_mode_arg,

@@ -1,42 +1,84 @@
+import { useQuery } from '@tanstack/react-query'
+import { createGetSignal } from '@/app/dev-inspector'
+import { DevSurface } from '@/components/dev-surface'
 import { MetricCard } from '@/components/metric-card'
-import { SectionCard } from '@/components/section-card'
+import { MockupImage } from '@/components/mockup-image'
+import {
+  getHarvestPageData,
+  harvestFallback,
+} from '@/lib/api/agribot'
 
-const harvestMetrics = [
-  { label: '오늘 수확', value: '142 kg', meta: '전일 대비 18% 증가', tone: 'accent' },
-  { label: '바구니 적재율', value: '68%', meta: '다음 교체 예상 35분 후', tone: 'warning' },
-  { label: '성공률', value: '94.8%', meta: '접근 재시도 포함', tone: 'accent' },
-  { label: '실패 건수', value: '7건', meta: '미성숙 개체 접근 4건', tone: 'danger' },
-] as const
+function getBatchTone(state: string) {
+  if (state.includes('진행')) {
+    return 'healthy'
+  }
 
-const schedules = [
-  {
-    title: '오전 수확 배치',
-    detail: 'C Zone 성숙 과실 우선 수확, 바구니 2개 사용',
-    status: '진행 중',
-  },
-  {
-    title: '오후 품질 검수',
-    detail: 'A Zone 의심 병해 개체 제외 후 재집계',
-    status: '예정',
-  },
-  {
-    title: '적재 라벨 정리',
-    detail: '출하 대기 바구니 QR 라벨 일괄 갱신',
-    status: '대기',
-  },
-] as const
+  if (state.includes('예정')) {
+    return 'warning'
+  }
 
-const stats = [
-  { label: '완숙 비율', value: '81%' },
-  { label: '평균 수확 시간', value: '42초/개' },
-  { label: '적재 중량 오차', value: '1.8%' },
-] as const
+  return 'danger'
+}
 
 export function HarvestPage() {
+  const harvestQuery = useQuery({
+    queryKey: ['page', 'harvest'],
+    queryFn: getHarvestPageData,
+    initialData: harvestFallback,
+    refetchInterval: 20_000,
+  })
+  const page = harvestQuery.data
+  const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
+
   return (
-    <div className="page-grid">
-      <section className="metrics-grid">
-        {harvestMetrics.map((metric) => (
+    <div className="screen">
+      <section className="hero-grid hero-grid--harvest">
+        <DevSurface
+          as="article"
+          className="hero-panel hero-panel--warning"
+          contract={{
+            title: '수확 운영 요약',
+            queries: [
+              createGetSignal('수확 통계', querySource('/harvests/stats'), '/harvests/stats'),
+              createGetSignal('수확 배치', querySource('/harvests'), '/harvests'),
+            ],
+          }}
+        >
+          <div className="hero-topline">
+            <span className="panel-kicker">수확 운영</span>
+            <span className="live-pill live-pill--soft">
+              {page.source === 'live' ? '실시간 수확 통계' : '발표용 수확 통계'}
+            </span>
+          </div>
+          <h3 className="hero-title">수확 미션, 적재, 검수 큐를 운영자가 같은 흐름으로 보도록 정리했습니다.</h3>
+          <p className="hero-copy">
+            `harvests`, `missions/harvest`, `harvest action server` 방향을 기준으로
+            배치와 바구니 운영 화면을 구성했습니다.
+          </p>
+          <div className="hero-stat-row">
+            <div className="hero-stat">
+              <span className="hero-stat-label">현재 바구니</span>
+              <strong>{page.basketState}</strong>
+            </div>
+            <div className="hero-stat">
+              <span className="hero-stat-label">다음 교체</span>
+              <strong>{page.nextSwap}</strong>
+            </div>
+          </div>
+          <div style={{ marginTop: '16px' }}>
+            <MockupImage
+              alt="수확 대상 토마토 시뮬레이션"
+              className="hero-photo"
+              height={156}
+              objectPosition="center 58%"
+              src="/mock-images/harvest-closeup.png"
+            />
+          </div>
+        </DevSurface>
+      </section>
+
+      <section className="metric-row">
+        {page.metrics.map((metric) => (
           <MetricCard
             key={metric.label}
             label={metric.label}
@@ -47,39 +89,71 @@ export function HarvestPage() {
         ))}
       </section>
 
-      <section className="layout-two-col">
-        <SectionCard
-          description="수확 이력, 진행 중 배치, 작업 예정 목록을 분리해서 확장하기 쉬운 형태입니다."
-          eyebrow="Plan"
-          title="수확 일정"
+      <section className="content-grid content-grid--harvest">
+        <DevSurface
+          as="article"
+          className="panel"
+          contract={{
+            title: '수확 일정 큐',
+            queries: [
+              createGetSignal('수확 배치', querySource('/harvests'), '/harvests'),
+            ],
+          }}
         >
-          <div className="schedule-list">
-            {schedules.map((schedule) => (
-              <article className="schedule-item" key={schedule.title}>
-                <div className="split-row">
-                  <h4 className="schedule-title">{schedule.title}</h4>
-                  <span className="badge badge--accent">{schedule.status}</span>
-                </div>
-                <p className="schedule-copy">{schedule.detail}</p>
-              </article>
-            ))}
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">배치 큐</span>
+              <h3 className="section-title">수확 일정</h3>
+              <p className="section-description">
+                lane 단위 수확 루트와 적재 작업을 같은 큐에서 관리하도록 구성했습니다.
+              </p>
+            </div>
           </div>
-        </SectionCard>
 
-        <SectionCard
-          description="핵심 KPI를 작은 카드로 분리해 메인 대시보드에도 재사용하기 쉽게 구성했습니다."
-          eyebrow="KPI"
-          title="수확 품질 지표"
-        >
-          <div className="helper-grid">
-            {stats.map((stat) => (
-              <article className="sensor-card" key={stat.label}>
-                <span className="metric-label">{stat.label}</span>
-                <strong className="numeric-emphasis">{stat.value}</strong>
+          <div className="stacked-list">
+            {page.batches.map((batch) => (
+              <article className="queue-card" key={batch.route}>
+                <div className="split-row">
+                  <h4 className="list-title">{batch.route}</h4>
+                  <span className={`table-tag table-tag--${getBatchTone(batch.state)}`}>
+                    {batch.state}
+                  </span>
+                </div>
+                <p>{batch.summary}</p>
               </article>
             ))}
           </div>
-        </SectionCard>
+        </DevSurface>
+
+        <DevSurface
+          as="article"
+          className="panel"
+          contract={{
+            title: '수확 품질 지표',
+            queries: [
+              createGetSignal('수확 통계', querySource('/harvests/stats'), '/harvests/stats'),
+            ],
+          }}
+        >
+          <div className="section-head">
+            <div>
+              <span className="section-eyebrow">품질 KPI</span>
+              <h3 className="section-title">수확 품질 지표</h3>
+              <p className="section-description">
+                메인 대시보드에도 재사용 가능한 작은 KPI 카드들입니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="mini-card-grid">
+            {page.qualityStats.map((stat) => (
+              <article className="mini-metric-card" key={stat.label}>
+                <span className="mini-metric-label">{stat.label}</span>
+                <strong className="mini-metric-value">{stat.value}</strong>
+              </article>
+            ))}
+          </div>
+        </DevSurface>
       </section>
     </div>
   )
