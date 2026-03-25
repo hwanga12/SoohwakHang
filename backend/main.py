@@ -2,6 +2,8 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 import models
 from database import engine
 
@@ -41,6 +43,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def disable_docs_cache(request: Request, call_next) -> Response:
+    response = await call_next(request)
+    if request.url.path in {"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"}:
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 # ⭐️ 각각의 라우터를 앱에 등록 (prefix로 기본 URL을 맞춰줍니다)
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
