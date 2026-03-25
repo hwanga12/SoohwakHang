@@ -1,11 +1,19 @@
 import json
-import os
 import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from robot_runtime_state_service import (
+    RobotRuntimeStateError,
+    build_idle_command_status_payload,
+    build_unavailable_control_state_payload,
+    read_control_state_payload,
+    read_latest_command_status_payload,
+    runtime_dir_from_env,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MAPS_DIR = REPO_ROOT / "agribot_ws" / "src" / "agribot_navigation" / "maps"
@@ -33,10 +41,7 @@ IOT_DEVICES_PATH = (
     / "config"
     / "iot_devices.yaml"
 )
-POSE_SNAPSHOT_PATH = (
-    Path(os.environ.get("AGRIBOT_RUNTIME_DIR", "/tmp/agribot_runtime"))
-    / "robot_pose_snapshot.json"
-)
+POSE_SNAPSHOT_FILENAME = "robot_pose_snapshot.json"
 DEFAULT_MAP_ID = "farm_map"
 MAP_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 POSE_STALE_SECONDS = 4.0
@@ -366,6 +371,126 @@ def _guess_zone_id(x_value: float) -> str:
     return "farm_01_center"
 
 
+def _pose_snapshot_path() -> Path:
+    return runtime_dir_from_env() / POSE_SNAPSHOT_FILENAME
+
+
+def _safe_control_state_payload() -> dict[str, Any]:
+    try:
+        return read_control_state_payload()
+    except RobotRuntimeStateError as exc:
+        return build_unavailable_control_state_payload(str(exc))
+
+
+def _safe_latest_command_status_payload(
+    control_state: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        return read_latest_command_status_payload()
+    except RobotRuntimeStateError as exc:
+        return {
+            **build_idle_command_status_payload(str(exc), control_state=control_state),
+            "control_state": control_state,
+            "control_mode": control_state["mode"],
+            "control_is_latched": control_state["is_latched"],
+            "control_active_activity": control_state["active_activity"],
+            "control_blocking_reason": control_state["blocking_reason"],
+            "control_message": control_state["message"],
+            "control_resume_available": control_state["resume_available"],
+            "control_updated_at": control_state["updated_at"],
+        }
+
+
+def _resolve_status_label(
+    *,
+    pose_payload: dict[str, Any],
+    control_state: dict[str, Any],
+    latest_command_status: dict[str, Any],
+) -> str:
+    control_mode = control_state["mode"]
+    active_activity = control_state["active_activity"]
+    command_status = str(latest_command_status.get("status") or "").strip()
+    requested_command_type = str(
+        latest_command_status.get("requested_command_type")
+        or latest_command_status.get("command_type")
+        or ""
+    ).strip()
+
+    if control_mode == "emergency_stop":
+        return "비상 정지"
+    if control_mode == "paused":
+        return "일시정지"
+    if command_status in {"pending", "running"}:
+        if requested_command_type == "return_home":
+            return "홈 복귀 중"
+        if requested_command_type in {"move_to_zone", "navigate_to_pose"}:
+            return "수동 이동 중"
+        if requested_command_type in {"pause_patrol", "pause_motion", "pause"}:
+            return "일시정지 전환 중"
+        if requested_command_type in {"resume_patrol", "resume_motion", "resume"}:
+            return "재개 중"
+        if requested_command_type == "emergency_stop":
+            return "비상 정지 전환 중"
+        return "명령 실행 중"
+    if active_activity == "patrol":
+        return "순찰 중"
+    if active_activity == "manual_navigation":
+        return "수동 이동 중"
+    if pose_payload["source"] == "live" and float(pose_payload["linear_speed_mps"]) > 0.05:
+        return "이동 중"
+    return "대기" if pose_payload["source"] == "live" else "준비 데이터"
+
+
+def _resolve_mode_label(control_state: dict[str, Any]) -> str:
+    control_mode = control_state["mode"]
+    active_activity = control_state["active_activity"]
+    if control_mode == "emergency_stop":
+        return "비상 정지"
+    if control_mode == "paused":
+        return "일시정지"
+    if active_activity == "manual_navigation":
+        return "수동 제어"
+    if active_activity == "patrol":
+        return "자율 순찰"
+    return "정상"
+
+
+def _resolve_mission_state(
+    *,
+    pose_payload: dict[str, Any],
+    control_state: dict[str, Any],
+    latest_command_status: dict[str, Any],
+) -> str:
+    command_status = str(latest_command_status.get("status") or "").strip()
+    if command_status in {"pending", "running"}:
+        return str(latest_command_status.get("message") or "").strip() or "명령 실행 중"
+    if control_state["mode"] in {"paused", "emergency_stop"}:
+        return str(control_state.get("message") or "").strip() or "제어 latch 활성화"
+    if control_state["active_activity"] == "patrol":
+        return "순찰 실행 중"
+    if control_state["active_activity"] == "manual_navigation":
+        return "수동 이동 중"
+    if pose_payload["source"] == "live":
+        return "대기 중"
+    return "live pose 연동 대기"
+
+
+def _status_updated_at(
+    *,
+    pose_payload: dict[str, Any],
+    control_state: dict[str, Any],
+    latest_command_status: dict[str, Any],
+) -> str:
+    for value in (
+        latest_command_status.get("updated_at"),
+        control_state.get("updated_at"),
+        pose_payload.get("updated_at"),
+    ):
+        if isinstance(value, str) and value.strip():
+            return value
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _fallback_pose_payload(map_id: str) -> dict[str, Any]:
     updated_at = datetime.now(timezone.utc).isoformat()
     current_zone_id = "farm_01_west"
@@ -390,9 +515,10 @@ def _fallback_pose_payload(map_id: str) -> dict[str, Any]:
 
 def read_pose_payload(map_id: str | None = None) -> dict[str, Any]:
     resolved_map_id = _sanitize_map_id(map_id)
+    pose_snapshot_path = _pose_snapshot_path()
 
     try:
-        payload = json.loads(POSE_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+        payload = json.loads(pose_snapshot_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return _fallback_pose_payload(resolved_map_id)
     except (OSError, json.JSONDecodeError):
@@ -435,26 +561,71 @@ def read_pose_payload(map_id: str | None = None) -> dict[str, Any]:
 
 def read_status_payload(map_id: str | None = None) -> dict[str, Any]:
     pose_payload = read_pose_payload(map_id)
-    is_live = pose_payload["source"] == "live"
+    control_state = _safe_control_state_payload()
+    latest_command_status = _safe_latest_command_status_payload(control_state)
+    source = (
+        "live"
+        if pose_payload["source"] == "live"
+        or control_state["available"]
+        or latest_command_status["available"]
+        else "fallback"
+    )
+    status = _resolve_status_label(
+        pose_payload=pose_payload,
+        control_state=control_state,
+        latest_command_status=latest_command_status,
+    )
+    mission_state = _resolve_mission_state(
+        pose_payload=pose_payload,
+        control_state=control_state,
+        latest_command_status=latest_command_status,
+    )
+    note = (
+        str(control_state.get("message") or "").strip()
+        if control_state["mode"] in {"paused", "emergency_stop"}
+        else str(latest_command_status.get("message") or "").strip()
+        if str(latest_command_status.get("status") or "").strip() in {"pending", "running", "failed"}
+        else pose_payload["note"]
+    )
 
     return {
-        "source": pose_payload["source"],
+        "source": source,
         "robot_id": pose_payload["robot_id"],
-        "status": "이동 중" if is_live else "준비 데이터",
-        "mission_state": "정적 지도 기반 자율 주행" if is_live else "live pose 연동 대기",
-        "mode": "자율 순찰",
-        "battery": "82%",
-        "battery_eta": "충전 없이 2시간 10분 운행 예상",
+        "status": status,
+        "mission_state": mission_state,
+        "mode": _resolve_mode_label(control_state),
+        "battery": None,
+        "battery_eta": None,
         "speed_mps": f"{pose_payload['linear_speed_mps']:.2f}m/s",
-        "mission_progress_pct": 76 if is_live else 58,
-        "eta": "예상 완료 12분 30초",
-        "waypoint_id": "inspection_b12",
-        "next_waypoint": "inspection_b13",
-        "next_target_crop_id": "farm01_plant_06_tomato_01",
+        "speed_mps_value": float(pose_payload["linear_speed_mps"]),
+        "mission_progress_pct": None,
+        "eta": None,
+        "waypoint_id": None,
+        "next_waypoint": None,
+        "next_target_crop_id": None,
         "current_zone_id": pose_payload["current_zone_id"],
         "zone_label": pose_payload["current_zone_label"],
-        "updated_at": pose_payload["updated_at"],
-        "note": pose_payload["note"],
+        "updated_at": _status_updated_at(
+            pose_payload=pose_payload,
+            control_state=control_state,
+            latest_command_status=latest_command_status,
+        ),
+        "note": note,
+        "pose_source": pose_payload["source"],
+        "current_control_state": control_state,
+        "control_mode": control_state["mode"],
+        "control_is_latched": control_state["is_latched"],
+        "control_active_activity": control_state["active_activity"],
+        "control_blocking_reason": control_state["blocking_reason"],
+        "control_resume_available": control_state["resume_available"],
+        "control_message": control_state["message"],
+        "control_updated_at": control_state["updated_at"],
+        "latest_command": latest_command_status,
+        "latest_command_id": latest_command_status.get("command_id"),
+        "latest_command_status": latest_command_status.get("status"),
+        "latest_command_type": latest_command_status.get("command_type"),
+        "latest_requested_command_type": latest_command_status.get("requested_command_type"),
+        "latest_command_message": latest_command_status.get("message"),
     }
 
 
