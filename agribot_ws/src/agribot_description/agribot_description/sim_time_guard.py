@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import fcntl
+import os
+from pathlib import Path
+import sys
+from tempfile import gettempdir
 from time import monotonic
 
 from nav_msgs.msg import Odometry
@@ -14,6 +19,10 @@ from sensor_msgs.msg import JointState
 
 def stamp_to_nanoseconds(sec_value: int, nanosec_value: int) -> int:
     return int(sec_value) * 1_000_000_000 + int(nanosec_value)
+
+
+class SingletonLockError(RuntimeError):
+    pass
 
 
 @dataclass
@@ -106,7 +115,36 @@ class SimTimeGuard(Node):
         )
 
 
+def resolve_lock_path() -> Path:
+    raw_path = os.environ.get('AGRIBOT_SIM_TIME_GUARD_LOCK', '').strip()
+    return Path(raw_path) if raw_path else Path(gettempdir()) / 'agribot_sim_time_guard.lock'
+
+
+def acquire_singleton_lock(lock_path: Path | None = None) -> int:
+    resolved_lock_path = lock_path or resolve_lock_path()
+    resolved_lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_fd = os.open(str(resolved_lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        os.close(lock_fd)
+        raise SingletonLockError(
+            f'another sim_time_guard instance already owns {resolved_lock_path}'
+        ) from exc
+
+    os.ftruncate(lock_fd, 0)
+    os.write(lock_fd, f'{os.getpid()}\n'.encode())
+    return lock_fd
+
+
 def main(args=None) -> None:
+    try:
+        lock_fd = acquire_singleton_lock()
+    except SingletonLockError as exc:
+        print(f'sim_time_guard startup skipped: {exc}', file=sys.stderr)
+        return
+
     rclpy.init(args=args)
     node = SimTimeGuard()
     try:
@@ -117,6 +155,7 @@ def main(args=None) -> None:
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
+        os.close(lock_fd)
 
 
 if __name__ == '__main__':
