@@ -123,6 +123,48 @@ export type RobotCommandDispatch = {
   targetZoneId: string | null
 }
 
+export type MissionDispatch = {
+  missionId: string
+  commandId: string
+  requestType: string
+  requestedType: string
+  statusEndpoint: string
+  message: string
+  operatorMessage: string
+  robotId: string
+  requestedBy: string
+  zoneIds: string[]
+  loopCount: number | null
+  patrolMode: string
+  plantId: string | null
+  fruitId: string | null
+  tomatoId: string | null
+}
+
+export type MissionStatus = {
+  source: DataSource
+  available: boolean
+  missionId: string | null
+  commandId: string | null
+  requestType: string
+  requestedType: string
+  status: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+  message: string
+  operatorMessage: string
+  error: string
+  result: string
+  updatedAt: string
+  zoneIds: string[]
+  loopCount: number | null
+  patrolMode: string
+  plantId: string | null
+  fruitId: string | null
+  tomatoId: string | null
+  receivedAt: string
+  startedAt: string
+  completedAt: string
+}
+
 export type RobotPoseSnapshot = {
   x: number
   y: number
@@ -322,6 +364,16 @@ function readNumber(value: unknown, fallback = 0): number {
   }
 
   return fallback
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((item) => readString(item))
+    .filter(Boolean)
 }
 
 function readBoolean(value: unknown, fallback = false): boolean {
@@ -650,16 +702,7 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
     return null
   }
 
-  const status = readString(record.status) as RobotCommandStatus['status']
-  const normalizedStatus =
-    status === 'pending'
-    || status === 'running'
-    || status === 'succeeded'
-    || status === 'failed'
-    || status === 'canceled'
-    || status === 'idle'
-      ? status
-      : 'idle'
+  const normalizedStatus = normalizeTaskStatus(record.status)
 
   return {
     source: toQuerySource(payload),
@@ -678,6 +721,57 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
     startedAt: readString(record.started_at),
     completedAt: readString(record.completed_at),
     controlState: readRobotControlState(record.control_state),
+  }
+}
+
+function normalizeTaskStatus(value: unknown): RobotCommandStatus['status'] {
+  const status = readString(value) as RobotCommandStatus['status']
+  return (
+    status === 'pending'
+    || status === 'running'
+    || status === 'succeeded'
+    || status === 'failed'
+    || status === 'canceled'
+    || status === 'idle'
+  )
+    ? status
+    : 'idle'
+}
+
+function readMissionStatus(payload: unknown): MissionStatus | null {
+  const record = readRecord(payload)
+  if (!record) {
+    return null
+  }
+
+  return {
+    source: toQuerySource(payload),
+    available: readBoolean(record.available, true),
+    missionId: readString(record.mission_id) || null,
+    commandId: readString(record.command_id) || null,
+    requestType: readString(record.request_type),
+    requestedType: readString(record.requested_type) || readString(record.request_type),
+    status: normalizeTaskStatus(record.status),
+    message: readString(record.message) || '미션 상태 정보가 준비되지 않았습니다.',
+    operatorMessage:
+      readString(record.operator_message)
+      || readString(record.message)
+      || '미션 상태 정보가 준비되지 않았습니다.',
+    error: readString(record.error),
+    result: readString(record.result),
+    updatedAt: readString(record.updated_at),
+    zoneIds: readStringArray(record.zone_ids),
+    loopCount:
+      typeof record.loop_count === 'number' && Number.isFinite(record.loop_count)
+        ? record.loop_count
+        : null,
+    patrolMode: readString(record.patrol_mode),
+    plantId: readString(record.plant_id) || null,
+    fruitId: readString(record.fruit_id) || null,
+    tomatoId: readString(record.tomato_id) || null,
+    receivedAt: readString(record.received_at),
+    startedAt: readString(record.started_at),
+    completedAt: readString(record.completed_at),
   }
 }
 async function safeGet(path: string) {
@@ -768,6 +862,83 @@ function parseCommandDispatch(payload: unknown, fallbackMessage: string): RobotC
       readString(readRecord(record.target_zone)?.id)
       || readString(record.target_zone_id)
       || null,
+  }
+}
+
+function parseMissionDispatch(payload: unknown, fallbackMessage: string): MissionDispatch {
+  const record = readRecord(payload)
+  if (!record) {
+    throw new Error(fallbackMessage)
+  }
+
+  const missionId = readString(record.mission_id) || readString(record.command_id)
+  const requestType = readString(record.request_type) || readString(record.requested_type)
+  const statusEndpoint = readString(record.status_endpoint)
+
+  if (!missionId) {
+    throw new Error('미션 접수 응답에 mission_id가 없어 상태 추적을 시작할 수 없습니다.')
+  }
+  if (!requestType) {
+    throw new Error('미션 접수 응답에 request_type이 없어 상태 추적을 시작할 수 없습니다.')
+  }
+  if (!statusEndpoint) {
+    throw new Error('미션 접수 응답에 status_endpoint가 없어 authoritative polling을 시작할 수 없습니다.')
+  }
+
+  return {
+    missionId,
+    commandId: readString(record.command_id) || missionId,
+    requestType,
+    requestedType: readString(record.requested_type) || requestType,
+    statusEndpoint,
+    message:
+      readString(record.message)
+      || readString(record.operator_message)
+      || fallbackMessage,
+    operatorMessage:
+      readString(record.operator_message)
+      || readString(record.message)
+      || fallbackMessage,
+    robotId: readString(record.robot_id),
+    requestedBy: readString(record.requested_by),
+    zoneIds: readStringArray(record.zone_ids),
+    loopCount:
+      typeof record.loop_count === 'number' && Number.isFinite(record.loop_count)
+        ? record.loop_count
+        : null,
+    patrolMode: readString(record.patrol_mode),
+    plantId: readString(record.plant_id) || null,
+    fruitId: readString(record.fruit_id) || null,
+    tomatoId: readString(record.tomato_id) || null,
+  }
+}
+
+function buildUnavailableMissionStatus(
+  missionId: string,
+  message: string,
+): MissionStatus {
+  return {
+    source: 'fallback',
+    available: false,
+    missionId,
+    commandId: missionId,
+    requestType: '',
+    requestedType: '',
+    status: 'idle',
+    message,
+    operatorMessage: message,
+    error: '',
+    result: '',
+    updatedAt: '',
+    zoneIds: [],
+    loopCount: null,
+    patrolMode: '',
+    plantId: null,
+    fruitId: null,
+    tomatoId: null,
+    receivedAt: '',
+    startedAt: '',
+    completedAt: '',
   }
 }
 
@@ -2064,6 +2235,28 @@ export async function getLatestRobotCommandStatus(): Promise<RobotCommandStatus>
   return readRobotCommandStatus(payload) ?? robotFallback.latestCommandStatus
 }
 
+export async function getMissionStatus(missionId: string): Promise<MissionStatus> {
+  try {
+    const response = await apiClient.get(`/missions/${missionId}`)
+    const status = readMissionStatus(response.data)
+
+    if (!status || !status.missionId) {
+      throw new Error('미션 상태 응답에 mission_id가 없어 authoritative polling을 이어갈 수 없습니다.')
+    }
+
+    return status
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status === 404) {
+      return buildUnavailableMissionStatus(
+        missionId,
+        'mission status 파일이 아직 생성되지 않았습니다. bridge 반영을 기다리는 중입니다.',
+      )
+    }
+
+    throw new Error(readApiErrorMessage(error, '미션 상태를 조회하지 못했습니다.'))
+  }
+}
+
 export async function sendRobotNavigateCommand(targetPose: RobotTargetPose) {
   try {
     const response = await apiClient.post('/robot/commands', {
@@ -2109,20 +2302,19 @@ export async function requestHarvestMission({
   plantId: string
   fruitId: string
 }) {
-  return postWithFallback(
-    [
-      {
-        path: '/missions/harvest',
-        body: {
-          robot_id: 'AGR-02',
-          plant_id: plantId,
-          fruit_id: fruitId,
-          requested_by: 'frontend-operator',
-        },
-      },
-    ],
-    `${fruitId} 수확 요청을 보냈습니다.`,
-  )
+  try {
+    const response = await apiClient.post('/missions/harvest', {
+      robot_id: 'AGR-02',
+      plant_id: plantId,
+      fruit_id: fruitId,
+      requested_by: 'frontend-operator',
+    })
+    markRouteVerified('POST', '/missions/harvest')
+    return parseMissionDispatch(response.data, `${fruitId} 수확 요청을 접수했습니다.`)
+  } catch (error) {
+    markRouteFailed('POST', '/missions/harvest')
+    throw new Error(readApiErrorMessage(error, '수확 미션 요청을 처리하지 못했습니다.'))
+  }
 }
 
 export async function startFieldPatrolMission({
@@ -2135,34 +2327,23 @@ export async function startFieldPatrolMission({
   const fallbackZones = zoneIds.length > 0 ? zoneIds : ['farm_01_west', 'farm_01_center', 'farm_01_east']
   const successFallback =
     mode === 'diagnosis'
-      ? '밭 전체 병 진단 패트롤을 시작했습니다.'
-      : '밭 전체 수확 패트롤을 시작했습니다.'
+      ? '밭 전체 병 진단 패트롤 요청을 접수했습니다.'
+      : '밭 전체 수확 패트롤 요청을 접수했습니다.'
 
-  return postWithFallback(
-    [
-      {
-        path: '/missions/patrol/start',
-        body: {
-          robot_id: 'AGR-02',
-          zone_ids: fallbackZones,
-          loop_count: 1,
-          requested_by: 'frontend-operator',
-          patrol_mode: mode,
-        },
-      },
-      {
-        path: '/robot/commands',
-        body: {
-          robot_id: 'AGR-02',
-          requested_by: 'frontend-operator',
-          command_type: 'start_patrol',
-          zone_ids: fallbackZones,
-          patrol_mode: mode,
-        },
-      },
-    ],
-    successFallback,
-  )
+  try {
+    const response = await apiClient.post('/missions/patrol/start', {
+      robot_id: 'AGR-02',
+      zone_ids: fallbackZones,
+      loop_count: 1,
+      requested_by: 'frontend-operator',
+      patrol_mode: mode,
+    })
+    markRouteVerified('POST', '/missions/patrol/start')
+    return parseMissionDispatch(response.data, successFallback)
+  } catch (error) {
+    markRouteFailed('POST', '/missions/patrol/start')
+    throw new Error(readApiErrorMessage(error, '패트롤 미션 요청을 처리하지 못했습니다.'))
+  }
 }
 
 export async function acknowledgeAlert(alertId: string) {
