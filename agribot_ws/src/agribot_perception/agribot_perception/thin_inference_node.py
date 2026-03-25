@@ -39,7 +39,15 @@ class ThinInferenceNode(Node):
         repo_root = Path(__file__).resolve().parents[4]
         default_runtime_dir = repo_root / _DEFAULT_RUNTIME_RELATIVE_PATH
         default_crop_instances_path = repo_root / _DEFAULT_CROP_INSTANCES_RELATIVE_PATH
-        default_model_path = os.environ.get('AGRIBOT_TOMATO_MODEL_PATH', '')
+        default_model_path = (
+            os.environ.get('AGRIBOT_TOMATO_DISEASE_MODEL_PATH', '').strip()
+            or os.environ.get('AGRIBOT_TOMATO_MODEL_PATH', '').strip()
+        )
+        default_model_device = (
+            os.environ.get('AGRIBOT_TOMATO_DISEASE_DEVICE', '').strip()
+            or os.environ.get('AGRIBOT_TOMATO_MODEL_DEVICE', '').strip()
+            or 'auto'
+        )
 
         self.declare_parameter('image_topic', '/agribot/camera/image')
         self.declare_parameter('odometry_topic', '/odom')
@@ -51,6 +59,7 @@ class ThinInferenceNode(Node):
         self.declare_parameter('zone_id', 'greenhouse_01')
         self.declare_parameter('robot_id', 'agribot')
         self.declare_parameter('model_path', default_model_path)
+        self.declare_parameter('model_device', default_model_device)
         self.declare_parameter('imgsz', 640)
         self.declare_parameter('confidence_threshold', 0.35)
         self.declare_parameter('allowed_classes', '')
@@ -75,6 +84,7 @@ class ThinInferenceNode(Node):
         self._zone_id = str(self.get_parameter('zone_id').value)
         self._robot_id = str(self.get_parameter('robot_id').value)
         model_path = str(self.get_parameter('model_path').value).strip() or None
+        model_device = str(self.get_parameter('model_device').value).strip() or 'auto'
         imgsz = int(self.get_parameter('imgsz').value)
         confidence_threshold = float(self.get_parameter('confidence_threshold').value)
         allowed_classes = parse_label_list(str(self.get_parameter('allowed_classes').value))
@@ -113,6 +123,7 @@ class ThinInferenceNode(Node):
             model_path=model_path,
             imgsz=imgsz,
             confidence_threshold=confidence_threshold,
+            device=model_device,
         )
         self._allowed_classes = allowed_classes
         self._ignored_classes = ignored_classes
@@ -165,7 +176,8 @@ class ThinInferenceNode(Node):
             f'odometry_topic={odometry_topic}, '
             f'plant_observation_topic={plant_observation_topic}, '
             f'backend_confirm_url={backend_confirm_url}, '
-            f'model_path={self._runner.model_path}'
+            f'model_path={self._runner.model_path}, '
+            f'model_device={self._runner.resolved_device}'
         )
 
     def _handle_odometry(self, msg: Odometry) -> None:

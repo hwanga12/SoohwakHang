@@ -57,9 +57,18 @@ _ACTION_RULES: dict[str, _TreatmentRule] = {
         duration_sec=2.5,
     ),
 }
+_RULE_LABEL_ALIASES = {
+    'tomato_powdery_mildew_disease': 'tomato_powdery_mildew',
+    'tomato_calcium_deficiency_disease': 'tomato_calcium_deficiency',
+    'tomato_gray_mold_disease': 'tomato_gray_mold',
+    'tomato_fruit_cracking_disease': 'tomato_crack',
+}
 _NO_ACTION_LABELS = {
     'tomato_gray_mold',
     'tomato_crack',
+    'tomato_gray_mold_disease',
+    'tomato_fruit_cracking_disease',
+    'tomato_macro_npk_deficiency_disease',
 }
 
 
@@ -90,7 +99,8 @@ class DiseaseTreatmentRuleEngine:
         target_position: Point3D | None = None,
     ) -> DiseaseTreatmentPlan:
         normalized_label = disease_label.strip().lower()
-        rule = _ACTION_RULES.get(normalized_label)
+        canonical_rule_label = _RULE_LABEL_ALIASES.get(normalized_label, normalized_label)
+        rule = _ACTION_RULES.get(canonical_rule_label)
         if rule is None:
             return self._build_no_action_plan(
                 disease_label=disease_label,
