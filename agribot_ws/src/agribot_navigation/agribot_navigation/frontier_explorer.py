@@ -23,6 +23,8 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
 
+from .nav_goal_utils import build_latest_pose_stamped
+
 
 UNKNOWN = -1
 FREE_THRESHOLD = 20
@@ -1837,13 +1839,12 @@ class FrontierExplorerNode(Node):
             )
 
         goal = NavigateToPose.Goal()
-        goal.pose = PoseStamped()
-        goal.pose.header.stamp = self.get_clock().now().to_msg()
-        goal.pose.header.frame_id = self._goal_frame
-        goal.pose.pose.position.x = nav_goal_x
-        goal.pose.pose.position.y = nav_goal_y
-        goal.pose.pose.orientation.z = math.sin(yaw / 2.0)
-        goal.pose.pose.orientation.w = math.cos(yaw / 2.0)
+        goal.pose = build_latest_pose_stamped(
+            frame_id=self._goal_frame,
+            x_value=nav_goal_x,
+            y_value=nav_goal_y,
+            yaw_value=yaw,
+        )
 
         self._active_goal_source = source
         self._active_goal_pose = goal.pose

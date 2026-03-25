@@ -26,6 +26,7 @@ from .harvest_routing import (
     get_default_crop_instances_path,
     load_crop_catalog,
 )
+from .nav_goal_utils import build_latest_pose_stamped
 from .patrol_config import Pose2D, PatrolPlan, get_default_patrol_waypoints_path, load_patrol_plan
 
 
@@ -525,15 +526,13 @@ class HarvestRouteNode(Node):
         self._harvest_timer = None
 
     def _build_pose_stamped(self, pose: Pose2D) -> PoseStamped:
-        stamped = PoseStamped()
-        stamped.header.stamp = self.get_clock().now().to_msg()
-        stamped.header.frame_id = self._plan.frame_id
-        stamped.pose.position.x = pose.x
-        stamped.pose.position.y = pose.y
-        stamped.pose.position.z = pose.z
-        stamped.pose.orientation.z = math.sin(pose.yaw / 2.0)
-        stamped.pose.orientation.w = math.cos(pose.yaw / 2.0)
-        return stamped
+        return build_latest_pose_stamped(
+            frame_id=self._plan.frame_id,
+            x_value=pose.x,
+            y_value=pose.y,
+            z_value=pose.z,
+            yaw_value=pose.yaw,
+        )
 
     def _complete_sequence(self, message: str) -> None:
         self._cancel_alignment_timer()

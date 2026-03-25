@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from agribot_navigation.nav_goal_utils import build_latest_pose_stamped
 from std_srvs.srv import Trigger
 
 from agribot_navigation.patrol_config import (
@@ -707,15 +707,13 @@ class RobotManualCommandExecutor(Node):
         self._last_status_payload = payload
 
     def _build_pose_stamped(self, pose: Pose2D) -> PoseStamped:
-        stamped = PoseStamped()
-        stamped.header.stamp = self.get_clock().now().to_msg()
-        stamped.header.frame_id = self._plan.frame_id
-        stamped.pose.position.x = pose.x
-        stamped.pose.position.y = pose.y
-        stamped.pose.position.z = pose.z
-        stamped.pose.orientation.z = math.sin(pose.yaw / 2.0)
-        stamped.pose.orientation.w = math.cos(pose.yaw / 2.0)
-        return stamped
+        return build_latest_pose_stamped(
+            frame_id=self._plan.frame_id,
+            x_value=pose.x,
+            y_value=pose.y,
+            z_value=pose.z,
+            yaw_value=pose.yaw,
+        )
 
     def destroy_node(self) -> bool:
         self._navigate_client.destroy()
