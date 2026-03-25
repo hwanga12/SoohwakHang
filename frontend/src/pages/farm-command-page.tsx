@@ -11,11 +11,13 @@ import {
 import {
   approveWateringRecommendation,
   dashboardFallback,
+  emptyPlantObservationFeed,
   environmentFallback,
   getDashboardPageData,
   getEnvironmentPageData,
   getHarvestPageData,
   getLatestRobotCommandStatus,
+  getPlantObservations,
   getMissionStatus,
   getPlantsPageData,
   getRobotPageData,
@@ -70,6 +72,10 @@ type PlantModalDetail = {
   recommendedAction: string
   health: number
   status: string
+  lastObserved: string
+  latestLabel: string
+  latestDisplayLabel: string
+  latestImageUrl: string
 }
 
 type HarvestMissionInput = {
@@ -486,24 +492,80 @@ function latestCommandToken(status: RobotCommandStatus) {
   return `${status.commandId ?? 'none'}:${status.status}:${status.updatedAt}`
 }
 
+function sortedUniqueValues(values: number[]) {
+  return [...new Set(values.map((value) => Number(value.toFixed(3))))].sort((left, right) => left - right)
+}
+
+function clampToSceneBounds(value: number, minValue: number, maxValue: number) {
+  return Math.min(Math.max(value, minValue), maxValue)
+}
+
+function semanticRowGuideValues(scene: SemanticScene) {
+  const rowGuideValues = sortedUniqueValues(
+    scene.rowGuides
+      .filter((guide) => guide.axis === 'x')
+      .map((guide) => guide.value),
+  )
+
+  if (rowGuideValues.length > 0) {
+    return rowGuideValues
+  }
+
+  return sortedUniqueValues(
+    scene.assets
+      .filter((asset) => asset.kind === 'plant')
+      .map((asset) => asset.position.x),
+  )
+}
+
+function buildInspectionPoseFromScene(
+  position: { x: number, y: number },
+  scene: SemanticScene,
+): RobotTargetPose | null {
+  const rowGuideValues = semanticRowGuideValues(scene)
+  if (rowGuideValues.length < 2) {
+    return null
+  }
+
+  const leftInspectionX = (rowGuideValues[0] + rowGuideValues[1]) / 2
+  const rightInspectionX =
+    (rowGuideValues[rowGuideValues.length - 2] + rowGuideValues[rowGuideValues.length - 1]) / 2
+  const splitIndex = Math.floor(rowGuideValues.length / 2)
+  const splitX =
+    rowGuideValues.length >= 4
+      ? (rowGuideValues[splitIndex - 1] + rowGuideValues[splitIndex]) / 2
+      : (rowGuideValues[0] + rowGuideValues[rowGuideValues.length - 1]) / 2
+  const targetX = position.x < splitX ? leftInspectionX : rightInspectionX
+  const targetY = clampToSceneBounds(
+    position.y,
+    scene.bounds.minY + 0.5,
+    scene.bounds.maxY - 0.5,
+  )
+
+  return {
+    x: clampToSceneBounds(targetX, scene.bounds.minX + 0.5, scene.bounds.maxX - 0.5),
+    y: targetY,
+    z: 0,
+    yaw: targetX < 0 ? -Math.PI / 2 : Math.PI / 2,
+    frameId: 'map',
+  }
+}
+
 function buildPlantTargetPose(
   plantId: string,
   preferredScene: SemanticScene,
   fallbackScene: SemanticScene,
   fallbackPositionLabel: string,
 ): RobotTargetPose | null {
-  const targetAsset =
-    preferredScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
-    ?? fallbackScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
+  const preferredAsset = preferredScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
+  const fallbackAsset = fallbackScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
+  const targetAsset = preferredAsset ?? fallbackAsset
 
   if (targetAsset) {
-    return {
-      x: targetAsset.position.x,
-      y: targetAsset.position.y,
-      z: 0,
-      yaw: 0,
-      frameId: 'map',
-    }
+    return (
+      buildInspectionPoseFromScene(targetAsset.position, preferredScene)
+      ?? buildInspectionPoseFromScene(targetAsset.position, fallbackScene)
+    )
   }
 
   const parsedPose = parsePoseLabel(fallbackPositionLabel)
@@ -511,13 +573,10 @@ function buildPlantTargetPose(
     return null
   }
 
-  return {
-    x: parsedPose.x,
-    y: parsedPose.y,
-    z: 0,
-    yaw: 0,
-    frameId: 'map',
-  }
+  return (
+    buildInspectionPoseFromScene(parsedPose, preferredScene)
+    ?? buildInspectionPoseFromScene(parsedPose, fallbackScene)
+  )
 }
 
 function buildDiagnoseBlockedMessage(status: RobotCommandStatus) {
@@ -553,7 +612,7 @@ function buildDiagnoseUiState(
   if (targetPose === null) {
     return {
       title: '좌표 정보 필요',
-      detail: '선택한 식물의 live semantic layer 좌표를 찾지 못했습니다. 잠시 후 다시 시도하세요.',
+      detail: '선택한 식물의 진단 접근 좌표를 계산하지 못했습니다. live semantic layer를 다시 확인한 뒤 재시도하세요.',
       badgeLabel: '좌표 없음',
       badgeTone: 'table-tag--danger',
       buttonLabel: '진단하기',
@@ -656,7 +715,7 @@ function buildDiagnoseUiState(
 
   return {
     title: '진단 이동 준비',
-    detail: '버튼을 누르면 선택한 식물 좌표로 `navigate_to_pose`를 보내고 `/robot/commands/latest` 상태를 추적합니다.',
+    detail: '버튼을 누르면 선택한 식물의 inspection 통로 좌표로 `navigate_to_pose`를 보내고 `/robot/commands/latest` 상태를 추적합니다.',
     badgeLabel: '대기',
     badgeTone: 'table-tag--healthy',
     buttonLabel: '진단하기',
@@ -1021,6 +1080,10 @@ export function FarmCommandPage() {
         recommendedAction: harvestPlant.recommendedAction,
         health: harvestPlant.health,
         status: harvestPlant.status,
+        lastObserved: harvestPlant.lastObserved,
+        latestLabel: harvestPlant.latestLabel,
+        latestDisplayLabel: harvestPlant.latestDisplayLabel,
+        latestImageUrl: harvestPlant.latestImageUrl,
       }
     }
 
@@ -1036,6 +1099,10 @@ export function FarmCommandPage() {
         recommendedAction: plant.recommendedAction,
         health: plant.health,
         status: plant.status,
+        lastObserved: plant.lastObserved,
+        latestLabel: plant.latestLabel,
+        latestDisplayLabel: plant.latestDisplayLabel,
+        latestImageUrl: plant.latestImageUrl,
       }
     }
 
@@ -1048,8 +1115,20 @@ export function FarmCommandPage() {
       recommendedAction: asset.status === 'target' ? '수확 요청 가능' : '개별 진단 권장',
       health: asset.status === 'attention' ? 62 : asset.status === 'target' ? 91 : 84,
       status: asset.status === 'attention' ? '재확인 필요' : asset.status === 'target' ? '수확 후보' : '관찰 중',
+      lastObserved: '',
+      latestLabel: '',
+      latestDisplayLabel: '',
+      latestImageUrl: '',
     }
   }, [harvestPlant, mapScene.assets, plantLookup, selectedAsset, selectedPlantId])
+  const selectedPlantObservationQuery = useQuery({
+    queryKey: ['plants', 'observations', selectedPlantDetail?.id ?? selectedPlantId],
+    queryFn: async () => getPlantObservations(selectedPlantDetail?.id ?? selectedPlantId ?? ''),
+    enabled: Boolean(selectedPlantDetail?.id ?? selectedPlantId),
+    refetchInterval: 20_000,
+  })
+  const selectedPlantObservationFeed = selectedPlantObservationQuery.data ?? emptyPlantObservationFeed
+  const selectedPlantObservation = selectedPlantObservationFeed.items[0] ?? null
 
   useEffect(() => {
     if (selectedAssetId && mapScene.assets.some((asset) => asset.id === selectedAssetId)) {
@@ -1283,6 +1362,18 @@ export function FarmCommandPage() {
     ?? null
   const sprinklerResultPercent = lastSprinklerAction || environment.history.length > 0 ? 100 : 0
   const selectedTag = selectionTag(selectedAsset?.kind, selectedAsset?.status)
+  const selectedPlantPreviewImage =
+    selectedPlantObservation?.imageUrl
+    || selectedPlantDetail?.latestImageUrl
+    || ''
+  const selectedAssetPreviewImage =
+    selectedAsset?.kind === 'plant'
+      ? selectedPlantPreviewImage || previewImageForAsset('plant', selectedAsset.status)
+      : previewImageForAsset(selectedAsset?.kind, selectedAsset?.status)
+  const selectedAssetPreviewLabel =
+    selectedAsset?.kind === 'plant'
+      ? selectedPlantObservation?.displayLabel || selectedPlantDetail?.latestDisplayLabel || selectedTag.label
+      : selectedTag.label
   const currentActivity = currentMissionActivity ?? activityState ?? robot.missionState
   const selectedPlantTargetPose = useMemo(() => {
     if (!selectedPlantDetail) {
@@ -1328,6 +1419,20 @@ export function FarmCommandPage() {
   const selectedStatusItems = selectedAsset?.kind === 'plant' && selectedPlantDetail
     ? [
         { label: '상태', value: selectedPlantDetail.status },
+        {
+          label: '최근 진단',
+          value:
+            selectedPlantObservation?.displayLabel
+            || selectedPlantDetail.latestDisplayLabel
+            || '진단 결과 대기',
+        },
+        {
+          label: '진단 시각',
+          value:
+            selectedPlantObservation?.reviewedAt
+            || selectedPlantDetail.lastObserved
+            || '기록 없음',
+        },
         { label: '권장 조치', value: selectedPlantDetail.recommendedAction },
         { label: '수확 단계', value: selectedPlantHarvestRuntime?.phaseLabel ?? '대기 중' },
         { label: '바구니 상태', value: selectedPlantHarvestRuntime?.basketLabel ?? `현재 바구니 ${harvest.basketCount}개 적재` },
@@ -1428,7 +1533,7 @@ export function FarmCommandPage() {
     )
 
     if (targetPose === null) {
-      setUiMessage(`${targetPlant.name} live 좌표를 찾지 못해 진단 이동을 시작할 수 없습니다.`)
+      setUiMessage(`${targetPlant.name} 진단 접근 좌표를 계산하지 못해 이동을 시작할 수 없습니다.`)
       return
     }
 
@@ -1595,6 +1700,8 @@ export function FarmCommandPage() {
         diagnosisMissionResult?.detail
         ?? (lastPatrolAction?.mode === 'diagnosis'
           ? lastPatrolAction.detail
+          : selectedPlantObservation
+            ? `${selectedPlantObservation.displayLabel} · ${selectedPlantObservation.detail}`
           : lastPlantAction?.label === '진단 완료'
             ? lastPlantAction.detail
             : `흰가루병 개체 ${mildewPercent}% 발견했습니다.`),
@@ -1681,7 +1788,8 @@ export function FarmCommandPage() {
                 alt="선택 객체 이미지"
                 className="camera-frame-media"
                 height="100%"
-                src={previewImageForAsset(selectedAsset?.kind, selectedAsset?.status)}
+                label={selectedAssetPreviewLabel}
+                src={selectedAssetPreviewImage}
               />
             </div>
           </div>
@@ -1971,7 +2079,8 @@ export function FarmCommandPage() {
                 alt={`${selectedPlantDetail.name} 확인 이미지`}
                 className="farm-plant-modal__image"
                 height="100%"
-                src={previewImageForAsset('plant', selectedPlantAsset.status)}
+                label={selectedPlantObservation?.displayLabel || selectedPlantDetail.latestDisplayLabel || '발표용 이미지'}
+                src={selectedPlantPreviewImage || previewImageForAsset('plant', selectedPlantAsset.status)}
               />
             </div>
 
@@ -1985,9 +2094,13 @@ export function FarmCommandPage() {
               </div>
 
               <p className="farm-helper-copy">
-                {selectedPlantHarvestRuntime?.statusLabel ?? selectedPlantDetail.status}
-                {' · '}
-                {selectedPlantHarvestRuntime?.detail ?? selectedPlantDetail.recommendedAction}
+                {selectedPlantHarvestRuntime?.isActive || selectedPlantHarvestRuntime?.isHandled
+                  ? `${selectedPlantHarvestRuntime.statusLabel} · ${selectedPlantHarvestRuntime.detail}`
+                  : selectedPlantObservation
+                    ? `상태가 좋지 않은 잎을 진단한 결과 ${selectedPlantObservation.displayLabel}로 기록되었습니다. ${selectedPlantDetail.recommendedAction}`
+                    : selectedPlantHarvestRuntime
+                      ? `${selectedPlantHarvestRuntime.statusLabel} · ${selectedPlantHarvestRuntime.detail}`
+                      : `${selectedPlantDetail.status} · ${selectedPlantDetail.recommendedAction}`}
               </p>
 
               <div className="chip-row">
@@ -1996,6 +2109,7 @@ export function FarmCommandPage() {
                 <span className="chip">건강도 {selectedPlantDetail.health}%</span>
                 {selectedPlantHarvestRuntime ? <span className="chip">{selectedPlantHarvestRuntime.phaseLabel}</span> : null}
                 {selectedPlantHarvestRuntime ? <span className="chip">{selectedPlantHarvestRuntime.basketLabel}</span> : null}
+                {selectedPlantObservation?.reviewedAt ? <span className="chip">{selectedPlantObservation.reviewedAt}</span> : null}
               </div>
               {missionControlBlockMessage ? <p className="muted">{missionControlBlockMessage}</p> : null}
               {selectedPlantHarvestRuntime ? (
@@ -2030,6 +2144,24 @@ export function FarmCommandPage() {
                   <p className="muted">{harvestMissionFeedback.title} · {harvestMissionFeedback.detail}</p>
                 </>
               ) : null}
+
+              <div className="farm-plant-modal__feedback">
+                <div className="farm-plant-modal__feedback-head">
+                  <strong>최근 진단 결과</strong>
+                  <span className={`table-tag ${selectedPlantObservation ? 'table-tag--danger' : 'table-tag--warning'}`}>
+                    {selectedPlantObservation ? 'live' : '대기'}
+                  </span>
+                </div>
+                <p className="muted">
+                  {selectedPlantObservation
+                    ? `${selectedPlantObservation.displayLabel} · ${selectedPlantObservation.reviewedAt || '시각 기록 대기'}`
+                    : '상태가 좋지 않은 잎을 진단하면 사진과 라벨이 여기 표시됩니다.'}
+                </p>
+                <p className="muted">
+                  {selectedPlantObservation?.detail
+                    || 'backend에서 실제 진단 결과가 들어오면 mock 이미지 대신 실제 사진이 우선 표시됩니다.'}
+                </p>
+              </div>
 
               <div className="farm-plant-modal__actions">
                 <button

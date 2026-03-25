@@ -6,6 +6,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import re
 from typing import Any
 import uuid
 
@@ -20,8 +21,39 @@ from services.perception.schemas import (
 
 
 _DEFAULT_MODEL_RELATIVE_PATH = Path('artifacts/models/tomato_disease/v1/best.pt')
+_DEFAULT_LABEL_CONTRACT_RELATIVE_PATH = Path(
+    'artifacts/models/tomato_disease/v1/label_contract.json'
+)
 _DEFAULT_RUNTIME_RELATIVE_PATH = Path('artifacts/runtime/backend')
 _DEFAULT_IGNORED_CLASSES = 'healthy,normal,normal_leaf,healthy_leaf'
+_DEFAULT_LABEL_ALIASES = {
+    'gray_mold': 'tomato_gray_mold_disease',
+    'gray mold': 'tomato_gray_mold_disease',
+    'tomato_gray_mold': 'tomato_gray_mold_disease',
+    'response_gray_mold': 'tomato_gray_mold_disease',
+    'powdery_mildew': 'tomato_powdery_mildew_disease',
+    'powdery mildew': 'tomato_powdery_mildew_disease',
+    'tomato_powdery_mildew': 'tomato_powdery_mildew_disease',
+    'response_powdery_mildew': 'tomato_powdery_mildew_disease',
+    'macro_npk_deficiency': 'tomato_macro_npk_deficiency_disease',
+    'macro npk deficiency': 'tomato_macro_npk_deficiency_disease',
+    'fruit_cracking': 'tomato_fruit_cracking_disease',
+    'fruit cracking': 'tomato_fruit_cracking_disease',
+    'fruit_crack': 'tomato_fruit_cracking_disease',
+    'tomato_crack': 'tomato_fruit_cracking_disease',
+    'calcium_deficiency': 'tomato_calcium_deficiency_disease',
+    'calcium deficiency': 'tomato_calcium_deficiency_disease',
+    'tomato_calcium_deficiency': 'tomato_calcium_deficiency_disease',
+    'blossom_end_rot': 'tomato_calcium_deficiency_disease',
+}
+_MODEL_PATH_ENV_VARS = (
+    'AGRIBOT_TOMATO_DISEASE_MODEL_PATH',
+    'AGRIBOT_TOMATO_MODEL_PATH',
+)
+_MODEL_DEVICE_ENV_VARS = (
+    'AGRIBOT_TOMATO_DISEASE_DEVICE',
+    'AGRIBOT_TOMATO_MODEL_DEVICE',
+)
 
 
 class ModelDependencyError(RuntimeError):
@@ -44,15 +76,19 @@ class MainInferenceService:
 
     def __init__(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]
+        contract = _load_label_contract(repo_root)
         default_model_path = repo_root / _DEFAULT_MODEL_RELATIVE_PATH
         default_runtime_dir = repo_root / _DEFAULT_RUNTIME_RELATIVE_PATH
 
         self._model_path = Path(
-            os.environ.get('AGRIBOT_TOMATO_MODEL_PATH', str(default_model_path))
+            _read_first_env(_MODEL_PATH_ENV_VARS) or str(default_model_path)
         ).expanduser()
         self._runtime_dir = Path(
             os.environ.get('AGRIBOT_BACKEND_RUNTIME_DIR', str(default_runtime_dir))
         ).expanduser()
+        self._resolved_device = resolve_inference_device(
+            _read_first_env(_MODEL_DEVICE_ENV_VARS) or 'auto'
+        )
         self._imgsz = int(os.environ.get('AGRIBOT_MAIN_IMGSZ', '960'))
         self._confidence_threshold = float(
             os.environ.get('AGRIBOT_MAIN_CONFIDENCE', '0.25')
@@ -60,6 +96,7 @@ class MainInferenceService:
         self._ignored_classes = _parse_label_list(
             os.environ.get('AGRIBOT_MAIN_IGNORED_CLASSES', _DEFAULT_IGNORED_CLASSES)
         )
+        self._label_aliases = _read_label_aliases(contract)
         self._model: Any | None = None
         self._treatment_rule_engine = DiseaseTreatmentRuleEngine()
         self._treatment_dispatcher = TreatmentCommandDispatcher()
@@ -79,14 +116,31 @@ class MainInferenceService:
         image_path = date_dir / f'{observation_id}.{suffix}'
         image_path.write_bytes(image_bytes)
 
-        override_label = request.test_override_final_label.strip()
+        preliminary_label = normalize_detection_label(
+            request.preliminary_label,
+            label_aliases=self._label_aliases,
+        )
+        override_label = normalize_detection_label(
+            request.test_override_final_label,
+            label_aliases=self._label_aliases,
+        )
         detections: list[Detection]
         final_detection: Detection | None
         if override_label:
             detections = []
             final_detection = None
         else:
-            detections = self._infer(image_path)
+            detections = [
+                Detection(
+                    label=normalize_detection_label(
+                        item.label,
+                        label_aliases=self._label_aliases,
+                    ),
+                    confidence=item.confidence,
+                    bbox=item.bbox,
+                )
+                for item in self._infer(image_path)
+            ]
             final_detection = _choose_final_detection(
                 detections,
                 preliminary_label=request.preliminary_label,
@@ -99,7 +153,7 @@ class MainInferenceService:
             decision_source = 'test_override'
             response_bbox = request.bbox
         elif final_detection is None:
-            final_label = request.preliminary_label.strip() or 'unknown'
+            final_label = preliminary_label or 'unknown'
             final_confidence = float(request.preliminary_confidence)
             decision_source = 'preliminary_fallback'
             response_bbox = request.bbox
@@ -146,6 +200,7 @@ class MainInferenceService:
                     'final_label': final_label,
                     'final_confidence': final_confidence,
                     'decision_source': decision_source,
+                    'model_device': self._resolved_device,
                     'final_bbox': None if response_bbox is None else _model_dump(response_bbox),
                     'treatment_plan': _model_dump(treatment_plan),
                     'dispatch_result': _model_dump(dispatch_result),
@@ -166,7 +221,7 @@ class MainInferenceService:
 
         return ThinInferenceConfirmResponse(
             observation_id=observation_id,
-            preliminary_label=request.preliminary_label.strip(),
+            preliminary_label=preliminary_label,
             preliminary_confidence=float(request.preliminary_confidence),
             final_label=final_label,
             final_confidence=final_confidence,
@@ -183,6 +238,7 @@ class MainInferenceService:
             source=str(image_path),
             imgsz=self._imgsz,
             conf=self._confidence_threshold,
+            device=self._resolved_device,
             verbose=False,
         )
         if not results:
@@ -198,7 +254,10 @@ class MainInferenceService:
         for box in boxes:
             confidence = float(box.conf[0].item()) if box.conf is not None else 0.0
             class_index = int(box.cls[0].item()) if box.cls is not None else -1
-            label = _resolve_label(names, class_index)
+            label = normalize_detection_label(
+                _resolve_label(names, class_index),
+                label_aliases=self._label_aliases,
+            )
             coords = box.xyxy[0].tolist() if box.xyxy is not None else [0.0, 0.0, 0.0, 0.0]
             detections.append(
                 Detection(
@@ -221,15 +280,17 @@ class MainInferenceService:
             return self._model
         if not self._model_path.exists():
             raise ModelFileMissingError(
-                f'Model file not found at {self._model_path}. '
-                'Place best.pt there or set AGRIBOT_TOMATO_MODEL_PATH.'
+                f'Shared tomato disease model file not found at {self._model_path}. '
+                'Expected artifacts/models/tomato_disease/v1/best.pt or set '
+                'AGRIBOT_TOMATO_DISEASE_MODEL_PATH '
+                '(legacy AGRIBOT_TOMATO_MODEL_PATH is also supported).'
             )
         try:
             from ultralytics import YOLO
         except ImportError as exc:
             raise ModelDependencyError(
-                'ultralytics is required for backend confirmation inference. '
-                'Install it in the backend runtime before using /api/v1/inference/confirm.'
+                'ultralytics and torch are required for backend confirmation inference. '
+                'Install them in the backend runtime before using /api/v1/inference/confirm.'
             ) from exc
 
         self._model = YOLO(str(self._model_path))
@@ -276,7 +337,7 @@ def _normalize_image_suffix(image_format: str) -> str:
 
 def _parse_label_list(raw_value: str) -> set[str]:
     return {
-        item.strip().lower()
+        _normalize_label_key(item)
         for item in raw_value.split(',')
         if item.strip()
     }
@@ -296,10 +357,10 @@ def _choose_final_detection(
     preliminary_label: str,
     ignored_classes: set[str],
 ) -> Detection | None:
-    normalized_preliminary = preliminary_label.strip().lower()
+    normalized_preliminary = _normalize_label_key(preliminary_label)
     filtered = [
         item for item in detections
-        if item.label.strip().lower() not in ignored_classes
+        if _normalize_label_key(item.label) not in ignored_classes
     ]
     if not filtered:
         filtered = detections
@@ -308,6 +369,82 @@ def _choose_final_detection(
 
     if normalized_preliminary:
         for item in filtered:
-            if item.label.strip().lower() == normalized_preliminary:
+            if _normalize_label_key(item.label) == normalized_preliminary:
                 return item
     return filtered[0]
+
+
+def normalize_detection_label(
+    raw_label: str,
+    *,
+    label_aliases: dict[str, str] | None = None,
+) -> str:
+    normalized_label = raw_label.strip()
+    if not normalized_label:
+        return ''
+
+    aliases = label_aliases or _DEFAULT_LABEL_ALIASES
+    alias_key = _normalize_label_key(normalized_label)
+    canonical = aliases.get(alias_key)
+    if canonical:
+        return canonical
+    return alias_key
+
+
+def resolve_inference_device(raw_device: str) -> str:
+    normalized_device = raw_device.strip().lower()
+    if not normalized_device or normalized_device == 'auto':
+        return 'cuda:0' if _cuda_available() else 'cpu'
+
+    if normalized_device.startswith('cuda') and not _cuda_available():
+        raise ModelDependencyError(
+            'AGRIBOT_TOMATO_DISEASE_DEVICE requested a CUDA device, '
+            'but torch.cuda.is_available() returned False.'
+        )
+    return raw_device.strip()
+
+
+def _load_label_contract(repo_root: Path) -> dict[str, Any]:
+    contract_path = repo_root / _DEFAULT_LABEL_CONTRACT_RELATIVE_PATH
+    if not contract_path.exists():
+        return {}
+    try:
+        return json.loads(contract_path.read_text(encoding='utf-8'))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _read_label_aliases(contract: dict[str, Any]) -> dict[str, str]:
+    contract_aliases = contract.get('canonical_label_aliases')
+    if not isinstance(contract_aliases, dict):
+        return dict(_DEFAULT_LABEL_ALIASES)
+
+    aliases = dict(_DEFAULT_LABEL_ALIASES)
+    for raw_key, raw_value in contract_aliases.items():
+        if not isinstance(raw_key, str) or not isinstance(raw_value, str):
+            continue
+        aliases[_normalize_label_key(raw_key)] = raw_value.strip()
+    return aliases
+
+
+def _read_first_env(names: tuple[str, ...]) -> str | None:
+    for name in names:
+        value = os.environ.get(name, '').strip()
+        if value:
+            return value
+    return None
+
+
+def _normalize_label_key(raw_label: str) -> str:
+    normalized = raw_label.strip().lower().replace('-', '_')
+    normalized = re.sub(r'\s+', '_', normalized)
+    normalized = re.sub(r'_+', '_', normalized)
+    return normalized
+
+
+def _cuda_available() -> bool:
+    try:
+        import torch
+    except ImportError:
+        return False
+    return bool(torch.cuda.is_available())

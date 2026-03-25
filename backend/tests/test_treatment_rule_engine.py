@@ -87,7 +87,7 @@ def test_confirm_detection_embeds_treatment_plan(tmp_path, monkeypatch) -> None:
         zone_id='greenhouse_01',
         target_position=Point3D(x=8.0, y=2.0, z=0.05),
         auto_execute_treatment=False,
-        preliminary_label='tomato_powdery_mildew',
+        preliminary_label='powdery_mildew',
         preliminary_confidence=0.81,
         image_base64=base64.b64encode(b'fake-image-bytes').decode('ascii'),
         image_format='jpg',
@@ -95,7 +95,8 @@ def test_confirm_detection_embeds_treatment_plan(tmp_path, monkeypatch) -> None:
 
     response = service.confirm_detection(request)
 
-    assert response.final_label == 'tomato_powdery_mildew'
+    assert response.preliminary_label == 'tomato_powdery_mildew_disease'
+    assert response.final_label == 'tomato_powdery_mildew_disease'
     assert response.treatment_plan is not None
     assert response.treatment_plan.action_required is True
     assert response.treatment_plan.effect_color == 'red'
@@ -103,3 +104,17 @@ def test_confirm_detection_embeds_treatment_plan(tmp_path, monkeypatch) -> None:
     assert response.treatment_plan.selected_sprinkler.device_id == 'sprinkler_3'
     assert response.dispatch_result is not None
     assert response.dispatch_result.status == 'skipped_auto_execute'
+
+
+def test_treatment_rule_engine_accepts_standardized_disease_suffix() -> None:
+    engine = DiseaseTreatmentRuleEngine()
+
+    plan = engine.evaluate(
+        disease_label='tomato_calcium_deficiency_disease',
+        zone_id='farm_01',
+        target_position=Point3D(x=4.0, y=3.0, z=0.05),
+    )
+
+    assert plan.action_required is True
+    assert plan.status == 'ready'
+    assert plan.treatment_type == 'calcium_solution_spray'

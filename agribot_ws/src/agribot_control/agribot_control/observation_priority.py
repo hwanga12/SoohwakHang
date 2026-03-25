@@ -2,6 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+_DISEASE_CLASS_KEYWORDS = (
+    'disease',
+    'gray_mold',
+    'powdery_mildew',
+    'calcium_deficiency',
+    'macro_npk_deficiency',
+    'fruit_cracking',
+    'blossom_end_rot',
+    'crack',
+)
+
 
 @dataclass(slots=True)
 class ObservationInput:
@@ -186,7 +197,7 @@ class ObservationPriorityArbiter:
         mission_type = 'OBSERVE'
         priority = self._generic_observation_priority
 
-        if 'disease' in normalized_class:
+        if _is_disease_class_name(normalized_class):
             event_kind = 'diseased_leaf'
             mission_type = 'OBSERVE'
             priority = self._diseased_leaf_priority
@@ -258,3 +269,9 @@ class ObservationPriorityArbiter:
     @staticmethod
     def _candidate_sort_key(candidate: ObservationTaskCandidate) -> tuple[int, float, int]:
         return (-candidate.priority, -candidate.confidence, candidate.observed_at_ns)
+
+
+def _is_disease_class_name(normalized_class: str) -> bool:
+    if not normalized_class:
+        return False
+    return any(keyword in normalized_class for keyword in _DISEASE_CLASS_KEYWORDS)
