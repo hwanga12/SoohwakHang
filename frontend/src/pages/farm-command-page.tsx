@@ -30,6 +30,7 @@ import {
   sendRobotZoneMove,
   startFieldPatrolMission,
   triggerNutrientInjection,
+  type HarvestPageData,
   type MissionDispatch,
   type MissionStatus,
   type RobotCommandStatus,
@@ -136,8 +137,161 @@ type DiagnoseUiState = {
   buttonDisabled: boolean
 }
 
+type PlantHarvestRuntime = {
+  statusLabel: string
+  phaseLabel: string
+  detail: string
+  basketLabel: string
+  latestResultLabel: string
+  isHandled: boolean
+  isActive: boolean
+}
+
 function plantNeedsAttention(recommendedAction: string, status: string) {
   return recommendedAction.includes('병') || status.includes('재확인') || status.includes('병')
+}
+
+function normalizeHarvestPhase(phase?: string) {
+  return (phase ?? '').trim().toUpperCase()
+}
+
+function formatHarvestPhase(phase?: string) {
+  switch (normalizeHarvestPhase(phase)) {
+    case 'APPROACHING':
+      return '접근 중'
+    case 'ALIGNING':
+      return '자세 보정 중'
+    case 'PICKING':
+      return '토마토 집는 중'
+    case 'STOWING':
+      return '등 바구니에 적재 중'
+    case 'RETURN_HOME':
+      return '복귀 중'
+    case 'RESUME':
+      return '다음 작업 복귀 중'
+    default:
+      return phase?.trim() || '대기 중'
+  }
+}
+
+function describeHarvestPhase(phase: string | undefined, plantName: string) {
+  switch (normalizeHarvestPhase(phase)) {
+    case 'APPROACHING':
+      return `${plantName} 앞으로 이동해 수확 위치를 맞추는 중입니다.`
+    case 'ALIGNING':
+      return `${plantName} 앞에서 로봇팔 자세를 보정하고 있습니다.`
+    case 'PICKING':
+      return `${plantName}에서 토마토를 따는 중입니다.`
+    case 'STOWING':
+      return `${plantName}에서 딴 토마토를 등 바구니에 옮겨 담는 중입니다.`
+    case 'RETURN_HOME':
+      return '수확을 마치고 다음 이동 또는 복귀 경로를 준비하는 중입니다.'
+    case 'RESUME':
+      return '현재 수확 시퀀스를 마치고 다음 작업으로 복귀하는 중입니다.'
+    default:
+      return `${plantName} 수확 상태를 기다리는 중입니다.`
+  }
+}
+
+function extractPlantIdFromFruitId(fruitId?: string | null) {
+  const value = (fruitId ?? '').trim()
+  if (!value) {
+    return null
+  }
+
+  const match = value.match(/farm\d+_plant_\d{2}/)
+  return match?.[0] ?? null
+}
+
+function buildPlantHarvestRuntime(
+  plant: PlantModalDetail,
+  harvest: HarvestPageData,
+  missionStatus: MissionStatus | undefined,
+  activeMission: PendingMissionRequest | null,
+  missionFeedback: MissionFeedback | null,
+): PlantHarvestRuntime {
+  const relatedBatch =
+    harvest.batches.find((batch) => (
+      batch.plantId === plant.id
+      || batch.fruitId === plant.targetId
+      || extractPlantIdFromFruitId(batch.fruitId) === plant.id
+    )) ?? null
+  const activePlantId = extractPlantIdFromFruitId(harvest.activeTargetId)
+  const latestHarvestedPlantId = extractPlantIdFromFruitId(harvest.lastHarvestedFruitId)
+  const trackingThisMission =
+    activeMission?.plantId === plant.id
+    && missionStatus?.missionId === activeMission.missionId
+  const isActive =
+    trackingThisMission
+    || (
+      (harvest.missionStatus === 'pending' || harvest.missionStatus === 'running')
+      && (harvest.activeTargetId === plant.targetId || activePlantId === plant.id)
+    )
+    || relatedBatch?.state.includes('진행') === true
+  const isHandled =
+    harvest.loadedFruitIds.includes(plant.targetId)
+    || latestHarvestedPlantId === plant.id
+    || relatedBatch?.success === true
+
+  const phaseSource =
+    trackingThisMission
+      ? missionStatus?.currentPhase || harvest.currentPhase
+      : isActive
+        ? harvest.currentPhase || relatedBatch?.currentPhase
+        : relatedBatch?.currentPhase || ''
+
+  if (isHandled) {
+    return {
+      statusLabel: '수확 및 적재 완료',
+      phaseLabel: '등 바구니 반영 완료',
+      detail: `${harvest.lastHarvestedFruitId || plant.targetId}를 수확한 뒤 등 바구니에 적재했습니다.`,
+      basketLabel: `현재 바구니 ${harvest.basketCount}개 적재`,
+      latestResultLabel: harvest.lastHarvestedFruitId || plant.targetId,
+      isHandled: true,
+      isActive: false,
+    }
+  }
+
+  if (trackingThisMission || isActive) {
+    return {
+      statusLabel: missionFeedback?.title || '수확 진행 중',
+      phaseLabel: formatHarvestPhase(phaseSource),
+      detail:
+        missionStatus?.detailMessage
+        || missionFeedback?.detail
+        || harvest.detailMessage
+        || describeHarvestPhase(phaseSource, plant.name),
+      basketLabel: `현재 바구니 ${harvest.basketCount}개 적재`,
+      latestResultLabel: harvest.lastHarvestedFruitId || '아직 수확 결과 없음',
+      isHandled: false,
+      isActive: true,
+    }
+  }
+
+  if (relatedBatch?.success === false) {
+    return {
+      statusLabel: '최근 수확 실패',
+      phaseLabel: '재시도 필요',
+      detail: relatedBatch.summary || `${plant.name} 수확이 실패해 재확인이 필요합니다.`,
+      basketLabel: `현재 바구니 ${harvest.basketCount}개 적재`,
+      latestResultLabel: harvest.lastHarvestedFruitId || '실패 후 적재 없음',
+      isHandled: false,
+      isActive: false,
+    }
+  }
+
+  return {
+    statusLabel: plant.status.includes('수확') ? '수확 요청 가능' : '관찰 중',
+    phaseLabel: plant.status.includes('수확') ? '수확 대기' : '관찰 우선',
+    detail:
+      plant.status.includes('수확')
+        ? `${plant.name}은 수확 후보입니다. 버튼을 누르면 접근 → 집기 → 적재 순서로 진행합니다.`
+        : `${plant.name}은 아직 수확보다 관찰이 우선인 상태입니다.`,
+    basketLabel: `현재 바구니 ${harvest.basketCount}개 적재`,
+    latestResultLabel: harvest.lastHarvestedFruitId || '아직 수확 결과 없음',
+    isHandled: false,
+    isActive: false,
+  }
 }
 
 function previewImageForAsset(
@@ -161,7 +315,7 @@ function selectionTag(
 ) {
   if (status === 'handled') {
     return {
-      label: '조치 완료',
+      label: kind === 'plant' ? '수확 완료' : '조치 완료',
       tone: 'accent',
     } as const
   }
@@ -259,7 +413,8 @@ function buildMissionFeedback(
 
   const status = missionStatus.status
   const detail =
-    missionStatus.message
+    missionStatus.detailMessage
+    || missionStatus.message
     || missionStatus.operatorMessage
     || tracker.acceptedMessage
 
@@ -268,7 +423,10 @@ function buildMissionFeedback(
       missionId: tracker.missionId,
       status,
       badgeLabel: status,
-      title: copy.pendingTitle,
+      title:
+        missionStatus.currentPhase
+          ? `${copy.pendingTitle} · ${formatHarvestPhase(missionStatus.currentPhase)}`
+          : copy.pendingTitle,
       detail,
       tone: missionResultTone(status),
       tagTone: missionTagTone(status),
@@ -281,7 +439,10 @@ function buildMissionFeedback(
       missionId: tracker.missionId,
       status,
       badgeLabel: status,
-      title: copy.runningTitle,
+      title:
+        missionStatus.currentPhase
+          ? `${copy.runningTitle} · ${formatHarvestPhase(missionStatus.currentPhase)}`
+          : copy.runningTitle,
       detail,
       tone: missionResultTone(status),
       tagTone: missionTagTone(status),
@@ -706,6 +867,10 @@ export function FarmCommandPage() {
         plantId: variables.plantId,
         plantName: variables.plantName,
       })
+      setActivityState('수확 준비중')
+      setUiMessage(
+        `${variables.plantName} 수확 요청을 접수했습니다. 접근 → 집기 → 적재 단계가 실제 상태로 반영될 때까지 추적합니다.`,
+      )
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['page', 'plants'] }),
         queryClient.invalidateQueries({ queryKey: ['page', 'harvest'] }),
@@ -782,11 +947,26 @@ export function FarmCommandPage() {
     () => new Map(plants.plants.map((plant) => [plant.id, plant])),
     [plants.plants],
   )
+  const runtimeActiveHarvestPlantId = useMemo(
+    () => extractPlantIdFromFruitId(harvest.activeTargetId) ?? activeHarvestMission?.plantId ?? null,
+    [activeHarvestMission?.plantId, harvest.activeTargetId],
+  )
+  const runtimeHandledFruitIds = useMemo(
+    () => new Set(harvest.loadedFruitIds),
+    [harvest.loadedFruitIds],
+  )
   const attentionPlant =
     plants.plants.find((plant) => plantNeedsAttention(plant.recommendedAction, plant.status))
     ?? plants.plants[0]
+  const activeHarvestPlant =
+    plants.plants.find((plant) => (
+      plant.id === runtimeActiveHarvestPlantId
+      || plant.targetId === harvest.activeTargetId
+    ))
+    ?? null
   const harvestPlant =
-    plants.plants.find((plant) => plant.status.includes('수확'))
+    activeHarvestPlant
+    ?? plants.plants.find((plant) => plant.status.includes('수확'))
     ?? plants.plants[0]
   const patrolZoneIds = robot.zonePresets.map((preset) => preset.id).filter(Boolean)
   const liveScene = useMemo<SemanticScene>(() => ({
@@ -805,19 +985,42 @@ export function FarmCommandPage() {
         const plant = plantLookup.get(asset.id)
         const attention = plant ? plantNeedsAttention(plant.recommendedAction, plant.status) : asset.status === 'attention'
         const harvestTarget = plant ? plant.status.includes('수확') : asset.status === 'target'
+        const runtimeHandled =
+          plant !== undefined
+          && (
+            runtimeHandledFruitIds.has(plant.targetId)
+            || extractPlantIdFromFruitId(harvest.lastHarvestedFruitId) === plant.id
+          )
+        const runtimeHarvestTarget =
+          plant !== undefined
+          && (
+            plant.id === runtimeActiveHarvestPlantId
+            || plant.targetId === harvest.activeTargetId
+          )
         const status: SemanticAssetStatus =
-          actionRecord ? 'handled' : attention ? 'attention' : harvestTarget ? 'target' : 'normal'
+          actionRecord || runtimeHandled
+            ? 'handled'
+            : attention
+              ? 'attention'
+              : runtimeHarvestTarget || harvestTarget
+                ? 'target'
+                : 'normal'
 
         return {
           ...asset,
           linkedId: plant?.targetId ?? asset.linkedId,
           label: plant?.name ?? asset.label,
           shortLabel: plant?.name.replace('토마토 ', '') ?? asset.shortLabel,
-          description: actionRecord
-            ? actionRecord.detail
-            : plant
-              ? `${plant.status} · ${plant.recommendedAction}`
-              : asset.description,
+          description:
+            actionRecord
+              ? actionRecord.detail
+              : runtimeHandled
+                ? `${plant?.name ?? asset.label} 수확과 등 바구니 적재가 완료되었습니다.`
+                : runtimeHarvestTarget
+                  ? harvest.detailMessage || `${plant?.name ?? asset.label} ${formatHarvestPhase(harvest.currentPhase)}`
+                  : plant
+                    ? `${plant.status} · ${plant.recommendedAction}`
+                    : asset.description,
           status,
         }
       }
@@ -835,7 +1038,17 @@ export function FarmCommandPage() {
         status,
       }
     }),
-  }), [actionRecords, liveScene, plantLookup])
+  }), [
+    actionRecords,
+    harvest.activeTargetId,
+    harvest.currentPhase,
+    harvest.detailMessage,
+    harvest.lastHarvestedFruitId,
+    liveScene,
+    plantLookup,
+    runtimeActiveHarvestPlantId,
+    runtimeHandledFruitIds,
+  ])
 
   const selectedAsset = useMemo(
     () => mapScene.assets.find((asset) => asset.id === selectedAssetId) ?? null,
@@ -927,10 +1140,15 @@ export function FarmCommandPage() {
       return
     }
 
+    if (activeHarvestPlant) {
+      setSelectedAssetId(activeHarvestPlant.id)
+      return
+    }
+
     if (attentionPlant) {
       setSelectedAssetId(attentionPlant.id)
     }
-  }, [attentionPlant, mapScene.assets, selectedAssetId, targetAssetId])
+  }, [activeHarvestPlant, attentionPlant, mapScene.assets, selectedAssetId, targetAssetId])
 
   useEffect(() => {
     if (selectedAsset?.kind === 'plant') {
@@ -1010,20 +1228,44 @@ export function FarmCommandPage() {
     || (patrolMissionFeedback !== null && !patrolMissionFeedback.isTerminal)
   const harvestActionDisabled = missionControlBlocked || missionRequestInFlight
   const patrolActionDisabled = missionControlBlocked || missionRequestInFlight
+  const selectedPlantHarvestRuntime = useMemo(
+    () => (
+      selectedPlantDetail
+        ? buildPlantHarvestRuntime(
+            selectedPlantDetail,
+            harvest,
+            harvestMissionStatus,
+            activeHarvestMission,
+            harvestMissionFeedback,
+          )
+        : null
+    ),
+    [
+      activeHarvestMission,
+      harvest,
+      harvestMissionFeedback,
+      harvestMissionStatus,
+      selectedPlantDetail,
+    ],
+  )
   const currentMissionActivity =
     harvestMissionFeedback !== null && !harvestMissionFeedback.isTerminal
       ? harvestMissionFeedback.status === 'running'
-        ? '수확 진행중'
+        ? `수확 ${formatHarvestPhase(harvestMissionStatus?.currentPhase || harvest.currentPhase)}`
         : '수확 준비중'
-      : patrolMissionFeedback !== null && !patrolMissionFeedback.isTerminal
-        ? activePatrolMission?.mode === 'harvest'
-          ? patrolMissionFeedback.status === 'running'
-            ? '패트롤 수확중'
-            : '패트롤 수확 준비중'
-          : patrolMissionFeedback.status === 'running'
-            ? '패트롤 진단중'
-            : '패트롤 진단 준비중'
-        : null
+      : harvest.missionStatus === 'running'
+        ? `수확 ${formatHarvestPhase(harvest.currentPhase)}`
+        : harvest.missionStatus === 'pending'
+          ? '수확 준비중'
+          : patrolMissionFeedback !== null && !patrolMissionFeedback.isTerminal
+            ? activePatrolMission?.mode === 'harvest'
+              ? patrolMissionFeedback.status === 'running'
+                ? '패트롤 수확중'
+                : '패트롤 수확 준비중'
+              : patrolMissionFeedback.status === 'running'
+                ? '패트롤 진단중'
+                : '패트롤 진단 준비중'
+            : null
 
   useEffect(() => {
     if (!activeHarvestMission || !harvestMissionFeedback?.isTerminal || !harvestMissionFeedback.missionId) {
@@ -1192,13 +1434,16 @@ export function FarmCommandPage() {
             || '기록 없음',
         },
         { label: '권장 조치', value: selectedPlantDetail.recommendedAction },
-        { label: '건강도', value: `${selectedPlantDetail.health}%` },
+        { label: '수확 단계', value: selectedPlantHarvestRuntime?.phaseLabel ?? '대기 중' },
+        { label: '바구니 상태', value: selectedPlantHarvestRuntime?.basketLabel ?? `현재 바구니 ${harvest.basketCount}개 적재` },
         {
-          label: '조치 상태',
+          label: '최근 결과',
           value:
-            selectedActionRecord?.label
+            selectedPlantHarvestRuntime?.latestResultLabel
+            ?? selectedActionRecord?.label
             ?? (selectedAsset.status === 'attention' ? '조치 필요함' : selectedAsset.status === 'target' ? '수확 후보' : '대기'),
         },
+        { label: '건강도', value: `${selectedPlantDetail.health}%` },
       ]
     : selectedAsset?.kind === 'sprinkler'
       ? [
@@ -1313,7 +1558,7 @@ export function FarmCommandPage() {
     }
 
     setUiMessage(null)
-    setActivityState(null)
+    setActivityState('수확 준비중')
     if (activeHarvestMission?.missionId) {
       queryClient.removeQueries({ queryKey: ['missions', 'status', activeHarvestMission.missionId] })
     }
@@ -1434,6 +1679,18 @@ export function FarmCommandPage() {
     activePatrolMission?.mode === 'harvest'
       ? patrolMissionFeedback
       : harvestMissionFeedback
+  const harvestButtonLabel =
+    selectedPlantHarvestRuntime?.isHandled
+      ? '수확 및 적재 완료'
+      : harvestMutation.isPending && activeHarvestMission === null
+        ? '수확 요청 중...'
+        : selectedPlantHarvestRuntime?.isActive
+          ? `${selectedPlantHarvestRuntime.phaseLabel}`
+          : missionRequestInFlight && activeHarvestMission !== null
+            ? '다른 수확 진행 중...'
+            : '수확하기'
+  const harvestButtonDisabled =
+    harvestActionDisabled || selectedPlantHarvestRuntime?.isHandled === true
 
   const resultItems = [
     {
@@ -1460,6 +1717,7 @@ export function FarmCommandPage() {
       tone: harvestMissionResult?.tone ?? 'warning',
       text:
         harvestMissionResult?.detail
+        ?? selectedPlantHarvestRuntime?.detail
         ?? (lastPatrolAction?.mode === 'harvest'
           ? lastPatrolAction.detail
           : lastPlantAction?.label === '수확 완료'
@@ -1469,13 +1727,16 @@ export function FarmCommandPage() {
     {
       icon: 'inventory_2',
       tone: 'accent',
-      text: `${harvestProgressPercent}% 수확 완료하였습니다.`,
+      text:
+        harvest.lastHarvestedFruitId
+          ? `바구니 ${harvest.basketCount}개 적재 중이며 마지막 수확은 ${harvest.lastHarvestedFruitId}입니다.`
+          : `${harvestProgressPercent}% 수확 완료하였습니다.`,
     },
   ] as const
 
   const selectedTaskTitle = selectedAsset ? `${selectedSummary.title} 작업` : '작업 대상을 선택하세요'
   const selectedTaskDescription = selectedAsset?.kind === 'plant'
-    ? '식물 개별 작업은 맵 팝업에서 바로 실행합니다.'
+    ? selectedPlantHarvestRuntime?.detail ?? '식물 개별 작업은 맵 팝업에서 바로 실행합니다.'
     : selectedAsset?.kind === 'sprinkler'
       ? '급수 개별 작업도 맵 팝업에서 바로 실행합니다.'
       : '밭 전체 패트롤 또는 개별 객체 작업을 선택할 수 있습니다.'
@@ -1698,6 +1959,25 @@ export function FarmCommandPage() {
                     : '급수 헤드를 누르면 이미지와 함께 `물주기`, `영양제 주기` 팝업이 열립니다.'}
                 </p>
                 {selectedAsset.kind === 'plant' && missionControlBlockMessage ? <p className="muted">{missionControlBlockMessage}</p> : null}
+                {selectedAsset.kind === 'plant' && selectedPlantHarvestRuntime ? (
+                  <>
+                    <div className="chip-row">
+                      <span className={`table-tag table-tag--${
+                        selectedPlantHarvestRuntime.isHandled
+                          ? 'healthy'
+                          : selectedPlantHarvestRuntime.isActive
+                            ? 'warning'
+                            : 'accent'
+                      }`}
+                      >
+                        {selectedPlantHarvestRuntime.statusLabel}
+                      </span>
+                      <span className="chip">{selectedPlantHarvestRuntime.phaseLabel}</span>
+                      <span className="chip">{selectedPlantHarvestRuntime.basketLabel}</span>
+                    </div>
+                    <p className="muted">{selectedPlantHarvestRuntime.detail}</p>
+                  </>
+                ) : null}
                 {selectedAsset.kind === 'plant' && harvestMissionFeedback ? (
                   <>
                     <div className="chip-row">
@@ -1814,18 +2094,46 @@ export function FarmCommandPage() {
               </div>
 
               <p className="farm-helper-copy">
-                {selectedPlantObservation
-                  ? `상태가 좋지 않은 잎을 진단한 결과 ${selectedPlantObservation.displayLabel}로 기록되었습니다. ${selectedPlantDetail.recommendedAction}`
-                  : `${selectedPlantDetail.status} · ${selectedPlantDetail.recommendedAction}`}
+                {selectedPlantHarvestRuntime?.isActive || selectedPlantHarvestRuntime?.isHandled
+                  ? `${selectedPlantHarvestRuntime.statusLabel} · ${selectedPlantHarvestRuntime.detail}`
+                  : selectedPlantObservation
+                    ? `상태가 좋지 않은 잎을 진단한 결과 ${selectedPlantObservation.displayLabel}로 기록되었습니다. ${selectedPlantDetail.recommendedAction}`
+                    : selectedPlantHarvestRuntime
+                      ? `${selectedPlantHarvestRuntime.statusLabel} · ${selectedPlantHarvestRuntime.detail}`
+                      : `${selectedPlantDetail.status} · ${selectedPlantDetail.recommendedAction}`}
               </p>
 
               <div className="chip-row">
                 <span className="chip">{selectedPlantDetail.zoneLabel}</span>
                 <span className="chip">{selectedPlantDetail.positionLabel}</span>
                 <span className="chip">건강도 {selectedPlantDetail.health}%</span>
+                {selectedPlantHarvestRuntime ? <span className="chip">{selectedPlantHarvestRuntime.phaseLabel}</span> : null}
+                {selectedPlantHarvestRuntime ? <span className="chip">{selectedPlantHarvestRuntime.basketLabel}</span> : null}
                 {selectedPlantObservation?.reviewedAt ? <span className="chip">{selectedPlantObservation.reviewedAt}</span> : null}
               </div>
               {missionControlBlockMessage ? <p className="muted">{missionControlBlockMessage}</p> : null}
+              {selectedPlantHarvestRuntime ? (
+                <div className="farm-plant-modal__feedback">
+                  <div className="farm-plant-modal__feedback-head">
+                    <strong>{selectedPlantHarvestRuntime.statusLabel}</strong>
+                    <span className={`table-tag table-tag--${
+                      selectedPlantHarvestRuntime.isHandled
+                        ? 'healthy'
+                        : selectedPlantHarvestRuntime.isActive
+                          ? 'warning'
+                          : 'accent'
+                    }`}
+                    >
+                      {selectedPlantHarvestRuntime.phaseLabel}
+                    </span>
+                  </div>
+                  <p className="muted">{selectedPlantHarvestRuntime.detail}</p>
+                  <div className="chip-row">
+                    <span className="chip">{selectedPlantHarvestRuntime.latestResultLabel}</span>
+                    {activeHarvestMission?.missionId ? <span className="chip">{activeHarvestMission.missionId}</span> : null}
+                  </div>
+                </div>
+              ) : null}
               {harvestMissionFeedback ? (
                 <>
                   <div className="chip-row">
@@ -1868,14 +2176,13 @@ export function FarmCommandPage() {
                 </button>
                 <button
                   className="action-button action-button--warning"
-                  disabled={harvestActionDisabled}
+                  disabled={harvestButtonDisabled}
                   onClick={() => {
                     handleHarvest()
-                    closeAssetModal()
                   }}
                   type="button"
                 >
-                  {harvestMutation.isPending && activeHarvestMission === null ? '수확 요청 중...' : '수확하기'}
+                  {harvestButtonLabel}
                 </button>
               </div>
               <div className="farm-plant-modal__feedback">
