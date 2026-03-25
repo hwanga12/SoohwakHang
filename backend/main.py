@@ -1,4 +1,7 @@
+import logging
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import models
 from database import engine
 
@@ -8,10 +11,25 @@ from routers import (
     alerts, environment, iot, actuations, harvests, media, realtime
 )
 
-# 핵심: 서버를 켤 때 DB에 테이블이 없으면 파이썬이 알아서 생성해 줍니다!
-models.Base.metadata.create_all(bind=engine)
+logger = logging.getLogger(__name__)
+
+try:
+    models.Base.metadata.create_all(bind=engine)
+except Exception as exc:  # pragma: no cover - 런타임 환경 차이 대응
+    logger.warning("DB 초기화를 건너뜁니다: %s", exc)
 
 app = FastAPI(title="🌱 AgriBot API", version="1.0.0", description="수확해조 로봇 백엔드 서버입니다.")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ⭐️ 각각의 라우터를 앱에 등록 (prefix로 기본 URL을 맞춰줍니다)
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
