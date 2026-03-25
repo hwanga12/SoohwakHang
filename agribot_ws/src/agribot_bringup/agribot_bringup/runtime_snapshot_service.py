@@ -6,7 +6,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ament_index_python.packages import get_package_share_directory
+try:
+    from ament_index_python.packages import get_package_share_directory
+except ModuleNotFoundError:  # pragma: no cover - fallback for non-ROS pytest shells
+    def get_package_share_directory(package_name: str) -> str:
+        raise LookupError(f'ament index is unavailable for package: {package_name}')
 
 DEFAULT_MAP_ID = 'farm_map'
 DEFAULT_FRAME_ID = 'map'
@@ -16,6 +20,9 @@ SEMANTIC_LAYER_SNAPSHOT_FILENAME = 'robot_map_layers_snapshot.json'
 MANUAL_COMMAND_FILENAME = 'robot_manual_command.json'
 MANUAL_COMMAND_STATUS_FILENAME = 'robot_manual_command_status.json'
 CONTROL_STATE_FILENAME = 'robot_control_state.json'
+MISSION_REQUEST_FILENAME = 'robot_mission_request.json'
+MISSION_STATUS_FILENAME = 'robot_mission_status.json'
+MISSION_STATUS_DIRNAME = 'mission_statuses'
 
 
 def runtime_dir_from_env() -> Path:
@@ -44,8 +51,36 @@ def control_state_path(runtime_dir: Path | None = None) -> Path:
     return (runtime_dir or runtime_dir_from_env()) / CONTROL_STATE_FILENAME
 
 
+def mission_request_path(runtime_dir: Path | None = None) -> Path:
+    return (runtime_dir or runtime_dir_from_env()) / MISSION_REQUEST_FILENAME
+
+
+def mission_status_path(runtime_dir: Path | None = None) -> Path:
+    return (runtime_dir or runtime_dir_from_env()) / MISSION_STATUS_FILENAME
+
+
+def _sanitize_runtime_identifier(value: str) -> str:
+    normalized = ''.join(
+        character if character.isalnum() or character in {'-', '_', '.'} else '_'
+        for character in str(value).strip()
+    )
+    return normalized or 'unknown-mission'
+
+
+def mission_status_record_path(
+    mission_id: str,
+    runtime_dir: Path | None = None,
+) -> Path:
+    base_dir = (runtime_dir or runtime_dir_from_env()) / MISSION_STATUS_DIRNAME
+    return base_dir / f'{_sanitize_runtime_identifier(mission_id)}.json'
+
+
 def _package_share(package_name: str) -> Path:
-    share_path = Path(get_package_share_directory(package_name))
+    try:
+        share_path = Path(get_package_share_directory(package_name))
+    except Exception:
+        share_path = Path()
+
     if share_path.exists():
         return share_path
 
@@ -507,6 +542,54 @@ def build_manual_command_status_payload(
         'target_pose': target_pose,
         'home_waypoint_id': home_waypoint_id,
         'control_state': control_state,
+        'received_at': received_at,
+        'started_at': started_at,
+        'completed_at': completed_at,
+        'updated_at': updated_at,
+    }
+
+
+def build_mission_bridge_status_payload(
+    *,
+    mission_id: str | None,
+    command_id: str,
+    request_type: str,
+    robot_id: str,
+    status: str,
+    message: str,
+    requested_by: str = '',
+    error: str | None = None,
+    result: str | None = None,
+    zone_ids: list[str] | tuple[str, ...] | None = None,
+    loop_count: int | None = None,
+    patrol_mode: str | None = None,
+    plant_id: str | None = None,
+    fruit_id: str | None = None,
+    tomato_id: str | None = None,
+    received_at: str | None = None,
+    started_at: str | None = None,
+    completed_at: str | None = None,
+) -> dict[str, Any]:
+    updated_at = datetime.now(timezone.utc).isoformat()
+    mission_identifier = (mission_id or command_id or '').strip() or None
+    normalized_zone_ids = [str(zone_id).strip() for zone_id in zone_ids or () if str(zone_id).strip()]
+
+    return {
+        'mission_id': mission_identifier,
+        'command_id': command_id,
+        'request_type': request_type,
+        'robot_id': robot_id,
+        'requested_by': requested_by or None,
+        'status': status,
+        'message': message,
+        'error': error,
+        'result': result,
+        'zone_ids': normalized_zone_ids or None,
+        'loop_count': int(loop_count) if loop_count is not None else None,
+        'patrol_mode': patrol_mode or None,
+        'plant_id': plant_id or None,
+        'fruit_id': fruit_id or None,
+        'tomato_id': tomato_id or None,
         'received_at': received_at,
         'started_at': started_at,
         'completed_at': completed_at,
