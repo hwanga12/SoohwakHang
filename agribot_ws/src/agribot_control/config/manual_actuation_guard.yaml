@@ -7,4 +7,4 @@ manual_actuation_guard_node:
     duplicate_window_seconds: 2.0
     execution_lock_seconds: 4.0
     conflict_groups:
-      - watering,nutrient
+      - watering,nutrient,sprinkler

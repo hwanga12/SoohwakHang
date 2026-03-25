@@ -402,7 +402,7 @@ export function FarmCommandPage() {
   const feedbackMessage = uiMessage
     ?? (
       zoneMoveMutation.isSuccess
-        ? zoneMoveMutation.data
+        ? zoneMoveMutation.data.message
         : zoneMoveMutation.isError
           ? zoneMoveMutation.error.message
           : harvestMutation.isSuccess

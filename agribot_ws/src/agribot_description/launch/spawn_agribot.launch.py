@@ -140,9 +140,23 @@ def generate_launch_description():
             '/world/farm_world/model/agribot/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
         ],
         remappings=[
-            ('/world/farm_world/model/agribot/joint_state', '/joint_states'),
+            ('/clock', '/clock_raw'),
+            ('/odom', '/odom_raw'),
+            ('/world/farm_world/model/agribot/joint_state', '/joint_states_raw'),
         ],
         output='screen',
+    )
+
+    sim_time_guard = Node(
+        package='agribot_description',
+        executable='sim_time_guard',
+        name='sim_time_guard',
+        output='screen',
+        parameters=[{
+            # Guard the bridged simulation time and state streams with wall-time
+            # processing so stale samples never roll the ROS clock backwards.
+            'use_sim_time': False,
+        }],
     )
 
     cmd_vel_watchdog = Node(
@@ -263,6 +277,7 @@ def generate_launch_description():
         robot_state_publisher,
         cmd_vel_watchdog,
         state_bridge,
+        sim_time_guard,
         camera_info_bridge,
         lidar_bridge,
         camera_image_bridge,

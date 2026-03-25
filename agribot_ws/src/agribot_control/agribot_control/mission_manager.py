@@ -76,6 +76,16 @@ class PatrolStatusSnapshot:
 
 
 @dataclass(slots=True)
+class ControlStateSnapshot:
+    mode: str
+    message: str
+    active_activity: str
+    is_latched: bool
+    resume_available: bool
+    resume_context_type: str
+
+
+@dataclass(slots=True)
 class StatusTelemetry:
     mission_type: str
     mission_state: str
@@ -132,6 +142,30 @@ def parse_patrol_status(raw_data: str) -> PatrolStatusSnapshot | None:
     )
 
 
+def parse_control_state(raw_data: str) -> ControlStateSnapshot | None:
+    try:
+        payload = json.loads(raw_data)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    resume_context = payload.get('resume_context')
+    resume_context_type = ''
+    if isinstance(resume_context, dict):
+        resume_context_type = str(resume_context.get('context_type') or '')
+
+    return ControlStateSnapshot(
+        mode=str(payload.get('mode', '')).strip().lower(),
+        message=str(payload.get('message', '')),
+        active_activity=str(payload.get('active_activity', '')).strip().lower(),
+        is_latched=bool(payload.get('is_latched')),
+        resume_available=bool(payload.get('resume_available')),
+        resume_context_type=resume_context_type.strip().lower(),
+    )
+
+
 def build_status_telemetry(
     mission_snapshot: MissionSnapshot,
     *,
@@ -140,6 +174,7 @@ def build_status_telemetry(
     active_observation: ObservationTaskCandidate | None,
     pending_observation_count: int,
     pending_observation_activation_requested: bool,
+    control_state: ControlStateSnapshot | None = None,
 ) -> StatusTelemetry:
     mission_type = mission_snapshot.mission_type
     mission_state = mission_snapshot.state
@@ -197,6 +232,21 @@ def build_status_telemetry(
     if pending_observation_activation_requested:
         detail_parts.append('waiting_for_patrol_stop=true')
 
+    if control_state is not None and control_state.is_latched:
+        robot_mode = RobotMode.STOPPED.value
+        if mission_state == MissionState.RUNNING.value:
+            mission_state = MissionState.PAUSED.value
+        if control_state.mode == 'emergency_stop':
+            current_phase = 'EMERGENCY_STOPPED'
+        elif current_phase in {'IDLE', RobotMode.STOPPED.value}:
+            current_phase = 'CONTROL_PAUSED'
+        if control_state.message:
+            detail_parts.append(control_state.message)
+        if control_state.resume_available:
+            detail_parts.append(
+                f'resume_available={control_state.resume_context_type or "unknown"}'
+            )
+
     deduped_detail_parts: list[str] = []
     for part in detail_parts:
         normalized_part = part.strip()
@@ -215,6 +265,7 @@ def build_status_telemetry(
     has_error = (
         robot_mode == RobotMode.ERROR.value
         or mission_state == MissionState.FAILED.value
+        or (control_state is not None and control_state.mode == 'emergency_stop')
         or (patrol_status is not None and patrol_status.state == 'error')
     )
 
@@ -222,6 +273,8 @@ def build_status_telemetry(
     if has_error:
         if patrol_status is not None and patrol_status.state == 'error':
             error_code = 'PATROL_ERROR'
+        elif control_state is not None and control_state.mode == 'emergency_stop':
+            error_code = 'EMERGENCY_STOP_ACTIVE'
         elif mission_type == MissionType.RETURN_HOME.value:
             error_code = 'RETURN_HOME_ERROR'
         elif mission_type == MissionType.HARVEST.value:
@@ -446,6 +499,7 @@ class MissionManagerNode(Node):
         self.declare_parameter('robot_status_topic', '/robot/status')
         self.declare_parameter('status_publish_hz', 2.0)
         self.declare_parameter('patrol_status_topic', '/patrol/status')
+        self.declare_parameter('control_state_topic', '/robot/control_state')
         self.declare_parameter('patrol_start_service', '/patrol/start')
         self.declare_parameter('patrol_stop_service', '/patrol/stop')
         self.declare_parameter('patrol_resume_service', '/patrol/resume')
@@ -480,6 +534,7 @@ class MissionManagerNode(Node):
         )
         self._pending_observation_activation_requested = False
         self._latest_patrol_status: PatrolStatusSnapshot | None = None
+        self._latest_control_state: ControlStateSnapshot | None = None
 
         mission_status_topic = str(self.get_parameter('mission_status_topic').value)
         robot_status_topic = str(self.get_parameter('robot_status_topic').value)
@@ -487,6 +542,7 @@ class MissionManagerNode(Node):
         command_topic = str(self.get_parameter('command_topic').value)
         status_publish_hz = max(0.5, float(self.get_parameter('status_publish_hz').value))
         patrol_status_topic = str(self.get_parameter('patrol_status_topic').value)
+        control_state_topic = str(self.get_parameter('control_state_topic').value)
         patrol_start_service = str(self.get_parameter('patrol_start_service').value)
         patrol_stop_service = str(self.get_parameter('patrol_stop_service').value)
         patrol_resume_service = str(self.get_parameter('patrol_resume_service').value)
@@ -520,6 +576,12 @@ class MissionManagerNode(Node):
             self._handle_patrol_status,
             20,
         )
+        self._control_state_subscription = self.create_subscription(
+            String,
+            control_state_topic,
+            self._handle_control_state,
+            20,
+        )
         self._plant_observation_subscription = self.create_subscription(
             PlantObservation,
             plant_observation_topic,
@@ -540,6 +602,7 @@ class MissionManagerNode(Node):
             f'mission_status_topic={mission_status_topic}, '
             f'robot_status_topic={robot_status_topic}, '
             f'patrol_status_topic={patrol_status_topic}, '
+            f'control_state_topic={control_state_topic}, '
             f'plant_observation_topic={plant_observation_topic}'
         )
         self._publish_status()
@@ -682,6 +745,15 @@ class MissionManagerNode(Node):
             self._activate_best_pending_observation(
                 'Priority observation activated after patrol completion.'
             )
+        self._publish_status()
+
+    def _handle_control_state(self, msg: String) -> None:
+        snapshot = parse_control_state(msg.data)
+        if snapshot is None:
+            self.get_logger().warning('Ignored invalid control state payload.')
+            return
+
+        self._latest_control_state = snapshot
         self._publish_status()
 
     def _handle_plant_observation(self, msg: PlantObservation) -> None:
@@ -927,6 +999,7 @@ class MissionManagerNode(Node):
             active_observation=self._observation_arbiter.active_candidate,
             pending_observation_count=self._observation_arbiter.pending_count(),
             pending_observation_activation_requested=self._pending_observation_activation_requested,
+            control_state=self._latest_control_state,
         )
 
         mission_status = MissionStatus()

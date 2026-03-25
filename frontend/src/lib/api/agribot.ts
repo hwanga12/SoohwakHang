@@ -1,6 +1,12 @@
 import { isAxiosError } from 'axios'
 import { markRouteFailed, markRouteVerified } from '@/app/dev-runtime'
 import { apiClient } from '@/lib/api/client'
+import {
+  farmSemanticScene,
+  type SemanticAsset,
+  type SemanticGuideLine,
+  type SemanticScene,
+} from '@/lib/robot-map/farm-semantic-map'
 
 export type CardTone = 'accent' | 'warning' | 'danger'
 export type DataSource = 'live' | 'fallback'
@@ -61,6 +67,54 @@ export type RobotZonePreset = {
   id: string
   name: string
   detail: string
+  representativePose: RobotTargetPose
+}
+
+export type RobotTargetPose = {
+  x: number
+  y: number
+  z: number
+  yaw: number
+  frameId: string
+}
+
+export type RobotMapData = {
+  source: DataSource
+  mapId: string
+  imageUrl: string
+  resolution: number
+  origin: RobotTargetPose
+  width: number
+  height: number
+  bounds: {
+    minX: number
+    maxX: number
+    minY: number
+    maxY: number
+  }
+}
+
+export type RobotCommandStatus = {
+  source: DataSource
+  available: boolean
+  commandId: string | null
+  requestedCommandType: string
+  commandType: string
+  preemptCurrentNavigation: boolean
+  status: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+  message: string
+  updatedAt: string
+  targetZoneId: string | null
+}
+
+export type RobotCommandDispatch = {
+  commandId: string
+  message: string
+  requestedCommandType: string
+  commandType: string
+  preemptCurrentNavigation: boolean
+  targetPose: RobotTargetPose | null
+  targetZoneId: string | null
 }
 
 export type RobotPoseSnapshot = {
@@ -87,6 +141,10 @@ export type RobotPageData = {
   speed: string
   logs: string[]
   zonePresets: RobotZonePreset[]
+  map: RobotMapData
+  scene: SemanticScene
+  robotPose: RobotTargetPose
+  latestCommandStatus: RobotCommandStatus
 }
 
 export type PlantAlertCard = {
@@ -402,6 +460,169 @@ function readPoseSnapshot(payload: unknown, fallback: RobotPoseSnapshot): RobotP
   }
 }
 
+function readSemanticGuide(payload: unknown): SemanticGuideLine | null {
+  if (!isRecord(payload)) {
+    return null
+  }
+
+  const axis = readString(payload.axis)
+  if (axis !== 'x' && axis !== 'y') {
+    return null
+  }
+
+  return {
+    id: readString(payload.id) || `guide-${axis}-${readNumber(payload.value)}`,
+    axis,
+    value: readNumber(payload.value),
+    label: readString(payload.label) || '가이드',
+  }
+}
+
+function readSemanticAsset(payload: unknown): SemanticAsset | null {
+  if (!isRecord(payload)) {
+    return null
+  }
+
+  const kind = readString(payload.kind)
+  if (kind !== 'plant' && kind !== 'sprinkler') {
+    return null
+  }
+
+  const position = readRecord(payload.position)
+  if (!position) {
+    return null
+  }
+
+  const status = readString(payload.status)
+
+  return {
+    id: readString(payload.id) || `${kind}-${readNumber(position.x)}-${readNumber(position.y)}`,
+    linkedId: readString(payload.linked_id),
+    kind,
+    label: readString(payload.label) || readString(payload.id) || '이름 없는 자산',
+    shortLabel: readString(payload.short_label) || readString(payload.label, '자산'),
+    zoneId: readString(payload.zone_id) || 'farm_01',
+    description: readString(payload.description) || '운영 자산',
+    position: {
+      x: readNumber(position.x),
+      y: readNumber(position.y),
+    },
+    status:
+      status === 'attention' || status === 'target' || status === 'handled'
+        ? status
+        : 'normal',
+  }
+}
+
+function readRobotTargetPose(payload: unknown, fallback: RobotTargetPose): RobotTargetPose {
+  if (!isRecord(payload)) {
+    return fallback
+  }
+
+  return {
+    x: readNumber(payload.x, fallback.x),
+    y: readNumber(payload.y, fallback.y),
+    z: readNumber(payload.z, fallback.z),
+    yaw: readNumber(payload.yaw, fallback.yaw),
+    frameId: readString(payload.frame_id) || readString(payload.frameId) || fallback.frameId,
+  }
+}
+
+function readRobotMapData(payload: unknown): RobotMapData | null {
+  const record = readRecord(payload)
+  if (!record) {
+    return null
+  }
+
+  const originRecord = readRecord(record.origin)
+
+  return {
+    source: toQuerySource(payload),
+    mapId: readString(record.map_id) || 'farm_map',
+    imageUrl: readString(record.image_url),
+    resolution: readNumber(record.resolution, 0.05),
+    origin: readRobotTargetPose(originRecord, {
+      x: 0,
+      y: 0,
+      z: 0,
+      yaw: 0,
+      frameId: 'map',
+    }),
+    width: readNumber(record.width, 400),
+    height: readNumber(record.height, 400),
+    bounds: {
+      minX: readNumber(readRecord(record.bounds)?.min_x, farmSemanticScene.bounds.minX),
+      maxX: readNumber(readRecord(record.bounds)?.max_x, farmSemanticScene.bounds.maxX),
+      minY: readNumber(readRecord(record.bounds)?.min_y, farmSemanticScene.bounds.minY),
+      maxY: readNumber(readRecord(record.bounds)?.max_y, farmSemanticScene.bounds.maxY),
+    },
+  }
+}
+
+function readSemanticScene(payload: unknown): SemanticScene | null {
+  const record = readRecord(payload)
+  if (!record) {
+    return null
+  }
+
+  const bounds = readRecord(record.bounds)
+  const rowGuides = asArray(record.row_guides)
+    .map((item) => readSemanticGuide(item))
+    .filter((item): item is SemanticGuideLine => item !== null)
+  const laneGuides = asArray(record.lane_guides)
+    .map((item) => readSemanticGuide(item))
+    .filter((item): item is SemanticGuideLine => item !== null)
+  const assets = asArray(record.assets)
+    .map((item) => readSemanticAsset(item))
+    .filter((item): item is SemanticAsset => item !== null)
+
+  if (assets.length === 0) {
+    return null
+  }
+
+  return {
+    bounds: {
+      minX: readNumber(bounds?.min_x, farmSemanticScene.bounds.minX),
+      maxX: readNumber(bounds?.max_x, farmSemanticScene.bounds.maxX),
+      minY: readNumber(bounds?.min_y, farmSemanticScene.bounds.minY),
+      maxY: readNumber(bounds?.max_y, farmSemanticScene.bounds.maxY),
+    },
+    rowGuides,
+    laneGuides,
+    assets,
+  }
+}
+
+function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
+  const record = readRecord(payload)
+  if (!record) {
+    return null
+  }
+
+  const status = readString(record.status) as RobotCommandStatus['status']
+  const normalizedStatus =
+    status === 'pending'
+    || status === 'running'
+    || status === 'succeeded'
+    || status === 'failed'
+    || status === 'canceled'
+    || status === 'idle'
+      ? status
+      : 'idle'
+
+  return {
+    source: toQuerySource(payload),
+    available: readBoolean(record.available, true),
+    commandId: readString(record.command_id) || null,
+    requestedCommandType: readString(record.requested_command_type),
+    commandType: readString(record.command_type),
+    preemptCurrentNavigation: readBoolean(record.preempt_current_navigation, false),
+    status: normalizedStatus,
+    message: readString(record.message) || readString(record.note) || '명령 상태 정보가 준비되지 않았습니다.',
+    updatedAt: readString(record.updated_at),
+    targetZoneId: readString(record.target_zone_id) || null,
+  }
+}
 async function safeGet(path: string) {
   try {
     const response = await apiClient.get(path)
@@ -446,6 +667,51 @@ async function postWithFallback(
   }
 
   throw new Error('연결 가능한 API 엔드포인트를 찾지 못했습니다.')
+}
+
+function readApiErrorMessage(error: unknown, fallback: string) {
+  if (!isAxiosError(error)) {
+    return fallback
+  }
+
+  const payload = error.response?.data
+  const record = readRecord(payload)
+  const detail = record?.detail
+
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail.trim()
+  }
+
+  if (isRecord(detail)) {
+    return readString(detail.message) || readString(detail.error) || fallback
+  }
+
+  return readString(record?.message) || fallback
+}
+
+function parseCommandDispatch(payload: unknown, fallbackMessage: string): RobotCommandDispatch {
+  const record = readRecord(payload)
+  if (!record) {
+    throw new Error(fallbackMessage)
+  }
+
+  return {
+    commandId: readString(record.command_id),
+    message:
+      readString(record.message)
+      || readString(record.status)
+      || fallbackMessage,
+    requestedCommandType: readString(record.requested_command_type),
+    commandType: readString(record.command_type),
+    preemptCurrentNavigation: readBoolean(record.preempt_current_navigation, false),
+    targetPose: record.target_pose
+      ? readRobotTargetPose(record.target_pose, robotFallbackPose)
+      : null,
+    targetZoneId:
+      readString(readRecord(record.target_zone)?.id)
+      || readString(record.target_zone_id)
+      || null,
+  }
 }
 
 export const dashboardFallback: DashboardPageData = {
@@ -538,12 +804,58 @@ export const dashboardFallback: DashboardPageData = {
   ],
 }
 
+const robotFallbackPose: RobotTargetPose = {
+  x: 2,
+  y: -5.9,
+  z: 0,
+  yaw: 0,
+  frameId: 'map',
+}
+
+const robotFallbackMap: RobotMapData = {
+  source: 'fallback',
+  mapId: 'farm_map',
+  imageUrl: '',
+  resolution: 0.05,
+  origin: {
+    x: -10,
+    y: -10,
+    z: 0,
+    yaw: 0,
+    frameId: 'map',
+  },
+  width: 400,
+  height: 400,
+  bounds: {
+    minX: farmSemanticScene.bounds.minX,
+    maxX: farmSemanticScene.bounds.maxX,
+    minY: farmSemanticScene.bounds.minY,
+    maxY: farmSemanticScene.bounds.maxY,
+  },
+}
+
+const robotFallbackCommandStatus: RobotCommandStatus = {
+  source: 'fallback',
+  available: false,
+  commandId: null,
+  requestedCommandType: '',
+  commandType: '',
+  preemptCurrentNavigation: false,
+  status: 'idle',
+  message: '이동 명령 상태를 아직 받지 못했습니다.',
+  updatedAt: '',
+  targetZoneId: null,
+}
+
 export const robotFallback: RobotPageData = {
   source: 'fallback',
   debug: {
     querySources: {
       '/robot/status': 'fallback',
       '/robot/pose': 'fallback',
+      '/robot/map': 'fallback',
+      '/robot/map/layers': 'fallback',
+      '/robot/commands/latest': 'fallback',
       '/zones': 'fallback',
     },
   },
@@ -574,10 +886,29 @@ export const robotFallback: RobotPageData = {
     '순찰 중지 후 수확 미션으로 전환 가능',
   ],
   zonePresets: [
-    { id: 'farm_01_west', name: '서측 라인', detail: '수확 후보와 병해 검토가 집중된 구역' },
-    { id: 'farm_01_center', name: '중앙 라인', detail: '급수 승인과 센서 점검이 필요한 구역' },
-    { id: 'farm_01_east', name: '동측 라인', detail: '다음 수확 배치가 대기 중인 구역' },
+    {
+      id: 'farm_01_west',
+      name: '서측 라인',
+      detail: '수확 후보와 병해 검토가 집중된 구역',
+      representativePose: { x: -8, y: -8.6, z: 0, yaw: 0, frameId: 'map' },
+    },
+    {
+      id: 'farm_01_center',
+      name: '중앙 라인',
+      detail: '급수 승인과 센서 점검이 필요한 구역',
+      representativePose: { x: 0, y: -8.6, z: 0, yaw: 0, frameId: 'map' },
+    },
+    {
+      id: 'farm_01_east',
+      name: '동측 라인',
+      detail: '다음 수확 배치가 대기 중인 구역',
+      representativePose: { x: 8, y: -8.6, z: 0, yaw: 0, frameId: 'map' },
+    },
   ],
+  map: robotFallbackMap,
+  scene: farmSemanticScene,
+  robotPose: robotFallbackPose,
+  latestCommandStatus: robotFallbackCommandStatus,
 }
 
 export const plantsFallback: PlantsPageData = {
@@ -964,15 +1295,22 @@ export async function getDashboardPageData(): Promise<DashboardPageData> {
 }
 
 export async function getRobotPageData(): Promise<RobotPageData> {
-  const [statusPayload, posePayload, zonesPayload] = await Promise.all([
-    safeGet('/robot/status'),
-    safeGet('/robot/pose'),
-    safeGet('/zones'),
-  ])
+  const [statusPayload, posePayload, zonesPayload, mapPayload, layersPayload, commandStatusPayload] =
+    await Promise.all([
+      safeGet('/robot/status'),
+      safeGet('/robot/pose'),
+      safeGet('/zones'),
+      safeGet('/robot/map'),
+      safeGet('/robot/map/layers'),
+      safeGet('/robot/commands/latest'),
+    ])
 
   const querySources: QuerySourceMap = {
     '/robot/status': toQuerySource(statusPayload),
     '/robot/pose': toQuerySource(posePayload),
+    '/robot/map': toQuerySource(mapPayload),
+    '/robot/map/layers': toQuerySource(layersPayload),
+    '/robot/commands/latest': toQuerySource(commandStatusPayload),
     '/zones': toQuerySource(zonesPayload),
   }
   const live = Object.values(querySources).some((source) => source === 'live')
@@ -980,6 +1318,10 @@ export async function getRobotPageData(): Promise<RobotPageData> {
   const pose = readRecord(posePayload)
   const poseRecord = readRecord(pose?.pose)
   const poseSnapshot = readPoseSnapshot(posePayload, robotFallback.pose)
+  const robotPose = readRobotTargetPose(poseRecord, robotFallbackPose)
+  const mapData = readRobotMapData(mapPayload) ?? robotFallbackMap
+  const scene = readSemanticScene(layersPayload) ?? robotFallback.scene
+  const commandStatus = readRobotCommandStatus(commandStatusPayload) ?? robotFallback.latestCommandStatus
   const zones = asArray(zonesPayload)
   const metrics = [...robotFallback.metrics]
 
@@ -1016,10 +1358,18 @@ export async function getRobotPageData(): Promise<RobotPageData> {
         }
 
         const name = readString(item.name) || `구역 ${index + 1}`
+        const representativePose = readRobotTargetPose(
+          readRecord(item.representative_pose),
+          robotFallback.zonePresets[Math.min(index, robotFallback.zonePresets.length - 1)]
+            ?.representativePose ?? robotFallbackPose,
+        )
         return {
           id: readString(item.id) || `zone-${index + 1}`,
           name,
-          detail: readString(item.description) || `${name} 빠른 이동 요청`,
+          detail:
+            readString(item.description)
+            || `${name} 대표 좌표 x ${representativePose.x.toFixed(1)} / y ${representativePose.y.toFixed(1)}`,
+          representativePose,
         }
       })
       .filter((item): item is RobotZonePreset => item !== null)
@@ -1045,6 +1395,7 @@ export async function getRobotPageData(): Promise<RobotPageData> {
     targetLabel:
       readString(status?.next_target_crop_id)
       || readString(status?.target_crop_id)
+      || readString(commandStatus.targetZoneId)
       || robotFallback.targetLabel,
     metrics,
     progressPct: readNumber(status?.mission_progress_pct, robotFallback.progressPct),
@@ -1065,6 +1416,10 @@ export async function getRobotPageData(): Promise<RobotPageData> {
       || readString(status?.speed)
       || `${poseSnapshot.linearSpeedMps.toFixed(1)}m/s`,
     zonePresets: zonePresets.length > 0 ? zonePresets : robotFallback.zonePresets,
+    map: mapData,
+    scene,
+    robotPose,
+    latestCommandStatus: commandStatus,
   }
 }
 
@@ -1625,21 +1980,47 @@ export async function sendRobotControlAction(
   )
 }
 
-export async function sendRobotZoneMove(zoneId: string) {
-  return postWithFallback(
-    [
-      {
-        path: '/robot/commands',
-        body: {
-          robot_id: 'AGR-02',
-          requested_by: 'frontend-operator',
-          command_type: 'move_to_zone',
-          target_zone_id: zoneId,
-        },
+export async function getLatestRobotCommandStatus(): Promise<RobotCommandStatus> {
+  const payload = await safeGet('/robot/commands/latest')
+  return readRobotCommandStatus(payload) ?? robotFallback.latestCommandStatus
+}
+
+export async function sendRobotNavigateCommand(targetPose: RobotTargetPose) {
+  try {
+    const response = await apiClient.post('/robot/commands', {
+      robot_id: 'AGR-02',
+      requested_by: 'frontend-operator',
+      command_type: 'navigate_to_pose',
+      target_pose: {
+        x: targetPose.x,
+        y: targetPose.y,
+        z: targetPose.z,
+        yaw: targetPose.yaw,
+        frame_id: targetPose.frameId,
       },
-    ],
-    `${zoneId} 이동 요청을 보냈습니다.`,
-  )
+    })
+    markRouteVerified('POST', '/robot/commands')
+    return parseCommandDispatch(response.data, '클릭한 좌표로 이동 요청을 보냈습니다.')
+  } catch (error) {
+    markRouteFailed('POST', '/robot/commands')
+    throw new Error(readApiErrorMessage(error, '클릭 이동 요청을 처리하지 못했습니다.'))
+  }
+}
+
+export async function sendRobotZoneMove(zoneId: string) {
+  try {
+    const response = await apiClient.post('/robot/commands', {
+      robot_id: 'AGR-02',
+      requested_by: 'frontend-operator',
+      command_type: 'move_to_zone',
+      target_zone_id: zoneId,
+    })
+    markRouteVerified('POST', '/robot/commands')
+    return parseCommandDispatch(response.data, `${zoneId} 이동 요청을 보냈습니다.`)
+  } catch (error) {
+    markRouteFailed('POST', '/robot/commands')
+    throw new Error(readApiErrorMessage(error, '구역 이동 요청을 처리하지 못했습니다.'))
+  }
 }
 
 export async function requestHarvestMission({

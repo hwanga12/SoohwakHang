@@ -59,6 +59,7 @@ setup(
         'console_scripts': [
             'cmd_vel_watchdog = agribot_description.cmd_vel_watchdog:main',
             'odom_tf_broadcaster = agribot_description.odom_tf_broadcaster:main',
+            'sim_time_guard = agribot_description.sim_time_guard:main',
         ],
     },
 )

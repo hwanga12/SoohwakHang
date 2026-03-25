@@ -106,3 +106,71 @@ zones:
             - apply_nutrient_recipe
           default_unit: ml
           flow_rate_per_sec: 90.0
+      - device_id: sprinkler_0
+        device_type: sprinkler
+        display_name: Farm 01 Sprinkler 0
+        command_topic: /iot/commands/dispatch
+        state_topic: /iot/device_state
+        result_topic: /iot/command_result
+        mqtt_command_topic: agribot/commands/actuation
+        mqtt_state_topic: agribot/iot/device_state
+        mqtt_result_topic: agribot/iot/command_result
+        is_available: true
+        capabilities:
+          supported_commands:
+            - spray_pesticide
+            - spray_calcium_solution
+            - stop_spray
+            - hold_spray
+          default_unit: sec
+      - device_id: sprinkler_1
+        device_type: sprinkler
+        display_name: Farm 01 Sprinkler 1
+        command_topic: /iot/commands/dispatch
+        state_topic: /iot/device_state
+        result_topic: /iot/command_result
+        mqtt_command_topic: agribot/commands/actuation
+        mqtt_state_topic: agribot/iot/device_state
+        mqtt_result_topic: agribot/iot/command_result
+        is_available: true
+        capabilities:
+          supported_commands:
+            - spray_pesticide
+            - spray_calcium_solution
+            - stop_spray
+            - hold_spray
+          default_unit: sec
+      - device_id: sprinkler_2
+        device_type: sprinkler
+        display_name: Farm 01 Sprinkler 2
+        command_topic: /iot/commands/dispatch
+        state_topic: /iot/device_state
+        result_topic: /iot/command_result
+        mqtt_command_topic: agribot/commands/actuation
+        mqtt_state_topic: agribot/iot/device_state
+        mqtt_result_topic: agribot/iot/command_result
+        is_available: true
+        capabilities:
+          supported_commands:
+            - spray_pesticide
+            - spray_calcium_solution
+            - stop_spray
+            - hold_spray
+          default_unit: sec
+      - device_id: sprinkler_3
+        device_type: sprinkler
+        display_name: Farm 01 Sprinkler 3
+        command_topic: /iot/commands/dispatch
+        state_topic: /iot/device_state
+        result_topic: /iot/command_result
+        mqtt_command_topic: agribot/commands/actuation
+        mqtt_state_topic: agribot/iot/device_state
+        mqtt_result_topic: agribot/iot/command_result
+        is_available: true
+        capabilities:
+          supported_commands:
+            - spray_pesticide
+            - spray_calcium_solution
+            - stop_spray
+            - hold_spray
+          default_unit: sec

@@ -59,10 +59,12 @@ def test_publish_move_to_zone_resolves_to_navigate_to_pose_bridge() -> None:
     assert response["requested_command_type"] == "move_to_zone"
     assert response["command_type"] == "navigate_to_pose"
     assert response["target_zone"]["id"] == "farm_01_center"
+    assert response["preempt_current_navigation"] is True
 
     command_payload = json.loads(command_file_path().read_text(encoding="utf-8"))
     assert command_payload["command_type"] == "navigate_to_pose"
     assert command_payload["requested_command_type"] == "move_to_zone"
+    assert command_payload["preempt_current_navigation"] is True
     assert command_payload["payload"]["target_pose"]["frame_id"] == "map"
 
 
@@ -79,6 +81,39 @@ def test_publish_navigate_to_pose_rejects_non_map_frame() -> None:
                 "frame_id": "odom",
             },
         )
+
+
+def test_publish_navigate_to_pose_allows_explicit_preempt_override() -> None:
+    response = publish_robot_command(
+        robot_id="AGR-02",
+        command_type="navigate_to_pose",
+        requested_by="frontend-operator",
+        preempt_current_navigation=False,
+        target_pose={
+            "x": 0.0,
+            "y": -8.6,
+            "yaw": 1.5708,
+            "frame_id": "map",
+        },
+    )
+
+    assert response["preempt_current_navigation"] is False
+
+    command_payload = json.loads(command_file_path().read_text(encoding="utf-8"))
+    assert command_payload["preempt_current_navigation"] is False
+
+
+def test_publish_pause_patrol_defaults_preempt_to_false() -> None:
+    response = publish_robot_command(
+        robot_id="AGR-02",
+        command_type="pause_patrol",
+        requested_by="frontend-operator",
+    )
+
+    assert response["preempt_current_navigation"] is False
+
+    command_payload = json.loads(command_file_path().read_text(encoding="utf-8"))
+    assert command_payload["preempt_current_navigation"] is False
 
 
 def test_read_latest_command_status_payload_returns_idle_when_missing() -> None:

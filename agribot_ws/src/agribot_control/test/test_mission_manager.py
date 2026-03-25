@@ -7,6 +7,7 @@ from agribot_control.mission_manager import (
     RobotMode,
     apply_patrol_status_snapshot,
     build_status_telemetry,
+    parse_control_state,
     parse_patrol_status,
 )
 from agribot_control.observation_priority import ObservationTaskCandidate
@@ -231,3 +232,74 @@ def test_build_status_telemetry_reflects_active_observation_target() -> None:
     assert telemetry.current_phase == 'OBSERVE_ACTIVE'
     assert telemetry.target_id == 'farm01_plant_03'
     assert 'active_observation=diseased_leaf:farm01_plant_03' in telemetry.detail_message
+
+
+def test_build_status_telemetry_marks_emergency_stop_as_blocking_error() -> None:
+    machine = MissionStateMachine('farm_01')
+    machine.start_mission(MissionType.PATROL.value, target_id='farm_01_lane_05_north')
+
+    control_state = parse_control_state(
+        json.dumps(
+            {
+                'mode': 'emergency_stop',
+                'is_latched': True,
+                'active_activity': 'idle',
+                'message': '비상 정지가 활성화되었습니다.',
+                'resume_available': True,
+                'resume_context': {
+                    'context_type': 'patrol',
+                },
+            }
+        )
+    )
+
+    assert control_state is not None
+    telemetry = build_status_telemetry(
+        machine.snapshot(),
+        robot_mode=machine.robot_mode,
+        patrol_status=None,
+        active_observation=None,
+        pending_observation_count=0,
+        pending_observation_activation_requested=False,
+        control_state=control_state,
+    )
+
+    assert telemetry.robot_mode == RobotMode.STOPPED.value
+    assert telemetry.mission_state == MissionState.PAUSED.value
+    assert telemetry.current_phase == 'EMERGENCY_STOPPED'
+    assert telemetry.has_error is True
+    assert telemetry.error_code == 'EMERGENCY_STOP_ACTIVE'
+    assert 'resume_available=patrol' in telemetry.detail_message
+
+
+def test_build_status_telemetry_returns_no_error_for_control_pause() -> None:
+    machine = MissionStateMachine('farm_01')
+    machine.start_mission(MissionType.PATROL.value, target_id='farm_01_lane_05_north')
+
+    control_state = parse_control_state(
+        json.dumps(
+            {
+                'mode': 'paused',
+                'is_latched': True,
+                'active_activity': 'idle',
+                'message': '일시정지가 활성화되었습니다.',
+                'resume_available': False,
+            }
+        )
+    )
+
+    assert control_state is not None
+    telemetry = build_status_telemetry(
+        machine.snapshot(),
+        robot_mode=machine.robot_mode,
+        patrol_status=None,
+        active_observation=None,
+        pending_observation_count=0,
+        pending_observation_activation_requested=False,
+        control_state=control_state,
+    )
+
+    assert telemetry.robot_mode == RobotMode.STOPPED.value
+    assert telemetry.mission_state == MissionState.PAUSED.value
+    assert telemetry.has_error is False
+    assert '일시정지가 활성화되었습니다.' in telemetry.detail_message

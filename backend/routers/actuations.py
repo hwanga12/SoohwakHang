@@ -1,8 +1,21 @@
+import uuid
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
 
+from services.actuation.dispatcher import TreatmentCommandDispatcher
+from services.actuation.rule_engine import DiseaseTreatmentRuleEngine
+from services.actuation.schemas import (
+    DiseaseTreatmentDispatchRequest,
+    DiseaseTreatmentDispatchResponse,
+    DiseaseTreatmentPlan,
+    DiseaseTreatmentPlanRequest,
+)
+
 router = APIRouter()
+_treatment_rule_engine = DiseaseTreatmentRuleEngine()
+_treatment_dispatcher = TreatmentCommandDispatcher()
 
 class ApproveReq(BaseModel):
     reviewed_by: str
@@ -51,6 +64,36 @@ class NutrientsReq(BaseModel):
 def get_recommendations():
     """IoT 자동 추천 목록 조회"""
     return {"message": "List of recommendations"}
+
+@router.post("/treatment-plan", response_model=DiseaseTreatmentPlan)
+def build_treatment_plan(req: DiseaseTreatmentPlanRequest):
+    """병해 규칙 엔진으로 분사 계획을 계산"""
+    return _treatment_rule_engine.evaluate(
+        disease_label=req.disease_label,
+        zone_id=req.zone_id,
+        target_position=req.target_position,
+    )
+
+@router.post("/disease-treatment/dispatch", response_model=DiseaseTreatmentDispatchResponse)
+def dispatch_disease_treatment(req: DiseaseTreatmentDispatchRequest):
+    """병해 규칙 엔진을 평가하고 준비된 분사 명령을 IoT로 전달"""
+    observation_id = req.observation_id or str(uuid.uuid4())
+    treatment_plan = _treatment_rule_engine.evaluate(
+        disease_label=req.disease_label,
+        zone_id=req.zone_id,
+        target_position=req.target_position,
+    )
+    dispatch_result = _treatment_dispatcher.dispatch_plan(
+        treatment_plan,
+        observation_id=observation_id,
+        requested_by=req.requested_by,
+        auto_execute=bool(req.auto_execute),
+    )
+    return DiseaseTreatmentDispatchResponse(
+        observation_id=observation_id,
+        treatment_plan=treatment_plan,
+        dispatch_result=dispatch_result,
+    )
 
 @router.post("/recommendations/{id}/approve")
 def approve_recommendation(id: str, req: ApproveReq):

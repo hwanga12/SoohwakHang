@@ -10,5 +10,5 @@
     }
   ],
   "python_version": "3.12",
-  "virtual_environment": "/home/ssafy/Desktop/pjt/S14P21A602/backend/.venv"
+  "virtual_environment": "backend/.venv"
 }
