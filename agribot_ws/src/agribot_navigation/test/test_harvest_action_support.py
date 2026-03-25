@@ -6,10 +6,13 @@ from agribot_navigation.harvest_action_support import (
     PHASE_PROGRESS_PCT,
     alignment_required,
     build_basket_state,
+    build_basket_state_payload,
     build_feedback,
     build_failure_alert_payload,
     build_harvest_event,
+    build_harvest_event_payload,
     build_mission_status,
+    build_mission_status_payload,
     build_result,
     ensure_harvest_target_available,
     resolve_harvest_goal,
@@ -203,6 +206,60 @@ def test_build_basket_state_tracks_loaded_fruits_and_remaining_count() -> None:
         'farm01_plant_01_tomato_01',
         'farm01_plant_02_tomato_01',
     ]
+
+
+def test_runtime_payload_helpers_keep_event_basket_and_phase_fields() -> None:
+    event = build_harvest_event(
+        event_id='harvest-event-55',
+        mission_id='mission-55',
+        zone_id='farm_01',
+        plant_id='farm01_plant_05',
+        fruit_id='farm01_plant_05_tomato_01',
+        frame_id='map',
+        basket_count=4,
+        success=True,
+    )
+    event.header.stamp.sec = 10
+    event.header.stamp.nanosec = 20
+
+    basket_state = build_basket_state(
+        zone_id='farm_01',
+        frame_id='map',
+        basket_count=4,
+        harvested_count=4,
+        remaining_ready_count=18,
+        last_event_id='harvest-event-55',
+        last_harvested_fruit_id='farm01_plant_05_tomato_01',
+        loaded_fruit_ids=['farm01_plant_05_tomato_01'],
+    )
+    basket_state.header.stamp.sec = 11
+    basket_state.header.stamp.nanosec = 22
+
+    mission_status = build_mission_status(
+        mission_id='mission-55',
+        mission_type='HARVEST',
+        state='RUNNING',
+        current_phase='STOWING',
+        zone_id='farm_01',
+        target_id='farm01_plant_05_tomato_01',
+        progress_pct=95.0,
+        detail_message='Loading fruit into the basket.',
+        retry_count=0,
+    )
+    mission_status.header.stamp.sec = 12
+    mission_status.header.stamp.nanosec = 23
+
+    event_payload = build_harvest_event_payload(event, occurred_at='2026-03-26T09:00:00+00:00')
+    basket_payload = build_basket_state_payload(basket_state, updated_at='2026-03-26T09:00:01+00:00')
+    mission_payload = build_mission_status_payload(mission_status, updated_at='2026-03-26T09:00:02+00:00')
+
+    assert event_payload['status'] == 'succeeded'
+    assert event_payload['stamp'] == {'sec': 10, 'nanosec': 20}
+    assert basket_payload['last_harvested_fruit_id'] == 'farm01_plant_05_tomato_01'
+    assert basket_payload['loaded_fruit_ids'] == ['farm01_plant_05_tomato_01']
+    assert mission_payload['status'] == 'running'
+    assert mission_payload['current_phase'] == 'STOWING'
+    assert mission_payload['progress_pct'] == pytest.approx(95.0)
 
 
 def test_build_mission_status_captures_return_home_progress() -> None:

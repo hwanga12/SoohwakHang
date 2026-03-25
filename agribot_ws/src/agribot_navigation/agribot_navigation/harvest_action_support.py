@@ -215,6 +215,90 @@ def build_mission_status(
     return status
 
 
+def _stamp_payload(stamp: object) -> dict[str, int]:
+    return {
+        'sec': int(getattr(stamp, 'sec', 0)),
+        'nanosec': int(getattr(stamp, 'nanosec', 0)),
+    }
+
+
+def _normalize_mission_runtime_status(state: str) -> str:
+    normalized = str(state).strip().lower()
+    if normalized in {'planned', 'pending'}:
+        return 'pending'
+    if normalized == 'running':
+        return 'running'
+    if normalized in {'completed', 'complete', 'succeeded'}:
+        return 'succeeded'
+    if normalized in {'failed', 'error'}:
+        return 'failed'
+    if normalized in {'canceled', 'cancelled'}:
+        return 'canceled'
+    return 'idle'
+
+
+def build_harvest_event_payload(
+    event: HarvestEvent,
+    *,
+    occurred_at: str,
+) -> dict[str, object]:
+    return {
+        'event_id': event.event_id,
+        'mission_id': event.mission_id,
+        'zone_id': event.zone_id,
+        'plant_id': event.plant_id,
+        'fruit_id': event.fruit_id,
+        'success': bool(event.success),
+        'status': 'succeeded' if event.success else 'failed',
+        'failure_reason': event.failure_reason,
+        'basket_count': int(event.basket_count),
+        'frame_id': event.header.frame_id,
+        'stamp': _stamp_payload(event.header.stamp),
+        'occurred_at': occurred_at,
+    }
+
+
+def build_basket_state_payload(
+    state: HarvestBasketState,
+    *,
+    updated_at: str,
+) -> dict[str, object]:
+    return {
+        'zone_id': state.zone_id,
+        'basket_count': int(state.basket_count),
+        'harvested_count': int(state.harvested_count),
+        'remaining_ready_count': int(state.remaining_ready_count),
+        'last_event_id': state.last_event_id,
+        'last_harvested_fruit_id': state.last_harvested_fruit_id,
+        'loaded_fruit_ids': list(state.loaded_fruit_ids),
+        'frame_id': state.header.frame_id,
+        'stamp': _stamp_payload(state.header.stamp),
+        'updated_at': updated_at,
+    }
+
+
+def build_mission_status_payload(
+    status: MissionStatus,
+    *,
+    updated_at: str,
+) -> dict[str, object]:
+    return {
+        'mission_id': status.mission_id,
+        'mission_type': status.mission_type,
+        'state': status.state,
+        'status': _normalize_mission_runtime_status(status.state),
+        'current_phase': status.current_phase,
+        'zone_id': status.zone_id,
+        'target_id': status.target_id,
+        'progress_pct': float(status.progress_pct),
+        'retry_count': int(status.retry_count),
+        'detail_message': status.detail_message,
+        'frame_id': status.header.frame_id,
+        'stamp': _stamp_payload(status.header.stamp),
+        'updated_at': updated_at,
+    }
+
+
 def should_retry_phase(
     *,
     current_phase: str,
