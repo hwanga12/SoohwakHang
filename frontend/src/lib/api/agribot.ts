@@ -103,8 +103,14 @@ export type RobotCommandStatus = {
   preemptCurrentNavigation: boolean
   status: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
   message: string
+  error: string
+  result: string
   updatedAt: string
   targetZoneId: string | null
+  receivedAt: string
+  startedAt: string
+  completedAt: string
+  controlState: RobotControlState | null
 }
 
 export type RobotCommandDispatch = {
@@ -115,6 +121,16 @@ export type RobotCommandDispatch = {
   preemptCurrentNavigation: boolean
   targetPose: RobotTargetPose | null
   targetZoneId: string | null
+}
+
+export type RobotControlState = {
+  mode: 'normal' | 'paused' | 'emergency_stop'
+  activeActivity: 'idle' | 'manual_navigation' | 'patrol'
+  blockingReason: string
+  message: string
+  resumeAvailable: boolean
+  resumeContextType: '' | 'manual_navigation' | 'patrol'
+  updatedAt: string
 }
 
 export type RobotPageData = {
@@ -504,6 +520,41 @@ function readSemanticScene(payload: unknown): SemanticScene | null {
   }
 }
 
+function readRobotControlState(payload: unknown): RobotControlState | null {
+  const record = readRecord(payload)
+  if (!record) {
+    return null
+  }
+
+  const rawMode = readString(record.mode).toLowerCase()
+  const rawActivity = readString(record.active_activity).toLowerCase()
+  const resumeContext = readRecord(record.resume_context)
+  const rawResumeContextType = readString(resumeContext?.context_type).toLowerCase()
+
+  const mode =
+    rawMode === 'paused' || rawMode === 'emergency_stop'
+      ? rawMode
+      : 'normal'
+  const activeActivity =
+    rawActivity === 'manual_navigation' || rawActivity === 'patrol'
+      ? rawActivity
+      : 'idle'
+  const resumeContextType =
+    rawResumeContextType === 'manual_navigation' || rawResumeContextType === 'patrol'
+      ? rawResumeContextType
+      : ''
+
+  return {
+    mode,
+    activeActivity,
+    blockingReason: readString(record.blocking_reason),
+    message: readString(record.message),
+    resumeAvailable: readBoolean(record.resume_available, false),
+    resumeContextType,
+    updatedAt: readString(record.updated_at),
+  }
+}
+
 function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
   const record = readRecord(payload)
   if (!record) {
@@ -530,8 +581,14 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
     preemptCurrentNavigation: readBoolean(record.preempt_current_navigation, false),
     status: normalizedStatus,
     message: readString(record.message) || readString(record.note) || '명령 상태 정보가 준비되지 않았습니다.',
+    error: readString(record.error),
+    result: readString(record.result),
     updatedAt: readString(record.updated_at),
     targetZoneId: readString(record.target_zone_id) || null,
+    receivedAt: readString(record.received_at),
+    startedAt: readString(record.started_at),
+    completedAt: readString(record.completed_at),
+    controlState: readRobotControlState(record.control_state),
   }
 }
 
@@ -759,8 +816,14 @@ const robotFallbackCommandStatus: RobotCommandStatus = {
   preemptCurrentNavigation: false,
   status: 'idle',
   message: '이동 명령 상태를 아직 받지 못했습니다.',
+  error: '',
+  result: '',
   updatedAt: '',
   targetZoneId: null,
+  receivedAt: '',
+  startedAt: '',
+  completedAt: '',
+  controlState: null,
 }
 
 export const robotFallback: RobotPageData = {
@@ -1822,6 +1885,14 @@ export async function sendRobotControlAction(
     return postWithFallback(
       [
         {
+          path: '/robot/commands',
+          body: {
+            robot_id: robotId,
+            requested_by: 'frontend-operator',
+            command_type: 'pause_motion',
+          },
+        },
+        {
           path: '/missions/patrol/stop',
           body: {
             robot_id: robotId,
@@ -1838,7 +1909,7 @@ export async function sendRobotControlAction(
           },
         },
       ],
-      '순찰 중지 요청을 보냈습니다.',
+      '일시정지 명령을 접수했습니다. 실제 정지 상태를 확인하는 중입니다.',
     )
   }
 
@@ -1850,24 +1921,25 @@ export async function sendRobotControlAction(
           body: {
             robot_id: robotId,
             requested_by: 'frontend-operator',
+            command_type: 'resume_motion',
+          },
+        },
+        {
+          path: '/robot/commands',
+          body: {
+            robot_id: robotId,
+            requested_by: 'frontend-operator',
             command_type: 'resume_patrol',
           },
         },
       ],
-      '순찰 재개 요청을 보냈습니다.',
+      '재개 명령을 접수했습니다. 실제 재개 여부를 확인하는 중입니다.',
     )
   }
 
   if (action === 'home') {
     return postWithFallback(
       [
-        {
-          path: '/missions/return-home',
-          body: {
-            robot_id: robotId,
-            requested_by: 'frontend-operator',
-          },
-        },
         {
           path: '/robot/commands',
           body: {
@@ -1876,8 +1948,15 @@ export async function sendRobotControlAction(
             command_type: 'return_home',
           },
         },
+        {
+          path: '/missions/return-home',
+          body: {
+            robot_id: robotId,
+            requested_by: 'frontend-operator',
+          },
+        },
       ],
-      '홈 복귀 요청을 보냈습니다.',
+      '홈 복귀 명령을 접수했습니다. 상태 카드에서 진행 상황을 확인하세요.',
     )
   }
 
@@ -1892,7 +1971,7 @@ export async function sendRobotControlAction(
         },
       },
     ],
-    '비상 정지 요청을 보냈습니다.',
+    '비상 정지 명령을 접수했습니다. 실제 정지 상태를 확인하는 중입니다.',
   )
 }
 
