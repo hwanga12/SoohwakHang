@@ -4662,6 +4662,27 @@ button.robot-facility-map__row-guide.is-clickable {
   min-width: 160px;
 }
 
+.farm-plant-modal__feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.farm-plant-modal__feedback-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.farm-plant-modal__feedback-head strong {
+  font-size: 0.95rem;
+}
+
+.farm-plant-modal__feedback .muted {
+  margin: 0;
+}
+
 @media (max-width: 760px) {
   .farm-plant-modal {
     padding: 14px;
