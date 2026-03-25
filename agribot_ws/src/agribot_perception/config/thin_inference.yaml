@@ -1,6 +1,7 @@
 thin_inference_node:
   ros__parameters:
     image_topic: /agribot/camera/image
+    odometry_topic: /odom
     plant_observation_topic: /plant_observation
     backend_confirm_url: http://127.0.0.1:8000/api/v1/inference/confirm
     zone_id: greenhouse_01

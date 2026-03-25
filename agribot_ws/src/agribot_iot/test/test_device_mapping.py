@@ -24,5 +24,10 @@ def test_iot_device_catalog_uses_shared_zone_device_names() -> None:
         'farm_01_curtain',
         'farm_01_fan',
         'farm_01_nutrient',
+        'sprinkler_0',
+        'sprinkler_1',
+        'sprinkler_2',
+        'sprinkler_3',
     }
     assert catalog.primary_device('farm_01', 'watering').device_id == 'farm_01_watering'
+    assert catalog.primary_device('farm_01', 'sprinkler').device_id == 'sprinkler_0'

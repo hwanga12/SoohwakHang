@@ -34,5 +34,5 @@ def test_simulation_launch_declares_iot_arguments_and_includes_iot_pipeline() ->
         entity for entity in launch_description.entities if isinstance(entity, IncludeLaunchDescription)
     ]
 
-    assert len(declare_args) == 2
-    assert len(includes) == 3
+    assert len(declare_args) == 4
+    assert len(includes) == 4

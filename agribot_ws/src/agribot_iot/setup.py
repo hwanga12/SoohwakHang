@@ -32,6 +32,7 @@ setup(
             'curtain_controller_node = agribot_iot.curtain_controller_node:main',
             'fan_controller_node = agribot_iot.fan_controller_node:main',
             'nutrient_controller_node = agribot_iot.nutrient_controller_node:main',
+            'sprinkler_controller_node = agribot_iot.sprinkler_controller_node:main',
         ],
     },
 )

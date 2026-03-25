@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any
 import uuid
 
+from services.actuation.dispatcher import TreatmentCommandDispatcher
+from services.actuation.rule_engine import DiseaseTreatmentRuleEngine
+from services.perception.persistence import ObservationPersistenceService
 from services.perception.schemas import (
     BoundingBox,
     ThinInferenceConfirmRequest,
@@ -58,6 +61,9 @@ class MainInferenceService:
             os.environ.get('AGRIBOT_MAIN_IGNORED_CLASSES', _DEFAULT_IGNORED_CLASSES)
         )
         self._model: Any | None = None
+        self._treatment_rule_engine = DiseaseTreatmentRuleEngine()
+        self._treatment_dispatcher = TreatmentCommandDispatcher()
+        self._persistence_service = ObservationPersistenceService()
 
     def confirm_detection(
         self,
@@ -80,7 +86,13 @@ class MainInferenceService:
             ignored_classes=self._ignored_classes,
         )
 
-        if final_detection is None:
+        override_label = request.test_override_final_label.strip()
+        if override_label:
+            final_label = override_label
+            final_confidence = float(request.test_override_final_confidence)
+            decision_source = 'test_override'
+            response_bbox = request.bbox
+        elif final_detection is None:
             final_label = request.preliminary_label.strip() or 'unknown'
             final_confidence = float(request.preliminary_confidence)
             decision_source = 'preliminary_fallback'
@@ -96,6 +108,27 @@ class MainInferenceService:
                 y2=final_detection.bbox[3],
             )
 
+        treatment_plan = self._treatment_rule_engine.evaluate(
+            disease_label=final_label,
+            zone_id=request.zone_id,
+            target_position=request.target_position,
+        )
+        dispatch_result = self._treatment_dispatcher.dispatch_plan(
+            treatment_plan,
+            observation_id=observation_id,
+            requested_by=request.requested_by,
+            auto_execute=bool(request.auto_execute_treatment),
+        )
+        persistence_refs = self._persistence_service.persist_confirmation(
+            request=request,
+            reviewed_at=reviewed_at,
+            final_label=final_label,
+            final_confidence=final_confidence,
+            image_path=str(image_path),
+            treatment_plan=treatment_plan,
+            dispatch_result=dispatch_result,
+        )
+
         metadata_path = image_path.with_suffix('.json')
         metadata_path.write_text(
             json.dumps(
@@ -108,6 +141,15 @@ class MainInferenceService:
                     'final_confidence': final_confidence,
                     'decision_source': decision_source,
                     'final_bbox': None if response_bbox is None else _model_dump(response_bbox),
+                    'treatment_plan': _model_dump(treatment_plan),
+                    'dispatch_result': _model_dump(dispatch_result),
+                    'database_records': {
+                        'robot_row_id': persistence_refs.robot_row_id,
+                        'zone_row_id': persistence_refs.zone_row_id,
+                        'plant_row_id': persistence_refs.plant_row_id,
+                        'crop_observation_row_id': persistence_refs.crop_observation_row_id,
+                        'actuation_log_row_id': persistence_refs.actuation_log_row_id,
+                    },
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -125,6 +167,8 @@ class MainInferenceService:
             image_path=str(image_path),
             reviewed_at=reviewed_at.isoformat(),
             decision_source=decision_source,
+            treatment_plan=treatment_plan,
+            dispatch_result=dispatch_result,
         )
 
     def _infer(self, image_path: Path) -> list[Detection]:
