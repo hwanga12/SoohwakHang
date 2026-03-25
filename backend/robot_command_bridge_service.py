@@ -29,6 +29,11 @@ FILE_BRIDGE_COMMAND_TYPES = {
     "return_home",
 }
 TERMINAL_STATUSES = {"succeeded", "failed", "canceled"}
+DEFAULT_PREEMPT_COMMAND_TYPES = {
+    "navigate_to_pose",
+    "move_to_zone",
+    "return_home",
+}
 
 
 class RobotCommandValidationError(ValueError):
@@ -180,6 +185,43 @@ def _payload_or_empty(payload: dict[str, Any] | None) -> dict[str, Any]:
     return payload
 
 
+def _coerce_optional_bool(value: Any, *, field_name: str) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        if value in {0, 1}:
+            return bool(value)
+        raise RobotCommandValidationError(f"{field_name} 는 bool 이어야 합니다.")
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "y", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "n", "off"}:
+            return False
+    raise RobotCommandValidationError(f"{field_name} 는 bool 이어야 합니다.")
+
+
+def _resolve_preempt_current_navigation(
+    *,
+    command_type: str,
+    payload: dict[str, Any],
+    explicit_value: bool | None,
+) -> bool:
+    if explicit_value is not None:
+        return explicit_value
+
+    payload_value = _coerce_optional_bool(
+        payload.get("preempt_current_navigation"),
+        field_name="payload.preempt_current_navigation",
+    )
+    if payload_value is not None:
+        return payload_value
+
+    return command_type in DEFAULT_PREEMPT_COMMAND_TYPES
+
+
 def _build_bridge_payload(
     *,
     command_id: str,
@@ -188,6 +230,7 @@ def _build_bridge_payload(
     requested_by: str,
     map_id: str,
     payload: dict[str, Any],
+    preempt_current_navigation: bool,
     target_zone_id: str | None = None,
     requested_command_type: str | None = None,
 ) -> dict[str, Any]:
@@ -198,6 +241,7 @@ def _build_bridge_payload(
         "requested_by": requested_by,
         "map_id": map_id,
         "issued_at": _iso_now(),
+        "preempt_current_navigation": preempt_current_navigation,
     }
     if payload:
         bridge_payload["payload"] = payload
@@ -218,6 +262,7 @@ def publish_robot_command(
     target_pose: dict[str, Any] | None = None,
     command_id: str | None = None,
     map_id: str | None = None,
+    preempt_current_navigation: bool | None = None,
 ) -> dict[str, Any]:
     resolved_map_id = read_map_payload(map_id)["map_id"]
     normalized_robot_id = _normalize_robot_id(robot_id)
@@ -225,6 +270,14 @@ def publish_robot_command(
     normalized_command_type = _validate_command_type(command_type)
     normalized_payload = _payload_or_empty(payload)
     resolved_command_id = _sanitize_command_id(command_id)
+    resolved_preempt_current_navigation = _resolve_preempt_current_navigation(
+        command_type=normalized_command_type,
+        payload=normalized_payload,
+        explicit_value=_coerce_optional_bool(
+            preempt_current_navigation,
+            field_name="preempt_current_navigation",
+        ),
+    )
     _check_duplicate_command_id(resolved_command_id)
 
     resolved_zone: dict[str, Any] | None = None
@@ -268,6 +321,7 @@ def publish_robot_command(
         map_id=resolved_map_id,
         target_zone_id=target_zone_id,
         payload=command_payload,
+        preempt_current_navigation=resolved_preempt_current_navigation,
     )
     _write_json_atomic(command_file_path(), bridge_payload)
 
@@ -282,6 +336,7 @@ def publish_robot_command(
         "bridge_file": str(command_file_path()),
         "status_endpoint": "/api/v1/robot/commands/latest",
         "target_pose": command_payload.get("target_pose"),
+        "preempt_current_navigation": resolved_preempt_current_navigation,
     }
     if resolved_zone is not None:
         response["target_zone"] = {
@@ -326,5 +381,9 @@ def read_latest_command_status_payload() -> dict[str, Any]:
                 result["requested_command_type"] = requested_command_type
             if command_payload.get("target_zone_id"):
                 result["target_zone_id"] = command_payload["target_zone_id"]
+            if "preempt_current_navigation" in command_payload:
+                result["preempt_current_navigation"] = bool(
+                    command_payload["preempt_current_navigation"]
+                )
 
     return result
