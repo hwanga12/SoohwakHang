@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { AppIcon } from '@/components/app-icon'
 import {
   type SemanticAsset,
@@ -8,6 +9,7 @@ type RobotFacilityMapProps = {
   pose: {
     x: number
     y: number
+    yawDeg?: number
   }
   scene: SemanticScene
   selectedAssetId: string | null
@@ -120,58 +122,68 @@ function FieldRobotGlyph() {
       viewBox="0 0 120 120"
     >
       <defs>
-        <linearGradient id="farmRobotTopGradient" x1="0%" x2="100%" y1="0%" y2="100%">
-          <stop offset="0%" stopColor="#ffe9a8" />
-          <stop offset="100%" stopColor="#f3c96a" />
-        </linearGradient>
-        <linearGradient id="farmRobotFrontGradient" x1="0%" x2="0%" y1="0%" y2="100%">
-          <stop offset="0%" stopColor="#f4c45f" />
-          <stop offset="100%" stopColor="#d79843" />
-        </linearGradient>
-        <linearGradient id="farmRobotSideGradient" x1="0%" x2="0%" y1="0%" y2="100%">
-          <stop offset="0%" stopColor="#e7b456" />
-          <stop offset="100%" stopColor="#c68635" />
-        </linearGradient>
-        <linearGradient id="farmRobotTrackGradient" x1="0%" x2="100%" y1="0%" y2="100%">
-          <stop offset="0%" stopColor="#6687bb" />
-          <stop offset="100%" stopColor="#425d91" />
-        </linearGradient>
-        <linearGradient id="farmRobotScreenGradient" x1="0%" x2="100%" y1="0%" y2="100%">
-          <stop offset="0%" stopColor="#2f1642" />
-          <stop offset="55%" stopColor="#322d6f" />
-          <stop offset="100%" stopColor="#0f2438" />
-        </linearGradient>
-        <radialGradient id="farmRobotScreenGlow" cx="50%" cy="45%" r="70%">
-          <stop offset="0%" stopColor="rgba(238, 122, 255, 0.85)" />
-          <stop offset="100%" stopColor="rgba(90, 165, 255, 0)" />
+        <radialGradient id="farmRobotBodyGlow" cx="50%" cy="32%" r="72%">
+          <stop offset="0%" stopColor="rgba(255, 252, 204, 0.96)" />
+          <stop offset="62%" stopColor="rgba(255, 232, 133, 0.44)" />
+          <stop offset="100%" stopColor="rgba(255, 232, 133, 0)" />
         </radialGradient>
+        <linearGradient id="farmRobotShellRimGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="#f0a84b" />
+          <stop offset="50%" stopColor="#d88432" />
+          <stop offset="100%" stopColor="#b6681f" />
+        </linearGradient>
+        <linearGradient id="farmRobotShellGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="#fff8b8" />
+          <stop offset="40%" stopColor="#ffe15b" />
+          <stop offset="100%" stopColor="#f4ab3c" />
+        </linearGradient>
+        <linearGradient id="farmRobotTrackOuterGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="#95aff2" />
+          <stop offset="100%" stopColor="#536fbf" />
+        </linearGradient>
+        <linearGradient id="farmRobotTrackInnerGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="#4d61a5" />
+          <stop offset="100%" stopColor="#354579" />
+        </linearGradient>
+        <linearGradient id="farmRobotPanelGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="#5d5dce" />
+          <stop offset="100%" stopColor="#2a397b" />
+        </linearGradient>
+        <linearGradient id="farmRobotGlossGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="rgba(255, 255, 255, 0.9)" />
+          <stop offset="55%" stopColor="rgba(255, 255, 255, 0.28)" />
+          <stop offset="100%" stopColor="rgba(255, 255, 255, 0)" />
+        </linearGradient>
       </defs>
-      <ellipse className="robot-facility-map__robot-shadow" cx="58" cy="102" rx="38" ry="9" />
-      <path className="robot-facility-map__robot-track" d="M17 46 C19 37 27 32 38 34 L47 36 L47 88 L29 92 C21 91 16 84 16 74 Z" fill="url(#farmRobotTrackGradient)" />
-      <path className="robot-facility-map__robot-track" d="M75 39 L85 33 C94 31 102 35 105 43 L106 75 C105 84 99 91 91 92 L75 89 Z" fill="url(#farmRobotTrackGradient)" />
-      <circle className="robot-facility-map__robot-track-roller" cx="29" cy="49" r="5.8" />
-      <circle className="robot-facility-map__robot-track-roller" cx="30" cy="65" r="5.8" />
-      <circle className="robot-facility-map__robot-track-roller" cx="30" cy="81" r="5.8" />
-      <circle className="robot-facility-map__robot-track-roller" cx="89" cy="47" r="5.8" />
-      <circle className="robot-facility-map__robot-track-roller" cx="91" cy="63" r="5.8" />
-      <circle className="robot-facility-map__robot-track-roller" cx="92" cy="79" r="5.8" />
-      <polygon className="robot-facility-map__robot-body-top" fill="url(#farmRobotTopGradient)" points="42,18 82,26 68,39 28,31" />
-      <polygon className="robot-facility-map__robot-body-front" fill="url(#farmRobotFrontGradient)" points="28,31 68,39 68,81 28,71" />
-      <polygon className="robot-facility-map__robot-body-side" fill="url(#farmRobotSideGradient)" points="68,39 82,26 84,66 68,81" />
-      <polygon className="robot-facility-map__robot-screen" fill="url(#farmRobotScreenGradient)" points="34,38 62,44 62,71 34,65" />
-      <ellipse className="robot-facility-map__robot-screen-glow" cx="48" cy="54" rx="14" ry="12" fill="url(#farmRobotScreenGlow)" />
-      <path className="robot-facility-map__robot-screen-eye" d="M41 50 C44 46 47 46 49 49" />
-      <path className="robot-facility-map__robot-screen-eye" d="M49 58 C52 55 56 55 58 58" />
-      <circle className="robot-facility-map__robot-screen-blush" cx="40" cy="58" r="2.3" />
-      <circle className="robot-facility-map__robot-screen-blush" cx="57" cy="63" r="2.3" />
-      <path className="robot-facility-map__robot-screen-smile" d="M44 63 C47 66 52 66 55 62" />
-      <path className="robot-facility-map__robot-top-highlight" d="M46 23 L74 29" />
-      <path className="robot-facility-map__robot-antenna" d="M61 20 L65 9" />
-      <circle className="robot-facility-map__robot-antenna-top" cx="66" cy="8" r="4.2" />
-      <path className="robot-facility-map__robot-leaf-badge" d="M51 23 C56 17 63 17 67 23 C61 28 54 28 51 23Z" />
-      <circle className="robot-facility-map__robot-camera" cx="74" cy="44" r="4.6" />
-      <path className="robot-facility-map__robot-arm" d="M84 67 L98 72 L102 78" />
-      <path className="robot-facility-map__robot-arm-tip" d="M101 77 L106 74 M101 77 L104 83" />
+      <ellipse className="robot-facility-map__robot-shadow" cx="60" cy="104" rx="36" ry="9" />
+      <path className="robot-facility-map__robot-track" d="M15 18 C15 14 18 11 22 11 H37 L35 100 H22 C18 100 15 97 15 93 Z" fill="url(#farmRobotTrackOuterGradient)" />
+      <path className="robot-facility-map__robot-track" d="M83 11 H98 C102 11 105 14 105 18 V93 C105 97 102 100 98 100 H85 Z" fill="url(#farmRobotTrackOuterGradient)" />
+      <path className="robot-facility-map__robot-track-inner" d="M21 18 H33 L31 94 H21 Z" fill="url(#farmRobotTrackInnerGradient)" />
+      <path className="robot-facility-map__robot-track-inner" d="M87 18 H99 V94 H89 Z" fill="url(#farmRobotTrackInnerGradient)" />
+      <path className="robot-facility-map__robot-track-rib" d="M20 29 H34" />
+      <path className="robot-facility-map__robot-track-rib" d="M20 40 H33" />
+      <path className="robot-facility-map__robot-track-rib" d="M19 51 H33" />
+      <path className="robot-facility-map__robot-track-rib" d="M19 62 H33" />
+      <path className="robot-facility-map__robot-track-rib" d="M19 73 H32" />
+      <path className="robot-facility-map__robot-track-rib" d="M19 84 H32" />
+      <path className="robot-facility-map__robot-track-rib" d="M87 29 H100" />
+      <path className="robot-facility-map__robot-track-rib" d="M87 40 H101" />
+      <path className="robot-facility-map__robot-track-rib" d="M87 51 H101" />
+      <path className="robot-facility-map__robot-track-rib" d="M88 62 H101" />
+      <path className="robot-facility-map__robot-track-rib" d="M88 73 H101" />
+      <path className="robot-facility-map__robot-track-rib" d="M88 84 H101" />
+      <circle className="robot-facility-map__robot-track-roller" cx="28" cy="92" r="5.5" />
+      <circle className="robot-facility-map__robot-track-roller" cx="92" cy="92" r="5.5" />
+      <rect className="robot-facility-map__robot-shell-rim" fill="url(#farmRobotShellRimGradient)" height="90" rx="17" width="54" x="33" y="10" />
+      <rect className="robot-facility-map__robot-shell" fill="url(#farmRobotShellGradient)" height="82" rx="14" width="46" x="37" y="14" />
+      <rect className="robot-facility-map__robot-body-glow" fill="url(#farmRobotBodyGlow)" height="74" rx="12" width="38" x="41" y="17" />
+      <path className="robot-facility-map__robot-shell-shadow" d="M41 73 C48 80 72 80 79 73 V88 C73 94 47 94 41 88Z" />
+      <path className="robot-facility-map__robot-gloss robot-facility-map__robot-gloss--primary" d="M45 18 C53 14 66 14 78 20 C72 35 64 52 52 79 C45 62 41 40 45 18Z" fill="url(#farmRobotGlossGradient)" />
+      <path className="robot-facility-map__robot-gloss robot-facility-map__robot-gloss--secondary" d="M60 17 C69 17 76 20 80 24 C73 35 66 49 59 65 C58 52 58 35 60 17Z" fill="url(#farmRobotGlossGradient)" />
+      <path className="robot-facility-map__robot-shell-edge" d="M40 28 C47 24 73 24 80 28" />
+      <path className="robot-facility-map__robot-shell-edge robot-facility-map__robot-shell-edge--bottom" d="M42 88 C50 92 70 92 78 88" />
+      <path className="robot-facility-map__robot-arm" d="M82 72 L92 80" />
+      <path className="robot-facility-map__robot-arm-tip" d="M91 80 L97 77 M91 80 L96 85" />
     </svg>
   )
 }
@@ -185,6 +197,11 @@ export function RobotFacilityMap({
   onSelectAsset,
   onSelectGuide,
 }: RobotFacilityMapProps) {
+  const robotStyle: CSSProperties = toPercent(scene, pose.x, pose.y)
+  const robotCoreStyle: CSSProperties = {
+    transform: `translate(-50%, -50%) rotate(${pose.yawDeg ?? 0}deg)`,
+  }
+
   return (
     <div className="robot-facility-map" style={{ transform: `scale(${zoom})` }}>
       <div className="robot-facility-map__surface">
@@ -263,9 +280,14 @@ export function RobotFacilityMap({
           )
         })}
 
-        <div className="robot-facility-map__robot" style={toPercent(scene, pose.x, pose.y)}>
+        <div className="robot-facility-map__robot" style={robotStyle}>
+          <span className="robot-facility-map__robot-ping robot-facility-map__robot-ping--outer" />
+          <span className="robot-facility-map__robot-ping robot-facility-map__robot-ping--inner" />
+          <span className="robot-facility-map__robot-origin">
+            <span className="robot-facility-map__robot-origin-dot" />
+          </span>
           <span className="robot-facility-map__robot-ring" />
-          <span className="robot-facility-map__robot-core">
+          <span className="robot-facility-map__robot-core" style={robotCoreStyle}>
             <FieldRobotGlyph />
           </span>
           <span className="robot-facility-map__robot-label">AGR-02</span>

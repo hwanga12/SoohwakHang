@@ -63,12 +63,21 @@ export type RobotZonePreset = {
   detail: string
 }
 
+export type RobotPoseSnapshot = {
+  x: number
+  y: number
+  yawDeg: number
+  linearSpeedMps: number
+  updatedAt: string
+}
+
 export type RobotPageData = {
   source: DataSource
   debug: PageDebugMeta
   waypoint: string
   zoneLabel: string
   poseLabel: string
+  pose: RobotPoseSnapshot
   targetLabel: string
   metrics: MetricCardData[]
   progressPct: number
@@ -357,6 +366,42 @@ function buildPositionLabel(position: unknown, fallback = '좌표 정보 준비 
   return `x ${x.toFixed(1)} / y ${y.toFixed(1)}`
 }
 
+function normalizeHeadingDegrees(value: unknown, fallback = 0) {
+  const raw = readNumber(value, Number.NaN)
+
+  if (!Number.isFinite(raw)) {
+    return fallback
+  }
+
+  const asDegrees = Math.abs(raw) <= Math.PI * 2 + 0.001 ? (raw * 180) / Math.PI : raw
+  const normalized = ((asDegrees % 360) + 360) % 360
+  return Number.isFinite(normalized) ? normalized : fallback
+}
+
+function readPoseSnapshot(payload: unknown, fallback: RobotPoseSnapshot): RobotPoseSnapshot {
+  const record = readRecord(payload)
+  const pose = readRecord(record?.pose)
+
+  if (!pose) {
+    return fallback
+  }
+
+  const x = readNumber(pose.x, Number.NaN)
+  const y = readNumber(pose.y, Number.NaN)
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return fallback
+  }
+
+  return {
+    x,
+    y,
+    yawDeg: normalizeHeadingDegrees(pose.yaw, fallback.yawDeg),
+    linearSpeedMps: readNumber(record?.linear_speed_mps, fallback.linearSpeedMps),
+    updatedAt: readString(record?.updated_at) || fallback.updatedAt,
+  }
+}
+
 async function safeGet(path: string) {
   try {
     const response = await apiClient.get(path)
@@ -505,6 +550,13 @@ export const robotFallback: RobotPageData = {
   waypoint: 'inspection_b12',
   zoneLabel: 'farm_01 · 서측 2열',
   poseLabel: 'map 기준 x 2.0 / y -5.9',
+  pose: {
+    x: 2.0,
+    y: -5.9,
+    yawDeg: 0,
+    linearSpeedMps: 1.1,
+    updatedAt: '',
+  },
   targetLabel: '다음 목표 farm01_plant_06_tomato_01',
   metrics: [
     { label: '현재 모드', value: '자율 순찰', meta: 'patrol/status 기준으로 동작 중입니다.', tone: 'accent' },
@@ -927,6 +979,7 @@ export async function getRobotPageData(): Promise<RobotPageData> {
   const status = readRecord(statusPayload)
   const pose = readRecord(posePayload)
   const poseRecord = readRecord(pose?.pose)
+  const poseSnapshot = readPoseSnapshot(posePayload, robotFallback.pose)
   const zones = asArray(zonesPayload)
   const metrics = [...robotFallback.metrics]
 
@@ -987,10 +1040,8 @@ export async function getRobotPageData(): Promise<RobotPageData> {
       || readString(status?.current_zone)
       || readString(pose?.current_zone_id)
       || robotFallback.zoneLabel,
-    poseLabel:
-      poseRecord !== null
-        ? buildPositionLabel(poseRecord, robotFallback.poseLabel)
-        : robotFallback.poseLabel,
+    poseLabel: buildPositionLabel(poseRecord ?? poseSnapshot, robotFallback.poseLabel),
+    pose: poseSnapshot,
     targetLabel:
       readString(status?.next_target_crop_id)
       || readString(status?.target_crop_id)
@@ -1009,7 +1060,10 @@ export async function getRobotPageData(): Promise<RobotPageData> {
       readString(status?.battery)
       || readString(status?.battery_level)
       || robotFallback.battery,
-    speed: readString(status?.speed_mps) || readString(status?.speed) || robotFallback.speed,
+    speed:
+      readString(status?.speed_mps)
+      || readString(status?.speed)
+      || `${poseSnapshot.linearSpeedMps.toFixed(1)}m/s`,
     zonePresets: zonePresets.length > 0 ? zonePresets : robotFallback.zonePresets,
   }
 }

@@ -28,7 +28,6 @@ import {
 } from '@/lib/api/agribot'
 import {
   farmSemanticScene,
-  parsePoseLabel,
   resolveSemanticTargetId,
   type SemanticAssetStatus,
   type SemanticScene,
@@ -134,7 +133,7 @@ export function FarmCommandPage() {
     queryKey: ['page', 'robot'],
     queryFn: getRobotPageData,
     initialData: robotFallback,
-    refetchInterval: 10_000,
+    refetchInterval: 1_000,
   })
   const plantsQuery = useQuery({
     queryKey: ['page', 'plants'],
@@ -226,7 +225,7 @@ export function FarmCommandPage() {
     }))
   }
 
-  const robotPose = parsePoseLabel(robot.poseLabel) ?? { x: 2, y: -5.9 }
+  const robotPose = robot.pose
   const targetAssetId = resolveSemanticTargetId(robot.targetLabel)
   const plantLookup = useMemo(
     () => new Map(plants.plants.map((plant) => [plant.id, plant])),

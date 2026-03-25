@@ -1447,6 +1447,8 @@ button {
   position: absolute;
   z-index: 2;
   transform: translate(-50%, -50%);
+  transition: left 0.9s linear, top 0.9s linear;
+  will-change: left, top;
 }
 
 .robot-facility-map__robot-ring,
@@ -1472,6 +1474,8 @@ button {
   color: #fff;
   background: linear-gradient(180deg, #79b255, #587f3d);
   box-shadow: 0 12px 26px rgba(76, 109, 54, 0.26);
+  transition: transform 0.75s ease;
+  will-change: transform;
 }
 
 .robot-facility-map__legend,
@@ -3834,9 +3838,60 @@ button.robot-facility-map__row-guide.is-clickable {
 }
 
 .robot-facility-map__robot-ring {
-  width: 88px;
-  height: 88px;
-  background: rgba(102, 152, 88, 0.12);
+  width: 66px;
+  height: 66px;
+  border: 2px solid rgba(111, 197, 255, 0.58);
+  background: radial-gradient(circle, rgba(154, 226, 255, 0.22) 0 45%, rgba(154, 226, 255, 0.04) 46% 100%);
+  box-shadow:
+    0 0 0 6px rgba(109, 212, 255, 0.08),
+    0 0 22px rgba(120, 213, 255, 0.2);
+}
+
+.robot-facility-map__robot-ping,
+.robot-facility-map__robot-origin {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+
+.robot-facility-map__robot-ping {
+  border: 2px solid rgba(122, 215, 255, 0.46);
+  background: rgba(122, 215, 255, 0.06);
+  pointer-events: none;
+}
+
+.robot-facility-map__robot-ping--outer {
+  width: 108px;
+  height: 108px;
+  animation: robotPositionPulse 2.4s ease-out infinite;
+}
+
+.robot-facility-map__robot-ping--inner {
+  width: 84px;
+  height: 84px;
+  animation: robotPositionPulse 2.4s ease-out infinite 0.45s;
+}
+
+.robot-facility-map__robot-origin {
+  width: 16px;
+  height: 16px;
+  z-index: 1;
+  border: 3px solid rgba(255, 255, 255, 0.92);
+  background: linear-gradient(180deg, #7ce2ff, #39b4f0);
+  box-shadow:
+    0 0 0 4px rgba(98, 203, 255, 0.2),
+    0 0 18px rgba(85, 197, 255, 0.35);
+}
+
+.robot-facility-map__robot-origin-dot {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.98);
 }
 
 .robot-facility-map__robot-core {
@@ -3844,17 +3899,18 @@ button.robot-facility-map__row-guide.is-clickable {
   height: 94px;
   background: transparent;
   box-shadow: none;
+  transition: transform 0.75s ease;
 }
 
 .robot-facility-map__robot-svg {
   width: 100%;
   height: 100%;
   overflow: visible;
-  filter: drop-shadow(0 12px 20px rgba(86, 63, 31, 0.18));
+  filter: drop-shadow(0 16px 22px rgba(86, 63, 31, 0.2));
 }
 
 .robot-facility-map__robot-shadow {
-  fill: rgba(88, 69, 39, 0.16);
+  fill: rgba(88, 69, 39, 0.14);
 }
 
 .robot-facility-map__robot-wheel {
@@ -4058,76 +4114,75 @@ button.robot-facility-map__row-guide.is-clickable {
 }
 
 .robot-facility-map__robot-svg {
-  filter: drop-shadow(0 14px 18px rgba(86, 63, 31, 0.16));
+  filter: drop-shadow(0 16px 20px rgba(86, 63, 31, 0.18));
 }
 
 .robot-facility-map__robot-shadow {
   fill: rgba(101, 78, 45, 0.14);
 }
 
+.robot-facility-map__robot-body-glow {
+  opacity: 0.95;
+  mix-blend-mode: screen;
+}
+
 .robot-facility-map__robot-track {
-  stroke: #38517c;
-  stroke-width: 3;
+  stroke: #425b9c;
+  stroke-width: 2.6;
+}
+
+.robot-facility-map__robot-track-inner {
+  opacity: 0.96;
+}
+
+.robot-facility-map__robot-track-rib {
+  fill: none;
+  stroke: rgba(239, 244, 255, 0.44);
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 
 .robot-facility-map__robot-track-roller {
-  fill: #cbd7ee;
-  stroke: #46618e;
-  stroke-width: 3;
-}
-
-.robot-facility-map__robot-body-top,
-.robot-facility-map__robot-body-front,
-.robot-facility-map__robot-body-side {
-  stroke: #9b692f;
-  stroke-width: 3;
-  stroke-linejoin: round;
-}
-
-.robot-facility-map__robot-screen {
-  stroke: rgba(255, 255, 255, 0.22);
-  stroke-width: 1.8;
-  stroke-linejoin: round;
-}
-
-.robot-facility-map__robot-screen-eye,
-.robot-facility-map__robot-screen-smile {
-  fill: none;
-  stroke: #f3a6ff;
+  fill: #dbe5fb;
+  stroke: #5d77b7;
   stroke-width: 2.4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
-.robot-facility-map__robot-screen-blush {
-  fill: rgba(253, 143, 208, 0.52);
+.robot-facility-map__robot-shell-rim {
+  stroke: #9c5a17;
+  stroke-width: 2.6;
 }
 
-.robot-facility-map__robot-top-highlight {
+.robot-facility-map__robot-shell {
+  stroke: #ffd46a;
+  stroke-width: 1.4;
+  filter: drop-shadow(0 8px 12px rgba(255, 194, 66, 0.24));
+}
+
+.robot-facility-map__robot-gloss {
+  opacity: 0.95;
+  mix-blend-mode: screen;
+  animation: robotGlossPulse 2.8s ease-in-out infinite;
+}
+
+.robot-facility-map__robot-gloss--secondary {
+  opacity: 0.72;
+  animation-duration: 3.4s;
+}
+
+.robot-facility-map__robot-shell-shadow {
+  fill: rgba(199, 110, 21, 0.18);
+}
+
+.robot-facility-map__robot-shell-edge {
   fill: none;
-  stroke: rgba(255, 251, 221, 0.82);
-  stroke-width: 3.4;
+  stroke: rgba(255, 245, 192, 0.75);
   stroke-linecap: round;
+  stroke-width: 2.4;
 }
 
-.robot-facility-map__robot-antenna {
-  stroke: #9b692f;
-}
-
-.robot-facility-map__robot-antenna-top {
-  fill: #ffedb5;
-  stroke: #b2823e;
-}
-
-.robot-facility-map__robot-leaf-badge {
-  fill: #8fd16f;
-  stroke: #5c8a49;
-}
-
-.robot-facility-map__robot-camera {
-  fill: #93d2ec;
-  stroke: #467191;
-  stroke-width: 2.8;
+.robot-facility-map__robot-shell-edge--bottom {
+  stroke: rgba(200, 112, 26, 0.48);
 }
 
 .robot-facility-map__robot-arm,
@@ -4173,6 +4228,34 @@ button.robot-facility-map__row-guide.is-clickable {
   fill: #b8bcc5;
   stroke: #6f7580;
   stroke-width: 3;
+}
+
+@keyframes robotGlossPulse {
+  0%,
+  100% {
+    opacity: 0.78;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes robotPositionPulse {
+  0% {
+    opacity: 0.68;
+    transform: translate(-50%, -50%) scale(0.88);
+  }
+
+  70% {
+    opacity: 0.1;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.12);
+  }
 }
 
 .robot-facility-map__robot-label {

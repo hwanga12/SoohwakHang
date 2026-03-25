@@ -17,7 +17,6 @@ import {
 } from '@/lib/api/agribot'
 import {
   farmSemanticScene,
-  parsePoseLabel,
   resolveSemanticTargetId,
 } from '@/lib/robot-map/farm-semantic-map'
 
@@ -36,7 +35,7 @@ export function MapControlPage() {
     queryKey: ['page', 'robot'],
     queryFn: getRobotPageData,
     initialData: robotFallback,
-    refetchInterval: 10_000,
+    refetchInterval: 1_000,
   })
   const controlMutation = useMutation({
     mutationFn: sendRobotControlAction,
@@ -52,7 +51,7 @@ export function MapControlPage() {
   })
   const page = robotQuery.data
   const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
-  const robotPose = parsePoseLabel(page.poseLabel) ?? { x: 2, y: -5.9 }
+  const robotPose = page.pose
   const targetAssetId = resolveSemanticTargetId(page.targetLabel)
   const selectedAsset = useMemo(
     () => farmSemanticScene.assets.find((asset) => asset.id === selectedAssetId) ?? null,
