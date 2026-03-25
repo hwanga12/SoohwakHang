@@ -145,6 +145,16 @@ def generate_launch_description():
             'map_id': 'farm_map',
         }],
     )
+    mission_bridge_executor = Node(
+        package='agribot_bringup',
+        executable='mission_bridge_executor',
+        name='mission_bridge_executor',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'robot_id': 'AGR-02',
+        }],
+    )
 
     return LaunchDescription([
         *env_vars,
@@ -155,6 +165,7 @@ def generate_launch_description():
         spawn_agribot,
         runtime_snapshot_exporter,
         robot_manual_command_executor,
+        mission_bridge_executor,
         delayed_navigation,
         iot_status_pipeline,
         perception,
