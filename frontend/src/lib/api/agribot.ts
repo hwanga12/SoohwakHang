@@ -1,5 +1,6 @@
 import { isAxiosError } from 'axios'
 import { markRouteFailed, markRouteVerified } from '@/app/dev-runtime'
+import { env } from '@/config/env'
 import { apiClient } from '@/lib/api/client'
 import {
   farmSemanticScene,
@@ -211,6 +212,10 @@ export type PlantAlertCard = {
   title: string
   location: string
   action: string
+  detail: string
+  diagnosisLabel: string
+  detectedAt: string
+  imageUrl: string
 }
 
 export type PlantRow = {
@@ -224,6 +229,9 @@ export type PlantRow = {
   health: number
   tone: HealthTone
   status: string
+  latestLabel: string
+  latestDisplayLabel: string
+  latestImageUrl: string
 }
 
 export type PlantsPageData = {
@@ -235,6 +243,24 @@ export type PlantsPageData = {
   growthIndex: string
   alerts: PlantAlertCard[]
   plants: PlantRow[]
+}
+
+export type PlantObservationEntry = {
+  id: string
+  label: string
+  displayLabel: string
+  reviewedAt: string
+  imageUrl: string
+  decisionSource: string
+  healthPercent: number
+  detail: string
+}
+
+export type PlantObservationFeed = {
+  source: DataSource
+  plantId: string
+  plantName: string
+  items: PlantObservationEntry[]
 }
 
 export type DeviceCard = {
@@ -490,6 +516,23 @@ function buildPositionLabel(position: unknown, fallback = '좌표 정보 준비 
   }
 
   return `x ${x.toFixed(1)} / y ${y.toFixed(1)}`
+}
+
+function resolveApiMediaUrl(value: string) {
+  if (!value) {
+    return ''
+  }
+
+  if (/^(?:https?:)?\/\//i.test(value) || value.startsWith('data:')) {
+    return value
+  }
+
+  try {
+    const apiBase = new URL(env.apiBaseUrl)
+    return new URL(value, `${apiBase.origin}/`).toString()
+  } catch {
+    return value
+  }
 }
 
 function normalizeHeadingDegrees(value: unknown, fallback = 0) {
@@ -1164,6 +1207,10 @@ export const plantsFallback: PlantsPageData = {
       title: '조기 병해 의심',
       location: 'farm01_plant_06 · farm01_plant_06_tomato_01',
       action: '수동 검토 후 관찰 또는 수확 미션 전환',
+      detail: '상태가 좋지 않은 잎을 진단했고, 흰가루병 의심 결과가 저장되었습니다.',
+      diagnosisLabel: '토마토 흰가루병',
+      detectedAt: '09:42',
+      imageUrl: '/mock-images/disease-closeup.png',
     },
     {
       id: 'alert-target-001',
@@ -1171,6 +1218,10 @@ export const plantsFallback: PlantsPageData = {
       title: '수확 후보 토마토 재확인',
       location: 'farm01_plant_03 · farm01_plant_03_tomato_01',
       action: 'canonical ID 기준으로 대상 큐에 유지',
+      detail: '수확 후보를 다시 확인하는 발표용 샘플 카드입니다.',
+      diagnosisLabel: '수확 후보 재확인',
+      detectedAt: '09:38',
+      imageUrl: '/mock-images/harvest-closeup.png',
     },
   ],
   plants: [
@@ -1185,6 +1236,9 @@ export const plantsFallback: PlantsPageData = {
       health: 96,
       tone: 'healthy',
       status: '수확 후보',
+      latestLabel: '',
+      latestDisplayLabel: '',
+      latestImageUrl: '/mock-images/harvest-closeup.png',
     },
     {
       name: '토마토 06',
@@ -1197,6 +1251,9 @@ export const plantsFallback: PlantsPageData = {
       health: 71,
       tone: 'warning',
       status: '재확인 필요',
+      latestLabel: 'tomato_powdery_mildew_disease',
+      latestDisplayLabel: '토마토 흰가루병',
+      latestImageUrl: '/mock-images/disease-closeup.png',
     },
     {
       name: '토마토 10',
@@ -1209,6 +1266,9 @@ export const plantsFallback: PlantsPageData = {
       health: 44,
       tone: 'warning',
       status: '병해 점검',
+      latestLabel: 'tomato_gray_mold_disease',
+      latestDisplayLabel: '토마토 잿빛곰팡이병',
+      latestImageUrl: '/mock-images/disease-closeup.png',
     },
     {
       name: '토마토 15',
@@ -1221,8 +1281,18 @@ export const plantsFallback: PlantsPageData = {
       health: 89,
       tone: 'healthy',
       status: '순찰 관찰',
+      latestLabel: '',
+      latestDisplayLabel: '',
+      latestImageUrl: '/mock-images/harvest-closeup.png',
     },
   ],
+}
+
+export const emptyPlantObservationFeed: PlantObservationFeed = {
+  source: 'fallback',
+  plantId: '',
+  plantName: '',
+  items: [],
 }
 
 export const environmentFallback: EnvironmentPageData = {
@@ -1695,6 +1765,21 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
             || readString(item.detail)
             || readString(item.message)
             || '추가 검수가 필요합니다.',
+          detail:
+            readString(item.detail)
+            || readString(item.message)
+            || '상태가 좋지 않은 잎을 진단한 결과가 도착하면 이 카드에 표시됩니다.',
+          diagnosisLabel:
+            readString(item.display_label)
+            || readString(item.label)
+            || readString(item.title)
+            || '진단 결과 대기',
+          detectedAt:
+            readString(item.detected_at)
+            || readString(item.created_at)
+            || readString(item.time)
+            || '',
+          imageUrl: resolveApiMediaUrl(readString(item.image_url)),
         }
       })
       .filter((item): item is PlantAlertCard => item !== null)
@@ -1745,7 +1830,11 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
               ? '수확 요청 가능'
               : readBoolean(item.needs_water)
                 ? '급수 우선 확인'
-                : plantsFallback.plants[Math.min(index, plantsFallback.plants.length - 1)]?.recommendedAction
+                : readString(item.recommended_action)
+                  || readString(item.action)
+                  || readString(item.latest_display_label)
+                  || readString(item.latest_label)
+                  || plantsFallback.plants[Math.min(index, plantsFallback.plants.length - 1)]?.recommendedAction
                   || '추가 관찰 유지',
           health,
           tone,
@@ -1754,6 +1843,20 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
             || readString(item.stage)
             || readString(item.growth_stage)
             || (readBoolean(item.ready_to_harvest) ? '수확 후보' : '관측 중'),
+          latestLabel:
+            readString(item.latest_label)
+            || readString(item.label)
+            || '',
+          latestDisplayLabel:
+            readString(item.latest_display_label)
+            || readString(item.display_label)
+            || readString(item.status)
+            || '',
+          latestImageUrl: resolveApiMediaUrl(
+            readString(item.latest_image_url)
+            || readString(item.image_url)
+            || '',
+          ),
         }
       })
       .filter((item): item is PlantRow => item !== null)
@@ -1770,6 +1873,57 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
         : plantsFallback.criticalCount,
     alerts: parsedAlerts.length > 0 ? parsedAlerts : plantsFallback.alerts,
     plants: parsedPlants.length > 0 ? parsedPlants : plantsFallback.plants,
+  }
+}
+
+export async function getPlantObservations(plantId: string): Promise<PlantObservationFeed> {
+  if (!plantId) {
+    return emptyPlantObservationFeed
+  }
+
+  const path = `/plants/${plantId}/observations`
+  const payload = await safeGet(path)
+  const record = readRecord(payload)
+  const items = asArray(payload)
+
+  const parsedItems =
+    items
+      .map((item, index): PlantObservationEntry | null => {
+        if (!isRecord(item)) {
+          return null
+        }
+
+        const treatmentPlan = readRecord(item.treatment_plan)
+        const displayLabel =
+          readString(item.display_label)
+          || readString(item.label)
+          || readString(item.class_name)
+          || `진단 ${index + 1}`
+
+        return {
+          id: readString(item.id) || `observation-${index + 1}`,
+          label: readString(item.class_name) || readString(item.label) || '',
+          displayLabel,
+          reviewedAt:
+            readString(item.reviewed_at)
+            || readString(item.detected_at)
+            || readString(item.created_at)
+            || '',
+          imageUrl: resolveApiMediaUrl(readString(item.image_url)),
+          decisionSource: readString(item.decision_source) || '',
+          healthPercent: readNumber(item.health_percent, 0),
+          detail:
+            readString(treatmentPlan?.reason)
+            || `${displayLabel} 결과가 저장되어 있습니다.`,
+        }
+      })
+      .filter((item): item is PlantObservationEntry => item !== null)
+
+  return {
+    source: toQuerySource(payload),
+    plantId: readString(record?.plant_id) || plantId,
+    plantName: readString(record?.plant_name) || '',
+    items: parsedItems,
   }
 }
 
