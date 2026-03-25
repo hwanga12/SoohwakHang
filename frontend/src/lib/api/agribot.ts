@@ -146,11 +146,17 @@ export type MissionStatus = {
   available: boolean
   missionId: string | null
   commandId: string | null
+  missionType: string
   requestType: string
   requestedType: string
   status: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+  state: string
+  currentPhase: string
+  progressPct: number | null
+  retryCount: number | null
   message: string
   operatorMessage: string
+  detailMessage: string
   error: string
   result: string
   updatedAt: string
@@ -160,6 +166,8 @@ export type MissionStatus = {
   plantId: string | null
   fruitId: string | null
   tomatoId: string | null
+  zoneId: string | null
+  targetId: string | null
   receivedAt: string
   startedAt: string
   completedAt: string
@@ -277,6 +285,13 @@ export type HarvestBatch = {
   route: string
   summary: string
   state: string
+  missionId: string
+  plantId: string | null
+  fruitId: string | null
+  currentPhase: string
+  updatedAt: string
+  basketCount: number | null
+  success: boolean | null
 }
 
 export type HarvestPageData = {
@@ -284,6 +299,15 @@ export type HarvestPageData = {
   debug: PageDebugMeta
   basketState: string
   nextSwap: string
+  basketCount: number
+  remainingReadyCount: number
+  lastHarvestedFruitId: string
+  missionStatus: MissionStatus['status']
+  currentPhase: string
+  activeMissionId: string
+  activeTargetId: string
+  detailMessage: string
+  loadedFruitIds: string[]
   metrics: MetricCardData[]
   batches: HarvestBatch[]
   qualityStats: Array<{ label: string; value: string }>
@@ -364,6 +388,21 @@ function readNumber(value: unknown, fallback = 0): number {
   }
 
   return fallback
+}
+
+function readOptionalNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(/[^\d.-]/g, ''))
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+
+  return null
 }
 
 function readStringArray(value: unknown): string[] {
@@ -749,14 +788,23 @@ function readMissionStatus(payload: unknown): MissionStatus | null {
     available: readBoolean(record.available, true),
     missionId: readString(record.mission_id) || null,
     commandId: readString(record.command_id) || null,
+    missionType: readString(record.mission_type),
     requestType: readString(record.request_type),
     requestedType: readString(record.requested_type) || readString(record.request_type),
     status: normalizeTaskStatus(record.status),
+    state: readString(record.state),
+    currentPhase: readString(record.current_phase),
+    progressPct: readOptionalNumber(record.progress_pct),
+    retryCount: readOptionalNumber(record.retry_count),
     message: readString(record.message) || '미션 상태 정보가 준비되지 않았습니다.',
     operatorMessage:
       readString(record.operator_message)
       || readString(record.message)
       || '미션 상태 정보가 준비되지 않았습니다.',
+    detailMessage:
+      readString(record.detail_message)
+      || readString(record.message)
+      || readString(record.operator_message),
     error: readString(record.error),
     result: readString(record.result),
     updatedAt: readString(record.updated_at),
@@ -769,6 +817,8 @@ function readMissionStatus(payload: unknown): MissionStatus | null {
     plantId: readString(record.plant_id) || null,
     fruitId: readString(record.fruit_id) || null,
     tomatoId: readString(record.tomato_id) || null,
+    zoneId: readString(record.zone_id) || null,
+    targetId: readString(record.target_id) || null,
     receivedAt: readString(record.received_at),
     startedAt: readString(record.started_at),
     completedAt: readString(record.completed_at),
@@ -922,11 +972,17 @@ function buildUnavailableMissionStatus(
     available: false,
     missionId,
     commandId: missionId,
+    missionType: '',
     requestType: '',
     requestedType: '',
     status: 'idle',
+    state: '',
+    currentPhase: '',
+    progressPct: null,
+    retryCount: null,
     message,
     operatorMessage: message,
+    detailMessage: message,
     error: '',
     result: '',
     updatedAt: '',
@@ -936,6 +992,8 @@ function buildUnavailableMissionStatus(
     plantId: null,
     fruitId: null,
     tomatoId: null,
+    zoneId: null,
+    targetId: null,
     receivedAt: '',
     startedAt: '',
     completedAt: '',
@@ -1305,6 +1363,20 @@ export const harvestFallback: HarvestPageData = {
   },
   basketState: '바구니 A · 68%',
   nextSwap: '35분 후 교체 예정',
+  basketCount: 4,
+  remainingReadyCount: 8,
+  lastHarvestedFruitId: 'farm01_plant_03_tomato_01',
+  missionStatus: 'running',
+  currentPhase: 'STOWING',
+  activeMissionId: 'mission-harvest-demo',
+  activeTargetId: 'farm01_plant_03_tomato_01',
+  detailMessage: '수확한 토마토를 등 바구니에 적재하는 중입니다.',
+  loadedFruitIds: [
+    'farm01_plant_01_tomato_01',
+    'farm01_plant_02_tomato_01',
+    'farm01_plant_03_tomato_01',
+    'farm01_plant_04_tomato_01',
+  ],
   metrics: [
     { label: '오늘 수확', value: '142kg', meta: '전일 대비 18% 증가', tone: 'accent' },
     { label: '적재율', value: '68%', meta: '바구니 B 교체 예상 35분 후', tone: 'warning' },
@@ -1316,16 +1388,37 @@ export const harvestFallback: HarvestPageData = {
       route: '남측 1열 수확 배치',
       summary: '완숙 토마토 우선 수확과 적재를 함께 진행합니다.',
       state: '진행 중',
+      missionId: 'mission-harvest-demo',
+      plantId: 'farm01_plant_03',
+      fruitId: 'farm01_plant_03_tomato_01',
+      currentPhase: 'STOWING',
+      updatedAt: '방금 전',
+      basketCount: 4,
+      success: null,
     },
     {
       route: '동측 3열 대기 배치',
       summary: '다음 바구니 교체 이후 바로 시작할 예정입니다.',
       state: '예정',
+      missionId: 'mission-harvest-queue-01',
+      plantId: 'farm01_plant_09',
+      fruitId: 'farm01_plant_09_tomato_01',
+      currentPhase: '',
+      updatedAt: '10분 전',
+      basketCount: null,
+      success: null,
     },
     {
       route: '출하 바구니 라벨 교체',
       summary: '출하 큐와 적재 ID 정합성을 맞추기 위한 작업입니다.',
       state: '대기',
+      missionId: 'mission-harvest-queue-02',
+      plantId: null,
+      fruitId: null,
+      currentPhase: '',
+      updatedAt: '20분 전',
+      basketCount: null,
+      success: null,
     },
   ],
   qualityStats: [
@@ -2030,7 +2123,7 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
 
   const batches =
     rows
-      .slice(0, 3)
+      .slice(0, 4)
       .map((item, index): HarvestBatch | null => {
         if (!isRecord(item)) {
           return null
@@ -2048,6 +2141,28 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
             || readString(item.message)
             || '수확 배치 정보가 아직 축약 형태로만 제공됩니다.',
           state: readString(item.state) || readString(item.status) || '진행 중',
+          missionId:
+            readString(item.mission_id)
+            || readString(item.route_id)
+            || readString(item.batch_id)
+            || `harvest-mission-${index + 1}`,
+          plantId: readString(item.plant_id) || null,
+          fruitId: readString(item.fruit_id) || null,
+          currentPhase: readString(item.current_phase),
+          updatedAt:
+            readString(item.updated_at)
+            || readString(item.harvested_at)
+            || readString(item.occurred_at)
+            || '',
+          basketCount: readOptionalNumber(item.basket_count),
+          success:
+            typeof item.success === 'boolean'
+              ? item.success
+              : readString(item.status) === 'succeeded'
+                ? true
+                : readString(item.status) === 'failed'
+                  ? false
+                  : null,
         }
       })
       .filter((item): item is HarvestBatch => item !== null)
@@ -2063,6 +2178,20 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
       || readString(stats?.basket_fill_rate)
       || harvestFallback.basketState,
     nextSwap: readString(stats?.next_swap_eta) || harvestFallback.nextSwap,
+    basketCount: readNumber(stats?.basket_count, harvestFallback.basketCount),
+    remainingReadyCount: readNumber(stats?.remaining_ready_count, harvestFallback.remainingReadyCount),
+    lastHarvestedFruitId:
+      readString(stats?.last_harvested_fruit_id)
+      || harvestFallback.lastHarvestedFruitId,
+    missionStatus: normalizeTaskStatus(stats?.mission_status),
+    currentPhase: readString(stats?.current_phase) || harvestFallback.currentPhase,
+    activeMissionId: readString(stats?.active_mission_id) || harvestFallback.activeMissionId,
+    activeTargetId: readString(stats?.active_target_id) || harvestFallback.activeTargetId,
+    detailMessage: readString(stats?.detail_message) || harvestFallback.detailMessage,
+    loadedFruitIds:
+      readStringArray(stats?.loaded_fruit_ids).length > 0
+        ? readStringArray(stats?.loaded_fruit_ids)
+        : harvestFallback.loadedFruitIds,
     metrics,
     batches: batches.length > 0 ? batches : harvestFallback.batches,
   }

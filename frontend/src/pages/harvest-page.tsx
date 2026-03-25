@@ -2,22 +2,104 @@ import { useQuery } from '@tanstack/react-query'
 import { createGetSignal } from '@/app/dev-inspector'
 import { DevSurface } from '@/components/dev-surface'
 import { MetricCard } from '@/components/metric-card'
-import { MockupImage } from '@/components/mockup-image'
 import {
   getHarvestPageData,
   harvestFallback,
+  type HarvestBatch,
+  type HarvestPageData,
 } from '@/lib/api/agribot'
 
-function getBatchTone(state: string) {
-  if (state.includes('진행')) {
+function normalizeHarvestPhase(phase: string) {
+  return phase.trim().toUpperCase()
+}
+
+function formatHarvestPhase(phase: string) {
+  switch (normalizeHarvestPhase(phase)) {
+    case 'APPROACHING':
+      return '접근'
+    case 'ALIGNING':
+      return '자세 보정'
+    case 'PICKING':
+      return '집기'
+    case 'STOWING':
+      return '등 바구니 적재'
+    case 'RETURN_HOME':
+      return '복귀'
+    case 'RESUME':
+      return '다음 작업 복귀'
+    default:
+      return phase.trim() || '대기'
+  }
+}
+
+function getBatchTone(batch: HarvestBatch) {
+  if (batch.success === true || batch.state.includes('완료')) {
     return 'healthy'
   }
 
-  if (state.includes('예정')) {
+  if (batch.state.includes('진행') || normalizeHarvestPhase(batch.currentPhase)) {
     return 'warning'
   }
 
-  return 'danger'
+  if (batch.success === false || batch.state.includes('실패')) {
+    return 'danger'
+  }
+
+  return 'warning'
+}
+
+function buildHarvestHeroTitle(page: HarvestPageData) {
+  if (page.missionStatus === 'running') {
+    return `${formatHarvestPhase(page.currentPhase)} 단계와 바구니 적재 현황을 실제 상태 기준으로 보여줍니다.`
+  }
+
+  if (page.lastHarvestedFruitId) {
+    return '가장 최근에 딴 토마토와 현재 바구니 적재량을 같은 흐름으로 확인할 수 있습니다.'
+  }
+
+  return '수확 미션, 적재, 검수 큐를 운영자가 같은 흐름으로 보도록 정리했습니다.'
+}
+
+function buildHarvestHeroCopy(page: HarvestPageData) {
+  if (page.missionStatus === 'running' || page.missionStatus === 'pending') {
+    return page.detailMessage || '`harvests`, `missions/harvest`, `harvest action server` 상태를 묶어 현재 수확 단계를 보여줍니다.'
+  }
+
+  if (page.lastHarvestedFruitId) {
+    return `${page.lastHarvestedFruitId} 수확 결과와 바구니 적재량을 실제 이벤트 기준으로 정리했습니다.`
+  }
+
+  return '`harvests`, `missions/harvest`, `harvest action server` 방향을 기준으로 배치와 바구니 운영 화면을 구성했습니다.'
+}
+
+function buildHarvestSequence(page: HarvestPageData) {
+  const steps = [
+    { key: 'APPROACHING', label: '접근', detail: '수확 대상 식물 앞으로 이동합니다.' },
+    { key: 'ALIGNING', label: '자세 보정', detail: '로봇팔이 집기 자세를 맞춥니다.' },
+    { key: 'PICKING', label: '집기', detail: '줄기에서 토마토를 분리합니다.' },
+    { key: 'STOWING', label: '적재', detail: '수확물을 등 바구니에 옮겨 담습니다.' },
+  ] as const
+
+  const currentPhase = normalizeHarvestPhase(page.currentPhase)
+  const currentIndex = steps.findIndex((step) => step.key === currentPhase)
+  const missionFinished =
+    page.missionStatus === 'succeeded'
+    || (
+      page.missionStatus !== 'running'
+      && page.missionStatus !== 'pending'
+      && page.lastHarvestedFruitId !== ''
+    )
+
+  return steps.map((step, index) => {
+    const isCurrent = currentIndex === index && page.missionStatus === 'running'
+    const isDone = missionFinished ? true : currentIndex > index
+
+    return {
+      ...step,
+      stateLabel: isCurrent ? '진행 중' : isDone ? '완료' : '대기',
+      tone: isCurrent ? 'warning' : isDone ? 'healthy' : 'warning',
+    }
+  })
 }
 
 export function HarvestPage() {
@@ -50,29 +132,40 @@ export function HarvestPage() {
               {page.source === 'live' ? '실시간 수확 통계' : '발표용 수확 통계'}
             </span>
           </div>
-          <h3 className="hero-title">수확 미션, 적재, 검수 큐를 운영자가 같은 흐름으로 보도록 정리했습니다.</h3>
+          <h3 className="hero-title">{buildHarvestHeroTitle(page)}</h3>
           <p className="hero-copy">
-            `harvests`, `missions/harvest`, `harvest action server` 방향을 기준으로
-            배치와 바구니 운영 화면을 구성했습니다.
+            {buildHarvestHeroCopy(page)}
           </p>
           <div className="hero-stat-row">
+            <div className="hero-stat">
+              <span className="hero-stat-label">현재 단계</span>
+              <strong>{formatHarvestPhase(page.currentPhase)}</strong>
+            </div>
             <div className="hero-stat">
               <span className="hero-stat-label">현재 바구니</span>
               <strong>{page.basketState}</strong>
             </div>
             <div className="hero-stat">
-              <span className="hero-stat-label">다음 교체</span>
-              <strong>{page.nextSwap}</strong>
+              <span className="hero-stat-label">마지막 수확</span>
+              <strong>{page.lastHarvestedFruitId || '아직 없음'}</strong>
             </div>
           </div>
-          <div style={{ marginTop: '16px' }}>
-            <MockupImage
-              alt="수확 대상 토마토 시뮬레이션"
-              className="hero-photo"
-              height={156}
-              objectPosition="center 58%"
-              src="/mock-images/harvest-closeup.png"
-            />
+          <div className="chip-row" style={{ marginTop: '16px' }}>
+            <span className="chip">적재 {page.basketCount}개</span>
+            <span className="chip">대기 수확 {page.remainingReadyCount}개</span>
+            <span className="chip">{page.nextSwap}</span>
+            {page.activeMissionId ? <span className="chip">{page.activeMissionId}</span> : null}
+          </div>
+          <div className="stacked-list" style={{ marginTop: '16px' }}>
+            {buildHarvestSequence(page).map((step) => (
+              <article className="queue-card" key={step.key}>
+                <div className="split-row">
+                  <h4 className="list-title">{step.label}</h4>
+                  <span className={`table-tag table-tag--${step.tone}`}>{step.stateLabel}</span>
+                </div>
+                <p>{step.detail}</p>
+              </article>
+            ))}
           </div>
         </DevSurface>
       </section>
@@ -115,11 +208,17 @@ export function HarvestPage() {
               <article className="queue-card" key={batch.route}>
                 <div className="split-row">
                   <h4 className="list-title">{batch.route}</h4>
-                  <span className={`table-tag table-tag--${getBatchTone(batch.state)}`}>
+                  <span className={`table-tag table-tag--${getBatchTone(batch)}`}>
                     {batch.state}
                   </span>
                 </div>
                 <p>{batch.summary}</p>
+                <div className="chip-row">
+                  {batch.currentPhase ? <span className="chip">{formatHarvestPhase(batch.currentPhase)}</span> : null}
+                  {batch.fruitId ? <span className="chip">{batch.fruitId}</span> : null}
+                  {batch.basketCount !== null ? <span className="chip">적재 {batch.basketCount}개</span> : null}
+                  {batch.updatedAt ? <span className="chip">{batch.updatedAt}</span> : null}
+                </div>
               </article>
             ))}
           </div>
