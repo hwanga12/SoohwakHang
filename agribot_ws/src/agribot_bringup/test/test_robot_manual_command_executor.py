@@ -1,7 +1,9 @@
 from agribot_bringup.robot_manual_command_executor import (
     CommandValidationError,
     describe_manual_navigation_label,
+    is_navigation_command_type,
     parse_manual_command_payload,
+    resolve_preempt_current_navigation,
     resolve_return_home_target,
     should_retry_goal_rejection,
 )
@@ -34,6 +36,7 @@ def test_parse_manual_command_payload_extracts_nested_target_pose() -> None:
     assert command.target_pose.y == -3.4
     assert command.target_pose.yaw == 0.75
     assert command.target_pose.frame_id == 'map'
+    assert command.preempt_current_navigation is True
 
 
 def test_parse_manual_command_payload_rejects_missing_target_pose() -> None:
@@ -95,6 +98,41 @@ def test_resolve_return_home_target_allows_waypoint_override() -> None:
     assert target_pose.y == patrol_plan.waypoints[waypoint_id].pose.y
 
 
+def test_parse_manual_command_payload_allows_explicit_preempt_override() -> None:
+    command = parse_manual_command_payload(
+        {
+            'command_id': 'cmd-nav-02',
+            'command_type': 'navigate_to_pose',
+            'robot_id': 'AGR-02',
+            'requested_by': 'frontend-operator',
+            'preempt_current_navigation': False,
+            'payload': {
+                'target_pose': {
+                    'x': 2.0,
+                    'y': -1.0,
+                    'yaw': 0.0,
+                    'frame_id': 'map',
+                }
+            },
+        }
+    )
+
+    assert command.preempt_current_navigation is False
+
+
+def test_parse_manual_command_payload_defaults_non_navigation_preempt_to_false() -> None:
+    command = parse_manual_command_payload(
+        {
+            'command_id': 'cmd-patrol-pause-01',
+            'command_type': 'pause_patrol',
+            'robot_id': 'AGR-02',
+            'requested_by': 'frontend-operator',
+        }
+    )
+
+    assert command.preempt_current_navigation is False
+
+
 def test_describe_manual_navigation_label_uses_home_waypoint_when_present() -> None:
     assert describe_manual_navigation_label('navigate_to_pose') == '수동 목표점'
     assert describe_manual_navigation_label('return_home') == '홈 복귀'
@@ -109,3 +147,28 @@ def test_should_retry_goal_rejection_respects_retry_limit() -> None:
     assert should_retry_goal_rejection(3, 4) is True
     assert should_retry_goal_rejection(4, 4) is False
     assert should_retry_goal_rejection(0, 0) is False
+
+
+def test_is_navigation_command_type_matches_manual_navigation_commands() -> None:
+    assert is_navigation_command_type('navigate_to_pose') is True
+    assert is_navigation_command_type('return_home') is True
+    assert is_navigation_command_type('pause_patrol') is False
+
+
+def test_resolve_preempt_current_navigation_prefers_explicit_values() -> None:
+    assert (
+        resolve_preempt_current_navigation(
+            'navigate_to_pose',
+            raw_payload={'preempt_current_navigation': False},
+            payload={'preempt_current_navigation': True},
+        )
+        is False
+    )
+    assert (
+        resolve_preempt_current_navigation(
+            'pause_patrol',
+            raw_payload={},
+            payload={'preempt_current_navigation': True},
+        )
+        is True
+    )

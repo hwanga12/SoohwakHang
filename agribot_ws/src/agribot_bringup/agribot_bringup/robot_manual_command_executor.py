@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,6 +39,10 @@ SUPPORTED_COMMAND_TYPES = {
     'resume_patrol',
     'return_home',
 }
+NAVIGATION_COMMAND_TYPES = {
+    'navigate_to_pose',
+    'return_home',
+}
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,7 @@ class ManualCommand:
     requested_by: str
     target_pose: CommandPose | None
     home_waypoint_id: str | None
+    preempt_current_navigation: bool
 
 
 @dataclass
@@ -108,6 +112,28 @@ def _iso_now() -> str:
 def _extract_string(payload: dict[str, Any], key: str, *, default: str = '') -> str:
     raw_value = payload.get(key, default)
     return str(raw_value).strip() if raw_value is not None else default
+
+
+def _extract_optional_bool(payload: dict[str, Any], key: str) -> bool | None:
+    if key not in payload:
+        return None
+
+    raw_value = payload.get(key)
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, (int, float)):
+        if raw_value in {0, 1}:
+            return bool(raw_value)
+        raise ValueError(f'{key} 는 bool 이어야 합니다.')
+    if isinstance(raw_value, str):
+        normalized = raw_value.strip().lower()
+        if normalized in {'true', '1', 'yes', 'y', 'on'}:
+            return True
+        if normalized in {'false', '0', 'no', 'n', 'off'}:
+            return False
+    raise ValueError(f'{key} 는 bool 이어야 합니다.')
 
 
 def _coerce_pose(payload: dict[str, Any], default_frame: str) -> CommandPose:
@@ -156,6 +182,27 @@ def should_retry_goal_rejection(retry_count: int, retry_limit: int) -> bool:
     return retry_limit > 0 and retry_count < retry_limit
 
 
+def is_navigation_command_type(command_type: str) -> bool:
+    return command_type in NAVIGATION_COMMAND_TYPES
+
+
+def resolve_preempt_current_navigation(
+    command_type: str,
+    *,
+    raw_payload: dict[str, Any],
+    payload: dict[str, Any],
+) -> bool:
+    explicit_value = _extract_optional_bool(raw_payload, 'preempt_current_navigation')
+    if explicit_value is not None:
+        return explicit_value
+
+    payload_value = _extract_optional_bool(payload, 'preempt_current_navigation')
+    if payload_value is not None:
+        return payload_value
+
+    return is_navigation_command_type(command_type)
+
+
 def parse_manual_command_payload(
     raw_payload: dict[str, Any],
     *,
@@ -202,6 +249,11 @@ def parse_manual_command_payload(
             if command_type == 'navigate_to_pose'
             else None
         )
+        preempt_current_navigation = resolve_preempt_current_navigation(
+            command_type,
+            raw_payload=raw_payload,
+            payload=payload,
+        )
     except ValueError as exc:
         raise CommandValidationError(
             str(exc),
@@ -223,6 +275,7 @@ def parse_manual_command_payload(
         requested_by=requested_by,
         target_pose=target_pose,
         home_waypoint_id=home_waypoint_id or None,
+        preempt_current_navigation=preempt_current_navigation,
     )
 
 
@@ -300,9 +353,11 @@ class RobotManualCommandExecutor(Node):
         self._active_goal_handle = None
         self._goal_send_future = None
         self._goal_result_future = None
+        self._goal_cancel_future = None
         self._goal_retry_timer = None
         self._goal_reject_retry_count = 0
         self._service_future = None
+        self._pending_context: ActiveCommandContext | None = None
         self._last_status_payload: dict[str, Any] | None = None
         self._last_seen_command_signature: tuple[int, int] | None = None
 
@@ -372,9 +427,6 @@ class RobotManualCommandExecutor(Node):
         self._processed_command_ids.add(command_id)
 
     def _poll_command_file(self) -> None:
-        if self._active_context is not None:
-            return
-
         if not self._command_path.exists():
             return
 
@@ -437,6 +489,10 @@ class RobotManualCommandExecutor(Node):
                 )
             return
 
+        if self._active_context is not None:
+            self._handle_command_while_active(command)
+            return
+
         self._start_command(command)
 
     def _command_file_signature(self, path: Path) -> tuple[int, int]:
@@ -461,11 +517,128 @@ class RobotManualCommandExecutor(Node):
             )
         )
 
-    def _start_command(self, command: ManualCommand) -> None:
-        context = ActiveCommandContext(
+    def _build_non_active_command_status_payload(
+        self,
+        command: ManualCommand,
+        status: str,
+        message: str,
+        *,
+        error: str | None = None,
+        received_at: str | None = None,
+        started_at: str | None = None,
+        completed_at: str | None = None,
+    ) -> dict[str, Any]:
+        frame_id = command.target_pose.frame_id if command.target_pose is not None else self._map_frame
+        return build_manual_command_status_payload(
+            command_id=command.command_id,
+            command_type=command.command_type,
+            robot_id=command.robot_id,
+            requested_by=command.requested_by,
+            map_id=self._map_id,
+            frame_id=frame_id,
+            status=status,
+            message=message,
+            error=error,
+            target_pose=(
+                command.target_pose.as_status_payload()
+                if command.target_pose is not None
+                else None
+            ),
+            home_waypoint_id=command.home_waypoint_id,
+            received_at=received_at,
+            started_at=started_at,
+            completed_at=completed_at,
+        )
+
+    def _build_pending_context(self, command: ManualCommand) -> ActiveCommandContext:
+        return ActiveCommandContext(
             command=command,
             received_at=_iso_now(),
+            target_pose=command.target_pose,
+            home_waypoint_id=command.home_waypoint_id,
         )
+
+    def _handle_command_while_active(self, command: ManualCommand) -> None:
+        active_context = self._active_context
+        if active_context is None:
+            self._start_command(command)
+            return
+
+        if command.command_id == active_context.command.command_id:
+            return
+
+        if is_navigation_command_type(command.command_type) and command.preempt_current_navigation:
+            self._request_navigation_preemption(command)
+            return
+
+        message = '현재 다른 명령이 실행 중이라 새 명령을 즉시 처리할 수 없습니다.'
+        if is_navigation_command_type(command.command_type):
+            message += ' 이동 명령은 preempt_current_navigation=true 로 다시 요청하세요.'
+        self._remember_processed_command_id(command.command_id)
+        self._write_status(
+            self._build_non_active_command_status_payload(
+                command,
+                'failed',
+                message,
+                error='active_command_in_progress',
+                completed_at=_iso_now(),
+            )
+        )
+
+    def _request_navigation_preemption(self, command: ManualCommand) -> None:
+        pending_context = self._build_pending_context(command)
+        self._pending_context = pending_context
+        self._write_status(
+            self._build_status_payload(
+                pending_context,
+                'pending',
+                '새 이동 명령을 수락했습니다. 현재 주행을 중단하고 목표를 선점 전환하는 중입니다.',
+            )
+        )
+
+        if self._active_context is None:
+            self._start_pending_command()
+            return
+
+        if self._goal_retry_timer is not None and self._active_goal_handle is None and self._goal_send_future is None:
+            self._cancel_goal_retry_timer()
+            self._finish_active_command(
+                'canceled',
+                '새 이동 명령이 들어와 기존 재시도를 중단했습니다.',
+                error='preempted_by_new_command',
+            )
+            return
+
+        if self._active_goal_handle is not None:
+            self._request_active_goal_cancel_for_preemption()
+            return
+
+        if self._goal_send_future is not None or self._service_future is not None:
+            self.get_logger().info(
+                '새 이동 명령을 대기열에 올렸습니다. 현재 비동기 작업이 끝나는 즉시 선점 전환합니다.'
+            )
+            return
+
+        self._finish_active_command(
+            'canceled',
+            '새 이동 명령이 들어와 기존 명령을 중단했습니다.',
+            error='preempted_by_new_command',
+        )
+
+    def _start_pending_command(self) -> None:
+        pending_context = self._pending_context
+        if pending_context is None:
+            return
+        self._pending_context = None
+        self._start_command(pending_context.command, context=pending_context)
+
+    def _start_command(
+        self,
+        command: ManualCommand,
+        *,
+        context: ActiveCommandContext | None = None,
+    ) -> None:
+        context = context or self._build_pending_context(command)
         self._active_context = context
         self._write_status(self._build_status_payload(context, 'pending', '명령을 수락했습니다.'))
 
@@ -540,9 +713,95 @@ class RobotManualCommandExecutor(Node):
 
         self._goal_reject_retry_count = 0
         self._cancel_goal_retry_timer()
+        context.target_pose = target_pose
+        if context.command.preempt_current_navigation:
+            self._prepare_navigation_preemption(context, label=label)
+            return
         self._dispatch_navigation_goal(
             context,
             target_pose=target_pose,
+            label=label,
+            is_retry=False,
+        )
+
+    def _prepare_navigation_preemption(
+        self,
+        context: ActiveCommandContext,
+        *,
+        label: str,
+    ) -> None:
+        if not self._patrol_stop_client.wait_for_service(timeout_sec=self._patrol_service_wait_sec):
+            self.get_logger().warning(
+                '순찰 중지 서비스를 찾지 못해 stop 확인 없이 새 이동 명령을 실행합니다.'
+            )
+            self._dispatch_navigation_goal(
+                context,
+                target_pose=context.target_pose,
+                label=label,
+                is_retry=False,
+            )
+            return
+
+        if context.started_at is None:
+            context.started_at = _iso_now()
+        self._write_status(
+            self._build_status_payload(
+                context,
+                'running',
+                '기존 순찰을 중지하고 새 이동 명령을 준비 중입니다.',
+            )
+        )
+        self._service_future = self._patrol_stop_client.call_async(Trigger.Request())
+        self._service_future.add_done_callback(
+            lambda future, command_id=context.command.command_id, dispatch_label=label: self._handle_pre_navigation_patrol_stop_response(
+                future,
+                command_id=command_id,
+                label=dispatch_label,
+            )
+        )
+
+    def _handle_pre_navigation_patrol_stop_response(
+        self,
+        future: Any,
+        *,
+        command_id: str,
+        label: str,
+    ) -> None:
+        self._service_future = None
+
+        context = self._active_context
+        if context is None or context.command.command_id != command_id:
+            return
+
+        if self._pending_context is not None:
+            self._finish_active_command(
+                'canceled',
+                '새 이동 명령이 들어와 기존 이동 준비를 중단했습니다.',
+                error='preempted_by_new_command',
+            )
+            return
+
+        try:
+            response = future.result()
+        except Exception as exc:
+            self.get_logger().warning(f'순찰 중지 선행 호출에 실패해 바로 이동을 시도합니다: {exc}')
+            self._dispatch_navigation_goal(
+                context,
+                target_pose=context.target_pose,
+                label=label,
+                is_retry=False,
+            )
+            return
+
+        if not response.success:
+            self.get_logger().info(
+                f'순찰 중지 선행 호출 응답: {response.message or "추가 메시지 없음"}. '
+                '새 이동 명령은 계속 실행합니다.'
+            )
+
+        self._dispatch_navigation_goal(
+            context,
+            target_pose=context.target_pose,
             label=label,
             is_retry=False,
         )
@@ -627,6 +886,13 @@ class RobotManualCommandExecutor(Node):
             return
 
         if not goal_handle.accepted:
+            if self._pending_context is not None:
+                self._finish_active_command(
+                    'canceled',
+                    '새 이동 명령이 들어와 기존 goal 전송을 중단했습니다.',
+                    error='preempted_by_new_command',
+                )
+                return
             if self._schedule_goal_reject_retry():
                 return
             self._finish_active_command(
@@ -641,6 +907,8 @@ class RobotManualCommandExecutor(Node):
         self._cancel_goal_retry_timer()
         self._goal_result_future = goal_handle.get_result_async()
         self._goal_result_future.add_done_callback(self._handle_navigation_result)
+        if self._pending_context is not None:
+            self._request_active_goal_cancel_for_preemption()
 
     def _handle_navigation_result(self, future: Any) -> None:
         self._active_goal_handle = None
@@ -663,6 +931,13 @@ class RobotManualCommandExecutor(Node):
             return
 
         if status == GoalStatus.STATUS_CANCELED:
+            if self._pending_context is not None:
+                self._finish_active_command(
+                    'canceled',
+                    '새 이동 명령이 들어와 기존 이동을 중단했습니다.',
+                    error='preempted_by_new_command',
+                )
+                return
             self._finish_active_command('canceled', '이동 명령이 취소되었습니다.', error='goal_canceled')
             return
 
@@ -699,6 +974,41 @@ class RobotManualCommandExecutor(Node):
 
         self._finish_active_command('succeeded', success_message)
 
+    def _request_active_goal_cancel_for_preemption(self) -> None:
+        if self._active_goal_handle is None or self._goal_cancel_future is not None:
+            return
+        self._goal_cancel_future = self._active_goal_handle.cancel_goal_async()
+        self._goal_cancel_future.add_done_callback(self._handle_active_goal_cancel_response)
+
+    def _handle_active_goal_cancel_response(self, future: Any) -> None:
+        self._goal_cancel_future = None
+        try:
+            cancel_response = future.result()
+        except Exception as exc:
+            self.get_logger().warning(
+                f'기존 이동 goal 취소 응답을 받지 못했습니다. 새 목표로 전환을 계속 시도합니다: {exc}'
+            )
+            if self._pending_context is not None:
+                self._finish_active_command(
+                    'canceled',
+                    '새 이동 명령이 들어와 기존 이동을 선점 전환합니다.',
+                    error='preempted_by_new_command',
+                )
+            return
+
+        if cancel_response.goals_canceling:
+            return
+
+        self.get_logger().warning(
+            '기존 이동 goal cancel 요청이 거부되었습니다. 새 목표로 전환을 계속 시도합니다.'
+        )
+        if self._pending_context is not None:
+            self._finish_active_command(
+                'canceled',
+                '새 이동 명령이 들어와 기존 이동을 선점 전환합니다.',
+                error='preempted_by_new_command',
+            )
+
     def _finish_active_command(
         self,
         status: str,
@@ -721,6 +1031,10 @@ class RobotManualCommandExecutor(Node):
         self._write_status(payload)
         self._remember_processed_command_id(self._active_context.command.command_id)
         self._active_context = None
+        self._goal_cancel_future = None
+        self._service_future = None
+        if self._pending_context is not None:
+            self._start_pending_command()
 
     def _build_status_payload(
         self,
@@ -817,6 +1131,7 @@ class RobotManualCommandExecutor(Node):
 
     def destroy_node(self) -> bool:
         self._cancel_goal_retry_timer()
+        self._pending_context = None
         self._navigate_client.destroy()
         return super().destroy_node()
 
