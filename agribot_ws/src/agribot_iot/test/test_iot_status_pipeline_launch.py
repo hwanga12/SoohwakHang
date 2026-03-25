@@ -35,4 +35,4 @@ def test_iot_status_pipeline_launch_includes_all_iot_publishers() -> None:
     ]
 
     assert len(declare_args) == 2
-    assert len(includes) == 6
+    assert len(includes) == 8

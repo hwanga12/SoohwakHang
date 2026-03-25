@@ -15,6 +15,7 @@ def _include_launch(package_share: str, launch_file: str, launch_arguments: dict
 
 def generate_launch_description():
     package_share = get_package_share_directory('agribot_iot')
+    control_share = get_package_share_directory('agribot_control')
 
     use_sim_time_arg = DeclareLaunchArgument(
         'use_sim_time',
@@ -56,6 +57,16 @@ def generate_launch_description():
         'nutrient_controller.launch.py',
         common_args,
     )
+    sprinkler_controller = _include_launch(
+        package_share,
+        'sprinkler_controller.launch.py',
+        common_args,
+    )
+    manual_actuation_guard = _include_launch(
+        control_share,
+        'manual_actuation_guard.launch.py',
+        {},
+    )
     mqtt_bridge = _include_launch(
         package_share,
         'mqtt_bridge.launch.py',
@@ -73,5 +84,7 @@ def generate_launch_description():
         curtain_controller,
         fan_controller,
         nutrient_controller,
+        sprinkler_controller,
+        manual_actuation_guard,
         mqtt_bridge,
     ])

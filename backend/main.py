@@ -2,13 +2,26 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 import models
 from database import engine
 
 # ⭐️ Import all routers
 from routers import (
-    dashboard, robots, missions, zones, plants, 
-    alerts, environment, iot, actuations, harvests, media, realtime
+    actuations,
+    alerts,
+    dashboard,
+    environment,
+    harvests,
+    inference,
+    iot,
+    media,
+    missions,
+    plants,
+    realtime,
+    robots,
+    zones,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,6 +44,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def disable_docs_cache(request: Request, call_next) -> Response:
+    response = await call_next(request)
+    if request.url.path in {"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"}:
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 # ⭐️ 각각의 라우터를 앱에 등록 (prefix로 기본 URL을 맞춰줍니다)
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 app.include_router(robots.router, prefix="/api/v1/robot", tags=["Robot"])
@@ -43,6 +66,7 @@ app.include_router(iot.router, prefix="/api/v1/iot", tags=["IoT Devices"])
 app.include_router(actuations.router, prefix="/api/v1/actuations", tags=["Actuations & Control"])
 app.include_router(harvests.router, prefix="/api/v1/harvests", tags=["Harvests"])
 app.include_router(media.router, prefix="/api/v1/media", tags=["Media"])
+app.include_router(inference.router, prefix="/api/v1/inference", tags=["Inference"])
 app.include_router(realtime.router, prefix="/ws", tags=["Realtime WebSocket"])
 
 @app.get("/")
