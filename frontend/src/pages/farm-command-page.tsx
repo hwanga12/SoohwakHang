@@ -325,24 +325,80 @@ function latestCommandToken(status: RobotCommandStatus) {
   return `${status.commandId ?? 'none'}:${status.status}:${status.updatedAt}`
 }
 
+function sortedUniqueValues(values: number[]) {
+  return [...new Set(values.map((value) => Number(value.toFixed(3))))].sort((left, right) => left - right)
+}
+
+function clampToSceneBounds(value: number, minValue: number, maxValue: number) {
+  return Math.min(Math.max(value, minValue), maxValue)
+}
+
+function semanticRowGuideValues(scene: SemanticScene) {
+  const rowGuideValues = sortedUniqueValues(
+    scene.rowGuides
+      .filter((guide) => guide.axis === 'x')
+      .map((guide) => guide.value),
+  )
+
+  if (rowGuideValues.length > 0) {
+    return rowGuideValues
+  }
+
+  return sortedUniqueValues(
+    scene.assets
+      .filter((asset) => asset.kind === 'plant')
+      .map((asset) => asset.position.x),
+  )
+}
+
+function buildInspectionPoseFromScene(
+  position: { x: number, y: number },
+  scene: SemanticScene,
+): RobotTargetPose | null {
+  const rowGuideValues = semanticRowGuideValues(scene)
+  if (rowGuideValues.length < 2) {
+    return null
+  }
+
+  const leftInspectionX = (rowGuideValues[0] + rowGuideValues[1]) / 2
+  const rightInspectionX =
+    (rowGuideValues[rowGuideValues.length - 2] + rowGuideValues[rowGuideValues.length - 1]) / 2
+  const splitIndex = Math.floor(rowGuideValues.length / 2)
+  const splitX =
+    rowGuideValues.length >= 4
+      ? (rowGuideValues[splitIndex - 1] + rowGuideValues[splitIndex]) / 2
+      : (rowGuideValues[0] + rowGuideValues[rowGuideValues.length - 1]) / 2
+  const targetX = position.x < splitX ? leftInspectionX : rightInspectionX
+  const targetY = clampToSceneBounds(
+    position.y,
+    scene.bounds.minY + 0.5,
+    scene.bounds.maxY - 0.5,
+  )
+
+  return {
+    x: clampToSceneBounds(targetX, scene.bounds.minX + 0.5, scene.bounds.maxX - 0.5),
+    y: targetY,
+    z: 0,
+    yaw: targetX < 0 ? -Math.PI / 2 : Math.PI / 2,
+    frameId: 'map',
+  }
+}
+
 function buildPlantTargetPose(
   plantId: string,
   preferredScene: SemanticScene,
   fallbackScene: SemanticScene,
   fallbackPositionLabel: string,
 ): RobotTargetPose | null {
-  const targetAsset =
-    preferredScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
-    ?? fallbackScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
+  const preferredAsset = preferredScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
+  const fallbackAsset = fallbackScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
+  const targetAsset = preferredAsset ?? fallbackAsset
 
   if (targetAsset) {
-    return {
-      x: targetAsset.position.x,
-      y: targetAsset.position.y,
-      z: 0,
-      yaw: 0,
-      frameId: 'map',
-    }
+    return (
+      buildInspectionPoseFromScene(targetAsset.position, preferredScene)
+      ?? buildInspectionPoseFromScene(targetAsset.position, fallbackScene)
+    )
   }
 
   const parsedPose = parsePoseLabel(fallbackPositionLabel)
@@ -350,13 +406,10 @@ function buildPlantTargetPose(
     return null
   }
 
-  return {
-    x: parsedPose.x,
-    y: parsedPose.y,
-    z: 0,
-    yaw: 0,
-    frameId: 'map',
-  }
+  return (
+    buildInspectionPoseFromScene(parsedPose, preferredScene)
+    ?? buildInspectionPoseFromScene(parsedPose, fallbackScene)
+  )
 }
 
 function buildDiagnoseBlockedMessage(status: RobotCommandStatus) {
@@ -392,7 +445,7 @@ function buildDiagnoseUiState(
   if (targetPose === null) {
     return {
       title: '좌표 정보 필요',
-      detail: '선택한 식물의 live semantic layer 좌표를 찾지 못했습니다. 잠시 후 다시 시도하세요.',
+      detail: '선택한 식물의 진단 접근 좌표를 계산하지 못했습니다. live semantic layer를 다시 확인한 뒤 재시도하세요.',
       badgeLabel: '좌표 없음',
       badgeTone: 'table-tag--danger',
       buttonLabel: '진단하기',
@@ -495,7 +548,7 @@ function buildDiagnoseUiState(
 
   return {
     title: '진단 이동 준비',
-    detail: '버튼을 누르면 선택한 식물 좌표로 `navigate_to_pose`를 보내고 `/robot/commands/latest` 상태를 추적합니다.',
+    detail: '버튼을 누르면 선택한 식물의 inspection 통로 좌표로 `navigate_to_pose`를 보내고 `/robot/commands/latest` 상태를 추적합니다.',
     badgeLabel: '대기',
     badgeTone: 'table-tag--healthy',
     buttonLabel: '진단하기',
@@ -1183,7 +1236,7 @@ export function FarmCommandPage() {
     )
 
     if (targetPose === null) {
-      setUiMessage(`${targetPlant.name} live 좌표를 찾지 못해 진단 이동을 시작할 수 없습니다.`)
+      setUiMessage(`${targetPlant.name} 진단 접근 좌표를 계산하지 못해 이동을 시작할 수 없습니다.`)
       return
     }
 
