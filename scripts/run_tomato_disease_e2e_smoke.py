@@ -44,6 +44,7 @@ class TomatoDiseaseE2ESmoke(Node):
         self._latest_frame = None
         self._latest_pose: PoseSnapshot | None = None
         self._spraying_device_ids: set[str] = set()
+        self._device_states: dict[str, str] = {}
         self._command_results: list[dict[str, Any]] = []
         self._command_id = command_id
 
@@ -92,7 +93,9 @@ class TomatoDiseaseE2ESmoke(Node):
         )
 
     def _handle_device_state(self, msg: IoTDeviceState) -> None:
-        if msg.state.strip().upper() == 'SPRAYING':
+        state = msg.state.strip().upper()
+        self._device_states[msg.device_id] = state
+        if state == 'SPRAYING':
             self._spraying_device_ids.add(msg.device_id)
 
     def _handle_command_result(self, msg: String) -> None:
@@ -235,15 +238,27 @@ class TomatoDiseaseE2ESmoke(Node):
         deadline = time.monotonic() + timeout_sec
         while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
-            matching_result = next(
+            matching_results = [
+                item for item in self._command_results if item.get('device_id') == selected_device_id
+            ]
+            completed_result = next(
                 (
-                    item for item in self._command_results
-                    if item.get('device_id') == selected_device_id
+                    item for item in reversed(matching_results)
+                    if str(item.get('state', '')).upper() == 'COMPLETED'
                 ),
                 None,
             )
-            if matching_result is not None and selected_device_id in self._spraying_device_ids:
-                return matching_result
+            if completed_result is not None:
+                return completed_result
+
+            latest_result = matching_results[-1] if matching_results else None
+            current_state = self._device_states.get(selected_device_id, '')
+            if (
+                latest_result is not None
+                and selected_device_id in self._spraying_device_ids
+                and current_state == 'IDLE'
+            ):
+                return latest_result
         raise RuntimeError(
             f'Timed out waiting for spray completion on {selected_device_id} '
             f'for command_id={self._command_id}.'
@@ -270,6 +285,27 @@ def _build_capture_pose(plant_x: float, plant_y: float) -> tuple[float, float, f
     if plant_x <= 0.0:
         return plant_x - 1.0, plant_y, 0.0
     return plant_x + 1.0, plant_y, math.pi
+
+
+def _build_target_position(
+    *,
+    source: str,
+    plant,
+    tomato,
+    override_x: float | None,
+    override_y: float | None,
+    override_z: float | None,
+) -> dict[str, float]:
+    if source == 'plant':
+        base_pose = plant.pose
+    else:
+        base_pose = tomato.pose
+
+    return {
+        'x': float(base_pose.x if override_x is None else override_x),
+        'y': float(base_pose.y if override_y is None else override_y),
+        'z': float(base_pose.z if override_z is None else override_z),
+    }
 
 
 def _load_map_metadata(map_yaml_path: Path) -> tuple[Any, float, float, float]:
@@ -506,6 +542,14 @@ def main() -> int:
     parser.add_argument('--disease-label', default='tomato_powdery_mildew')
     parser.add_argument('--robot-id', default='agribot')
     parser.add_argument('--requested-by', default='e2e-smoke')
+    parser.add_argument(
+        '--target-position-source',
+        choices=('fruit', 'plant'),
+        default='fruit',
+    )
+    parser.add_argument('--target-position-x', type=float, default=None)
+    parser.add_argument('--target-position-y', type=float, default=None)
+    parser.add_argument('--target-position-z', type=float, default=None)
     parser.add_argument('--navigate-timeout-sec', type=float, default=120.0)
     parser.add_argument('--spray-timeout-sec', type=float, default=20.0)
     parser.add_argument(
@@ -524,6 +568,14 @@ def main() -> int:
     capture_pose_x, capture_pose_y, capture_pose_yaw = _build_capture_pose(
         plant.pose.x,
         plant.pose.y,
+    )
+    target_position = _build_target_position(
+        source=args.target_position_source,
+        plant=plant,
+        tomato=tomato,
+        override_x=args.target_position_x,
+        override_y=args.target_position_y,
+        override_z=args.target_position_z,
     )
 
     rclpy.init()
@@ -585,11 +637,7 @@ def main() -> int:
             zone_id=plant.zone_id,
             plant_id=plant.plant_id,
             fruit_id=tomato.tomato_id,
-            target_position={
-                'x': float(plant.pose.x),
-                'y': float(plant.pose.y),
-                'z': float(plant.pose.z),
-            },
+            target_position=target_position,
             requested_by=args.requested_by,
             disease_label=args.disease_label,
             image_bytes=image_bytes,
@@ -623,6 +671,7 @@ def main() -> int:
                     'navigation_method': navigation_method,
                     'navigation_error': navigation_error,
                     'facing_error_deg': facing_error_deg,
+                    'target_position': target_position,
                     'snapshot_path': str(snapshot_path),
                     'backend_response': backend_response,
                     'spray_result': spray_result,

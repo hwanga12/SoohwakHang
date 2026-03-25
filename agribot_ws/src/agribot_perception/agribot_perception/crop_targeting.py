@@ -31,6 +31,12 @@ class CropTarget:
     fruit_id: str = ''
 
 
+@dataclass(frozen=True)
+class _TomatoTarget:
+    fruit_id: str
+    position: CropPosition
+
+
 class CropTargetResolver:
     """Pick the most plausible crop target from the robot pose and crop catalog."""
 
@@ -118,18 +124,23 @@ def _load_targets(path: Path) -> list[CropTarget]:
             continue
 
         pose = item.get('pose') or {}
-        fruit_id = tomatoes_by_plant_id.get(plant_id, '')
+        fruit_target = tomatoes_by_plant_id.get(plant_id)
+        target_position = (
+            fruit_target.position
+            if fruit_target is not None
+            else CropPosition(
+                x=float(pose.get('x', 0.0) or 0.0),
+                y=float(pose.get('y', 0.0) or 0.0),
+                z=float(pose.get('z', 0.0) or 0.0),
+            )
+        )
         targets.append(
             CropTarget(
                 plant_id=plant_id,
                 zone_id=str(item.get('zone_id', '')).strip(),
                 world_model_name=str(item.get('world_model_name', '')).strip(),
-                position=CropPosition(
-                    x=float(pose.get('x', 0.0) or 0.0),
-                    y=float(pose.get('y', 0.0) or 0.0),
-                    z=float(pose.get('z', 0.0) or 0.0),
-                ),
-                fruit_id=fruit_id,
+                position=target_position,
+                fruit_id='' if fruit_target is None else fruit_target.fruit_id,
             )
         )
 
@@ -138,8 +149,8 @@ def _load_targets(path: Path) -> list[CropTarget]:
     return targets
 
 
-def _index_tomatoes_by_plant_id(items: Any) -> dict[str, str]:
-    indexed: dict[str, str] = {}
+def _index_tomatoes_by_plant_id(items: Any) -> dict[str, _TomatoTarget]:
+    indexed: dict[str, _TomatoTarget] = {}
     if not isinstance(items, list):
         return indexed
     for item in items:
@@ -147,8 +158,16 @@ def _index_tomatoes_by_plant_id(items: Any) -> dict[str, str]:
             continue
         parent_plant_id = str(item.get('parent_plant_id', '')).strip()
         tomato_id = str(item.get('tomato_id', '')).strip()
+        pose = item.get('pose') or {}
         if parent_plant_id and tomato_id and parent_plant_id not in indexed:
-            indexed[parent_plant_id] = tomato_id
+            indexed[parent_plant_id] = _TomatoTarget(
+                fruit_id=tomato_id,
+                position=CropPosition(
+                    x=float(pose.get('x', 0.0) or 0.0),
+                    y=float(pose.get('y', 0.0) or 0.0),
+                    z=float(pose.get('z', 0.0) or 0.0),
+                ),
+            )
     return indexed
 
 

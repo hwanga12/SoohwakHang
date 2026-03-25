@@ -34,7 +34,11 @@ class _DummyPersistenceService:
 def test_confirm_detection_uses_test_override_and_persists(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv('AGRIBOT_BACKEND_RUNTIME_DIR', str(tmp_path))
     service = MainInferenceService()
-    service._infer = lambda image_path: []  # type: ignore[method-assign]
+
+    def _fail_if_infer_called(image_path):
+        raise AssertionError(f'_infer should not run during test_override flow: {image_path}')
+
+    service._infer = _fail_if_infer_called  # type: ignore[method-assign]
     service._treatment_dispatcher.dispatch_plan = lambda *args, **kwargs: ActuationDispatchResult(  # type: ignore[method-assign]
         dispatched=True,
         status='completed',

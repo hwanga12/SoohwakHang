@@ -53,4 +53,4 @@ def test_dispatcher_reports_successful_ros_publish(monkeypatch) -> None:
     assert result.dispatched is True
     assert result.status == 'dispatched'
     assert result.command_id == 'obs-dispatch'
-    assert result.device_id == 'sprinkler_2'
+    assert result.device_id == 'sprinkler_3'

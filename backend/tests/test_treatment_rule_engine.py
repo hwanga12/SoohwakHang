@@ -42,7 +42,7 @@ def test_powdery_mildew_selects_nearest_sprinkler() -> None:
     assert plan.treatment_type == 'pesticide_spray'
     assert plan.effect_color == 'red'
     assert plan.selected_sprinkler is not None
-    assert plan.selected_sprinkler.device_id == 'sprinkler_2'
+    assert plan.selected_sprinkler.device_id == 'sprinkler_3'
     assert plan.command_payload is not None
     assert plan.command_payload['command_type'] == 'spray_pesticide'
 
@@ -100,6 +100,6 @@ def test_confirm_detection_embeds_treatment_plan(tmp_path, monkeypatch) -> None:
     assert response.treatment_plan.action_required is True
     assert response.treatment_plan.effect_color == 'red'
     assert response.treatment_plan.selected_sprinkler is not None
-    assert response.treatment_plan.selected_sprinkler.device_id == 'sprinkler_2'
+    assert response.treatment_plan.selected_sprinkler.device_id == 'sprinkler_3'
     assert response.dispatch_result is not None
     assert response.dispatch_result.status == 'skipped_auto_execute'

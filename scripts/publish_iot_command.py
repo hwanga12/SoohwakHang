@@ -49,10 +49,11 @@ def main() -> int:
             rclpy.spin_once(node, timeout_sec=0.1)
 
         message = _build_message(node, payload)
-        for _ in range(5):
-            publisher.publish(message)
-            rclpy.spin_once(node, timeout_sec=0.05)
-            time.sleep(0.05)
+        publisher.publish(message)
+        # Give DDS discovery and the outbound queue a brief chance to flush
+        # before tearing the process down.
+        rclpy.spin_once(node, timeout_sec=0.2)
+        time.sleep(0.1)
         print(
             f'Published IoTCommand {message.command_id} '
             f'to {args.topic} for {message.device_type}:{message.device_id}.'

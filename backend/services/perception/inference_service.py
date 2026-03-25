@@ -79,14 +79,20 @@ class MainInferenceService:
         image_path = date_dir / f'{observation_id}.{suffix}'
         image_path.write_bytes(image_bytes)
 
-        detections = self._infer(image_path)
-        final_detection = _choose_final_detection(
-            detections,
-            preliminary_label=request.preliminary_label,
-            ignored_classes=self._ignored_classes,
-        )
-
         override_label = request.test_override_final_label.strip()
+        detections: list[Detection]
+        final_detection: Detection | None
+        if override_label:
+            detections = []
+            final_detection = None
+        else:
+            detections = self._infer(image_path)
+            final_detection = _choose_final_detection(
+                detections,
+                preliminary_label=request.preliminary_label,
+                ignored_classes=self._ignored_classes,
+            )
+
         if override_label:
             final_label = override_label
             final_confidence = float(request.test_override_final_confidence)
