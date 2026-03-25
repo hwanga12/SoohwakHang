@@ -66,6 +66,14 @@ def generate_launch_description():
         ),
         description='Path to the Gazebo world file'
     )
+    gz_args_prefix_arg = DeclareLaunchArgument(
+        'gz_args_prefix',
+        default_value='-r',
+        description=(
+            'Arguments passed to gz sim before the world path. '
+            'Use "-r -s --headless-rendering" for headless server-only runs.'
+        ),
+    )
     publish_map_to_odom_tf_arg = DeclareLaunchArgument(
         'publish_map_to_odom_tf',
         default_value='true',
@@ -106,7 +114,7 @@ def generate_launch_description():
         launch_arguments={
             # Start the simulation immediately so bridged sensor topics publish
             # without requiring a manual "play" click in the Gazebo GUI.
-            'gz_args': ['-r ', LaunchConfiguration('world')],
+            'gz_args': [LaunchConfiguration('gz_args_prefix'), ' ', LaunchConfiguration('world')],
         }.items(),
     )
 
@@ -245,6 +253,7 @@ def generate_launch_description():
         gz_resource_path,
         gz_partition_env,
         world_arg,
+        gz_args_prefix_arg,
         publish_map_to_odom_tf_arg,
         publish_odom_tf_arg,
         cmd_vel_input_topic_arg,
