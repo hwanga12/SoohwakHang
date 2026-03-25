@@ -192,6 +192,7 @@ function hasObservedPendingControlRequest(
 function buildControlSummary(
   status: RobotCommandStatus,
   pendingControlRequest: PendingControlRequest | null,
+  pendingControlAgeMs: number,
 ): ControlSummary {
   const currentState = deriveCurrentControlState(status)
   const commandType = latestRequestedCommandType(status)
@@ -241,18 +242,23 @@ function buildControlSummary(
   }
 
   if (pendingControlRequest !== null && !pendingObserved) {
+    const pollingDelayed = pendingControlAgeMs >= 4_000
     const pendingTitle =
-      pendingControlRequest.action === 'emergency'
-        ? '비상 정지 명령 접수'
-        : pendingControlRequest.action === 'pause'
-          ? '일시정지 명령 접수'
-          : '재개 명령 접수'
+      pollingDelayed
+        ? 'backend 상태 반영 대기'
+        : pendingControlRequest.action === 'emergency'
+          ? '비상 정지 명령 접수'
+          : pendingControlRequest.action === 'pause'
+            ? '일시정지 명령 접수'
+            : '재개 명령 접수'
     const pendingDetail =
-      pendingControlRequest.action === 'emergency'
-        ? 'backend polling이 실제 비상 정지를 확인할 때까지 현재 상태는 마지막 authoritative 값으로 유지됩니다.'
-        : pendingControlRequest.action === 'pause'
-          ? 'backend polling이 실제 일시정지를 확인할 때까지 현재 상태는 마지막 authoritative 값으로 유지됩니다.'
-          : 'backend polling이 실제 재개 또는 재개 불가를 확인할 때까지 현재 상태는 마지막 authoritative 값으로 유지됩니다.'
+      pollingDelayed
+        ? '명령은 접수됐지만 `/robot/commands/latest` polling 결과가 아직 바뀌지 않았습니다. 실제 상태가 확인될 때까지 성공으로 표시하지 않습니다.'
+        : pendingControlRequest.action === 'emergency'
+          ? 'backend polling이 실제 비상 정지를 확인할 때까지 현재 상태는 마지막 authoritative 값으로 유지됩니다.'
+          : pendingControlRequest.action === 'pause'
+            ? 'backend polling이 실제 일시정지를 확인할 때까지 현재 상태는 마지막 authoritative 값으로 유지됩니다.'
+            : 'backend polling이 실제 재개 또는 재개 불가를 확인할 때까지 현재 상태는 마지막 authoritative 값으로 유지됩니다.'
 
     return {
       currentState,
@@ -263,12 +269,14 @@ function buildControlSummary(
           : currentState === 'paused'
             ? 'table-tag--warning'
             : 'table-tag--healthy',
-      commandStageLabel: '명령 접수',
+      commandStageLabel: pollingDelayed ? '상태 반영 대기' : '명령 접수',
       commandStageTone: 'table-tag--warning',
       title: pendingTitle,
       detail: pendingDetail,
       helper:
-        pendingControlRequest.action === 'emergency'
+        pollingDelayed
+          ? 'authoritative polling 값이 바뀌기 전까지는 현재 제어 상태 칩을 마지막 확인값으로 유지합니다.'
+          : pendingControlRequest.action === 'emergency'
           ? '비상 정지 확인 전까지는 홈 복귀와 새 이동 명령을 잠시 보류합니다.'
           : pendingControlRequest.action === 'pause'
             ? '일시정지 확인 전까지는 새 이동 명령을 잠시 보류합니다.'
@@ -732,7 +740,15 @@ export function MapControlPage() {
   )
   const selectedSummary = summarizeSelectedAsset(selectedAsset)
   const controlRequestObserved = hasObservedPendingControlRequest(latestCommandStatus, pendingControlRequest)
-  const controlSummary = buildControlSummary(latestCommandStatus, pendingControlRequest)
+  const pendingControlAgeMs =
+    pendingControlRequest === null
+      ? 0
+      : Date.now() - pendingControlRequest.requestedAt
+  const controlSummary = buildControlSummary(
+    latestCommandStatus,
+    pendingControlRequest,
+    pendingControlAgeMs,
+  )
   const controlActionPending = controlMutation.isPending
   const movementActionPending = zoneMoveMutation.isPending || navigateMutation.isPending
   const movementCommandBlocked = controlSummary.movementLocked
