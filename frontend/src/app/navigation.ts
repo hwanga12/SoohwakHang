@@ -31,10 +31,10 @@ export const navigationItems: NavigationItem[] = [
 
   {
     path: '/iot',
-    label: '설비',
-    caption: '센서와 자동화',
-    description: '센서 값, 장치 상태, 자동 제어 추천과 승인 흐름을 배치합니다.',
-    icon: 'sensors',
+    label: '밭',
+    caption: '물주기와 메모',
+    description: '토양 수분, 물주기 승인, 영양 보충 메모만 가볍게 살핍니다.',
+    icon: 'water_drop',
   },
   {
     path: '/harvest',
