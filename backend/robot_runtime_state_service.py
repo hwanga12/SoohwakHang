@@ -10,10 +10,22 @@ DEFAULT_RUNTIME_DIR = Path(os.environ.get("AGRIBOT_RUNTIME_DIR", "/tmp/agribot_r
 MANUAL_COMMAND_FILENAME = "robot_manual_command.json"
 MANUAL_COMMAND_STATUS_FILENAME = "robot_manual_command_status.json"
 CONTROL_STATE_FILENAME = "robot_control_state.json"
+MISSION_REQUEST_FILENAME = "robot_mission_request.json"
+MISSION_STATUS_FILENAME = "robot_mission_status.json"
+MISSION_STATUS_DIRNAME = "mission_statuses"
 DEFAULT_COMMAND_STATUS = "idle"
+DEFAULT_MISSION_STATUS = "idle"
 DEFAULT_CONTROL_MODE = "normal"
 DEFAULT_ACTIVE_ACTIVITY = "idle"
 KNOWN_COMMAND_STATUSES = {
+    "idle",
+    "pending",
+    "running",
+    "succeeded",
+    "failed",
+    "canceled",
+}
+KNOWN_MISSION_STATUSES = {
     "idle",
     "pending",
     "running",
@@ -61,6 +73,30 @@ def command_status_file_path() -> Path:
 
 def control_state_file_path() -> Path:
     return runtime_dir_from_env() / CONTROL_STATE_FILENAME
+
+
+def mission_request_file_path() -> Path:
+    return runtime_dir_from_env() / MISSION_REQUEST_FILENAME
+
+
+def mission_status_file_path() -> Path:
+    return runtime_dir_from_env() / MISSION_STATUS_FILENAME
+
+
+def _sanitize_runtime_identifier(value: str) -> str:
+    normalized = "".join(
+        character if character.isalnum() or character in {"-", "_", "."} else "_"
+        for character in str(value).strip()
+    )
+    return normalized or "unknown-mission"
+
+
+def mission_status_record_file_path(mission_id: str) -> Path:
+    return (
+        runtime_dir_from_env()
+        / MISSION_STATUS_DIRNAME
+        / f"{_sanitize_runtime_identifier(mission_id)}.json"
+    )
 
 
 def read_json_object(path: Path) -> dict[str, Any]:
@@ -250,6 +286,71 @@ def build_idle_command_status_payload(
     )
 
 
+def build_mission_status_payload(
+    payload: dict[str, Any] | None = None,
+    *,
+    available: bool,
+    message: str | None = None,
+) -> dict[str, Any]:
+    raw_payload = payload or {}
+    status = str(raw_payload.get("status", DEFAULT_MISSION_STATUS)).strip().lower()
+    if status not in KNOWN_MISSION_STATUSES:
+        status = DEFAULT_MISSION_STATUS
+
+    normalized_message = (
+        _normalize_optional_string(message)
+        or _normalize_optional_string(raw_payload.get("message"))
+        or (
+            "아직 mission bridge가 기록한 status 파일이 없습니다."
+            if not available
+            else "미션 상태 정보가 준비되지 않았습니다."
+        )
+    )
+
+    zone_ids = raw_payload.get("zone_ids")
+    normalized_zone_ids = (
+        [str(zone_id).strip() for zone_id in zone_ids if str(zone_id).strip()]
+        if isinstance(zone_ids, list)
+        else None
+    )
+
+    return {
+        "source": "runtime_file",
+        "available": available,
+        "mission_id": _normalize_optional_string(raw_payload.get("mission_id")),
+        "command_id": _normalize_optional_string(raw_payload.get("command_id")),
+        "request_type": _normalize_optional_string(raw_payload.get("request_type")),
+        "requested_type": _normalize_optional_string(raw_payload.get("request_type")),
+        "robot_id": _normalize_optional_string(raw_payload.get("robot_id")),
+        "requested_by": _normalize_optional_string(raw_payload.get("requested_by")),
+        "status": status,
+        "message": normalized_message,
+        "operator_message": normalized_message,
+        "error": _normalize_optional_string(raw_payload.get("error")),
+        "result": _normalize_optional_string(raw_payload.get("result")),
+        "zone_ids": normalized_zone_ids,
+        "loop_count": raw_payload.get("loop_count")
+        if isinstance(raw_payload.get("loop_count"), int)
+        else None,
+        "patrol_mode": _normalize_optional_string(raw_payload.get("patrol_mode")),
+        "plant_id": _normalize_optional_string(raw_payload.get("plant_id")),
+        "fruit_id": _normalize_optional_string(raw_payload.get("fruit_id")),
+        "tomato_id": _normalize_optional_string(raw_payload.get("tomato_id")),
+        "received_at": _normalize_optional_string(raw_payload.get("received_at")),
+        "started_at": _normalize_optional_string(raw_payload.get("started_at")),
+        "completed_at": _normalize_optional_string(raw_payload.get("completed_at")),
+        "updated_at": _normalize_optional_string(raw_payload.get("updated_at")) or iso_now(),
+    }
+
+
+def build_idle_mission_status_payload(message: str | None = None) -> dict[str, Any]:
+    return build_mission_status_payload(
+        {"status": DEFAULT_MISSION_STATUS},
+        available=False,
+        message=message,
+    )
+
+
 def _merge_command_request_payload(
     status_payload: dict[str, Any],
     command_payload: dict[str, Any],
@@ -325,3 +426,36 @@ def read_latest_command_status_payload() -> dict[str, Any]:
         result = _merge_command_request_payload(result, command_payload)
 
     return _attach_control_state(result, control_state)
+
+
+def read_latest_mission_status_payload() -> dict[str, Any]:
+    status_path = mission_status_file_path()
+    if not status_path.exists():
+        return build_idle_mission_status_payload()
+
+    try:
+        payload = read_json_object(status_path)
+    except (OSError, json.JSONDecodeError, RobotRuntimeStateError) as exc:
+        raise RobotRuntimeStateError(
+            f"{MISSION_STATUS_FILENAME} 을 읽지 못했습니다: {exc}"
+        ) from exc
+
+    return build_mission_status_payload(payload, available=True)
+
+
+def read_mission_status_payload(mission_id: str) -> dict[str, Any]:
+    path = mission_status_record_file_path(mission_id)
+    if path.exists():
+        try:
+            payload = read_json_object(path)
+        except (OSError, json.JSONDecodeError, RobotRuntimeStateError) as exc:
+            raise RobotRuntimeStateError(
+                f"{path.name} 을 읽지 못했습니다: {exc}"
+            ) from exc
+        return build_mission_status_payload(payload, available=True)
+
+    latest_payload = read_latest_mission_status_payload()
+    if latest_payload.get("mission_id") == str(mission_id).strip():
+        return latest_payload
+
+    raise FileNotFoundError(f"mission status 파일을 찾지 못했습니다: {mission_id}")

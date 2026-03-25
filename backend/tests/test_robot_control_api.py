@@ -20,6 +20,8 @@ from robot_map_service import read_status_payload  # noqa: E402
 from robot_runtime_state_service import (  # noqa: E402
     command_status_file_path,
     control_state_file_path,
+    mission_request_file_path,
+    mission_status_record_file_path,
     read_latest_command_status_payload,
 )
 from routers import missions, robots  # noqa: E402
@@ -254,6 +256,73 @@ def test_missions_return_home_endpoint_publishes_return_home() -> None:
     payload = response["data"]
     assert payload["requested_command_type"] == "return_home"
     assert payload["command_type"] == "return_home"
+
+
+def test_missions_patrol_start_endpoint_writes_runtime_bridge_request() -> None:
+    response = missions.start_patrol(
+        missions.PatrolStartReq(
+            mission_id="mission-patrol-router-001",
+            robot_id="AGR-02",
+            zone_ids=["farm_01_west", "farm_01_center"],
+            loop_count=1,
+            requested_by="frontend-operator",
+            patrol_mode="diagnosis",
+        )
+    )
+
+    payload = response["data"]
+    request_payload = json.loads(mission_request_file_path().read_text(encoding="utf-8"))
+
+    assert payload["mission_id"] == "mission-patrol-router-001"
+    assert payload["request_type"] == "start_patrol"
+    assert payload["status_endpoint"] == "/api/v1/missions/mission-patrol-router-001"
+    assert request_payload["zone_ids"] == ["farm_01_west", "farm_01_center"]
+    assert request_payload["patrol_mode"] == "diagnosis"
+
+
+def test_missions_harvest_endpoint_writes_runtime_bridge_request() -> None:
+    response = missions.harvest_mission(
+        missions.HarvestReq(
+            mission_id="mission-harvest-router-001",
+            robot_id="AGR-02",
+            plant_id="farm01_plant_03",
+            fruit_id="farm01_plant_03_tomato_01",
+            requested_by="frontend-operator",
+        )
+    )
+
+    payload = response["data"]
+    request_payload = json.loads(mission_request_file_path().read_text(encoding="utf-8"))
+
+    assert payload["mission_id"] == "mission-harvest-router-001"
+    assert payload["request_type"] == "harvest_target"
+    assert request_payload["plant_id"] == "farm01_plant_03"
+    assert request_payload["tomato_id"] == "farm01_plant_03_tomato_01"
+
+
+def test_get_mission_status_endpoint_reads_record_file() -> None:
+    _write_json(
+        mission_status_record_file_path("mission-harvest-router-002"),
+        {
+            "mission_id": "mission-harvest-router-002",
+            "command_id": "mission-harvest-router-002",
+            "request_type": "harvest_target",
+            "robot_id": "AGR-02",
+            "requested_by": "frontend-operator",
+            "status": "running",
+            "message": "Harvest target 접근 중입니다.",
+            "fruit_id": "farm01_plant_03_tomato_01",
+            "tomato_id": "farm01_plant_03_tomato_01",
+            "updated_at": "2026-03-25T00:00:00+00:00",
+        },
+    )
+
+    response = missions.get_mission_status("mission-harvest-router-002")
+
+    payload = response["data"]
+    assert payload["mission_id"] == "mission-harvest-router-002"
+    assert payload["status"] == "running"
+    assert payload["fruit_id"] == "farm01_plant_03_tomato_01"
 
 
 def test_robot_commands_resume_returns_409_for_invalid_transition() -> None:
