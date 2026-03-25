@@ -416,47 +416,77 @@ def _load_sprinkler_positions(world_file: Path) -> dict[str, tuple[float, float,
 
 def _build_effect_sdf(effect_entity_name: str, effect_color: str) -> str:
     rgba = _resolve_rgba(effect_color)
-    transparency = max(0.0, min(1.0, 1.0 - rgba[3]))
+    nozzle_alpha = max(0.15, min(0.9, rgba[3]))
+    side_emitters = '\n'.join(
+        _build_particle_emitter_block(
+            emitter_name=name,
+            pose=pose,
+            rgba=rgba,
+            rate=rate,
+            min_velocity=min_velocity,
+            max_velocity=max_velocity,
+        )
+        for name, pose, rate, min_velocity, max_velocity in (
+            ('spray_center', '0 0 0.18 0 0 0', 160, 1.0, 1.6),
+            ('spray_left', '0 0 0.18 0 0.38 0', 110, 1.2, 2.0),
+            ('spray_right', '0 0 0.18 0 -0.38 0', 110, 1.2, 2.0),
+            ('spray_front', '0 0 0.18 -0.38 0 0', 110, 1.2, 2.0),
+            ('spray_back', '0 0 0.18 0.38 0 0', 110, 1.2, 2.0),
+        )
+    )
     return f"""<?xml version="1.0" ?>
 <sdf version="1.9">
   <model name="{effect_entity_name}">
     <static>true</static>
     <link name="spray_link">
-      <visual name="spray_core">
-        <pose>0 0 0.60 0 0 0</pose>
+      <visual name="spray_nozzle">
+        <pose>0 0 0.14 0 0 0</pose>
         <geometry>
           <cylinder>
-            <radius>0.12</radius>
-            <length>0.80</length>
+            <radius>0.05</radius>
+            <length>0.08</length>
           </cylinder>
         </geometry>
         <material>
-          <ambient>{rgba[0]} {rgba[1]} {rgba[2]} {rgba[3]}</ambient>
-          <diffuse>{rgba[0]} {rgba[1]} {rgba[2]} {rgba[3]}</diffuse>
+          <ambient>{rgba[0]} {rgba[1]} {rgba[2]} {nozzle_alpha}</ambient>
+          <diffuse>{rgba[0]} {rgba[1]} {rgba[2]} {nozzle_alpha}</diffuse>
           <specular>0.2 0.2 0.2 0.1</specular>
         </material>
-        <transparency>{transparency:.3f}</transparency>
+        <transparency>{max(0.0, 1.0 - nozzle_alpha):.3f}</transparency>
         <cast_shadows>false</cast_shadows>
       </visual>
-      <visual name="spray_cap">
-        <pose>0 0 1.00 0 0 0</pose>
-        <geometry>
-          <sphere>
-            <radius>0.20</radius>
-          </sphere>
-        </geometry>
-        <material>
-          <ambient>{rgba[0]} {rgba[1]} {rgba[2]} {min(1.0, rgba[3] + 0.05)}</ambient>
-          <diffuse>{rgba[0]} {rgba[1]} {rgba[2]} {min(1.0, rgba[3] + 0.05)}</diffuse>
-          <specular>0.2 0.2 0.2 0.1</specular>
-        </material>
-        <transparency>{max(0.0, transparency - 0.05):.3f}</transparency>
-        <cast_shadows>false</cast_shadows>
-      </visual>
+{side_emitters}
     </link>
   </model>
 </sdf>
 """
+
+
+def _build_particle_emitter_block(
+    *,
+    emitter_name: str,
+    pose: str,
+    rgba: tuple[float, float, float, float],
+    rate: int,
+    min_velocity: float,
+    max_velocity: float,
+) -> str:
+    start_alpha = min(0.9, max(0.45, rgba[3] + 0.20))
+    end_alpha = max(0.0, rgba[3] - 0.25)
+    return f"""      <particle_emitter name="{emitter_name}" type="point">
+        <pose>{pose}</pose>
+        <emitting>true</emitting>
+        <duration>0</duration>
+        <particle_size>0.035 0.035 0.035</particle_size>
+        <lifetime>0.9</lifetime>
+        <rate>{rate}</rate>
+        <min_velocity>{min_velocity:.2f}</min_velocity>
+        <max_velocity>{max_velocity:.2f}</max_velocity>
+        <scale_rate>0.25</scale_rate>
+        <color_start>{rgba[0]} {rgba[1]} {rgba[2]} {start_alpha:.2f}</color_start>
+        <color_end>{rgba[0]} {rgba[1]} {rgba[2]} {end_alpha:.2f}</color_end>
+        <particle_scatter_ratio>0.15</particle_scatter_ratio>
+      </particle_emitter>"""
 
 
 def _resolve_rgba(effect_color: str) -> tuple[float, float, float, float]:
