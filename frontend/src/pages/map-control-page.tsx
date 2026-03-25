@@ -29,16 +29,45 @@ const controlActions = [
   { id: 'emergency', title: '비상 정지', icon: 'emergency_home', tone: 'danger' },
 ] as const
 
+type NavigationTransitionFeedback = {
+  previousCommandId: string | null
+  targetSummary: string
+}
+
 function formatPose(pose: RobotTargetPose) {
   return `x ${pose.x.toFixed(2)} / y ${pose.y.toFixed(2)}`
 }
 
-function commandStatusCopy(status: RobotCommandStatus, isTracked: boolean) {
+function isNavigationCommandInProgress(status: RobotCommandStatus) {
+  return status.available && (status.status === 'pending' || status.status === 'running')
+}
+
+function buildTransitionNotice(feedback: NavigationTransitionFeedback) {
+  if (feedback.previousCommandId) {
+    return `기존 ${feedback.previousCommandId} 이동을 중단하고 ${feedback.targetSummary} 목표로 전환 중입니다.`
+  }
+
+  return `${feedback.targetSummary} 목표로 전환 중입니다.`
+}
+
+function commandStatusCopy(
+  status: RobotCommandStatus,
+  isTracked: boolean,
+  transitionFeedback: NavigationTransitionFeedback | null,
+) {
   if (!status.available) {
     return {
       tone: 'table-tag--warning',
       title: '상태 파일 대기',
       detail: 'executor가 첫 상태 파일을 쓰기 전까지는 이 카드에 최신 진행 상황이 나타납니다.',
+    }
+  }
+
+  if (transitionFeedback && !isTracked) {
+    return {
+      tone: 'table-tag--warning',
+      title: '새 목표 전환 요청',
+      detail: buildTransitionNotice(transitionFeedback),
     }
   }
 
@@ -54,14 +83,20 @@ function commandStatusCopy(status: RobotCommandStatus, isTracked: boolean) {
     case 'pending':
       return {
         tone: 'table-tag--warning',
-        title: '명령 접수됨',
-        detail: 'executor가 파일을 읽고 실제 주행 요청으로 넘기는 중입니다.',
+        title: transitionFeedback ? '새 목표 전환 준비' : '명령 접수됨',
+        detail:
+          transitionFeedback
+            ? buildTransitionNotice(transitionFeedback)
+            : status.message || 'executor가 파일을 읽고 실제 주행 요청으로 넘기는 중입니다.',
       }
     case 'running':
       return {
         tone: 'table-tag--healthy',
-        title: '이동 실행 중',
-        detail: '로봇이 목표 pose 또는 대표 구역 좌표로 이동 중입니다.',
+        title: transitionFeedback ? '새 목표로 전환 중' : '이동 실행 중',
+        detail:
+          transitionFeedback
+            ? buildTransitionNotice(transitionFeedback)
+            : status.message || '로봇이 목표 pose 또는 대표 구역 좌표로 이동 중입니다.',
       }
     case 'succeeded':
       return {
@@ -99,6 +134,7 @@ export function MapControlPage() {
   const [lastCommandId, setLastCommandId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [observedCommandState, setObservedCommandState] = useState<string | null>(null)
+  const [transitionFeedback, setTransitionFeedback] = useState<NavigationTransitionFeedback | null>(null)
 
   const robotQuery = useQuery({
     queryKey: ['page', 'robot'],
@@ -131,11 +167,26 @@ export function MapControlPage() {
       return { preset, response }
     },
     onSuccess: async ({ preset, response }) => {
+      const nextTarget = response.targetPose ?? preset.representativePose
+      const shouldAnnounceTransition =
+        response.preemptCurrentNavigation && isNavigationCommandInProgress(latestCommandStatus)
+      const nextTransitionFeedback = shouldAnnounceTransition
+        ? {
+            previousCommandId: latestCommandStatus.commandId,
+            targetSummary: `${preset.name} (${formatPose(nextTarget)})`,
+          }
+        : null
+
       setLastCommandId(response.commandId)
       setObservedCommandState(null)
-      setActiveCommandTarget(response.targetPose ?? preset.representativePose)
+      setActiveCommandTarget(nextTarget)
       setPendingTarget(null)
-      setNotice(`${preset.name} 이동 요청을 보냈습니다. 상태 카드에서 진행 상황을 확인하세요.`)
+      setTransitionFeedback(nextTransitionFeedback)
+      setNotice(
+        nextTransitionFeedback
+          ? `${buildTransitionNotice(nextTransitionFeedback)} 상태 카드에서 새 목표 전환 진행 상황을 확인하세요.`
+          : `${preset.name} 이동 요청을 보냈습니다. 상태 카드에서 진행 상황을 확인하세요.`,
+      )
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
         queryClient.invalidateQueries({ queryKey: ['robot', 'command-status'] }),
@@ -148,13 +199,29 @@ export function MapControlPage() {
   const navigateMutation = useMutation({
     mutationFn: sendRobotNavigateCommand,
     onSuccess: async (response) => {
+      const nextTarget = response.targetPose
+      const shouldAnnounceTransition =
+        response.preemptCurrentNavigation && isNavigationCommandInProgress(latestCommandStatus)
+      const nextTransitionFeedback =
+        shouldAnnounceTransition && nextTarget
+          ? {
+              previousCommandId: latestCommandStatus.commandId,
+              targetSummary: `좌표 ${formatPose(nextTarget)}`,
+            }
+          : null
+
       setLastCommandId(response.commandId)
       setObservedCommandState(null)
-      if (response.targetPose) {
-        setActiveCommandTarget(response.targetPose)
+      if (nextTarget) {
+        setActiveCommandTarget(nextTarget)
       }
       setPendingTarget(null)
-      setNotice('클릭한 좌표로 이동 요청을 보냈습니다. 상태 카드가 pending/running으로 바뀌는지 확인하세요.')
+      setTransitionFeedback(nextTransitionFeedback)
+      setNotice(
+        nextTransitionFeedback
+          ? `${buildTransitionNotice(nextTransitionFeedback)} 상태 카드가 pending/running으로 바뀌는지 확인하세요.`
+          : '클릭한 좌표로 이동 요청을 보냈습니다. 상태 카드가 pending/running으로 바뀌는지 확인하세요.',
+      )
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
         queryClient.invalidateQueries({ queryKey: ['robot', 'command-status'] }),
@@ -179,7 +246,7 @@ export function MapControlPage() {
   const actionPending =
     controlMutation.isPending || zoneMoveMutation.isPending || navigateMutation.isPending
   const trackedCommand = lastCommandId !== null && latestCommandStatus.commandId === lastCommandId
-  const commandSummary = commandStatusCopy(latestCommandStatus, trackedCommand)
+  const commandSummary = commandStatusCopy(latestCommandStatus, trackedCommand, transitionFeedback)
 
   useEffect(() => {
     if (!selectedAssetId && targetAssetId) {
@@ -204,17 +271,24 @@ export function MapControlPage() {
 
     setObservedCommandState(stateToken)
     if (latestCommandStatus.status === 'succeeded') {
-      setNotice('최근 이동 요청이 성공적으로 완료되었습니다.')
+      if (transitionFeedback) {
+        setNotice(`${transitionFeedback.targetSummary} 기준 새 목표 전환 이동이 완료되었습니다.`)
+        setTransitionFeedback(null)
+      } else {
+        setNotice('최근 이동 요청이 성공적으로 완료되었습니다.')
+      }
       return
     }
     if (latestCommandStatus.status === 'failed') {
+      setTransitionFeedback(null)
       setNotice(latestCommandStatus.message || '최근 이동 요청이 실패했습니다.')
       return
     }
     if (latestCommandStatus.status === 'canceled') {
+      setTransitionFeedback(null)
       setNotice(latestCommandStatus.message || '최근 이동 요청이 취소되었습니다.')
     }
-  }, [latestCommandStatus, observedCommandState, trackedCommand])
+  }, [latestCommandStatus, observedCommandState, trackedCommand, transitionFeedback])
 
   return (
     <div className="screen">
@@ -434,7 +508,20 @@ export function MapControlPage() {
                 <span className="detail-label">최종 갱신</span>
                 <strong className="detail-value">{latestCommandStatus.updatedAt || '대기 중'}</strong>
               </article>
+              {activeCommandTarget ? (
+                <article className="detail-card">
+                  <span className="detail-label">최근 목표 좌표</span>
+                  <strong className="detail-value">{formatPose(activeCommandTarget)}</strong>
+                </article>
+              ) : null}
             </div>
+            {transitionFeedback ? (
+              <div className="command-transition-note">
+                <span className="panel-kicker">새 목적지 우선 적용</span>
+                <strong>{transitionFeedback.targetSummary}</strong>
+                <p>{buildTransitionNotice(transitionFeedback)}</p>
+              </div>
+            ) : null}
             {notice ? <p className="muted">{notice}</p> : null}
           </DevSurface>
 
