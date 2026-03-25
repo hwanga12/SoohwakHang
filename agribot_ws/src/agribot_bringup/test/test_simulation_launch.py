@@ -40,4 +40,8 @@ def test_simulation_launch_declares_iot_arguments_and_includes_iot_pipeline() ->
 
     assert len(declare_args) == 4
     assert len(includes) == 3
-    assert len(nodes) == 2
+    assert len(nodes) == 3
+    node_names = {node.node_name for node in nodes}
+    executable_names = {node.node_executable for node in nodes}
+    assert 'mission_bridge_executor' in node_names
+    assert 'mission_bridge_executor' in executable_names
