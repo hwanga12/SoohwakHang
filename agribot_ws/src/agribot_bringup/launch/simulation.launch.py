@@ -111,6 +111,16 @@ def generate_launch_description():
             'map_id': 'farm_map',
         }],
     )
+    robot_manual_command_executor = Node(
+        package='agribot_bringup',
+        executable='robot_manual_command_executor',
+        name='robot_manual_command_executor',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'map_id': 'farm_map',
+        }],
+    )
 
     return LaunchDescription([
         *env_vars,
@@ -118,6 +128,7 @@ def generate_launch_description():
         mqtt_force_log_only_arg,
         spawn_agribot,
         runtime_snapshot_exporter,
+        robot_manual_command_executor,
         delayed_navigation,
         iot_status_pipeline,
         # TODO: Add perception launch

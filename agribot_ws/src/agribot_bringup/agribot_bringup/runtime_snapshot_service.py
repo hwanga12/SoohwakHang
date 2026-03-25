@@ -13,6 +13,8 @@ DEFAULT_FRAME_ID = 'map'
 DEFAULT_RUNTIME_DIR = Path(os.environ.get('AGRIBOT_RUNTIME_DIR', '/tmp/agribot_runtime'))
 POSE_SNAPSHOT_FILENAME = 'robot_pose_snapshot.json'
 SEMANTIC_LAYER_SNAPSHOT_FILENAME = 'robot_map_layers_snapshot.json'
+MANUAL_COMMAND_FILENAME = 'robot_manual_command.json'
+MANUAL_COMMAND_STATUS_FILENAME = 'robot_manual_command_status.json'
 
 
 def runtime_dir_from_env() -> Path:
@@ -27,6 +29,14 @@ def pose_snapshot_path(runtime_dir: Path | None = None) -> Path:
 
 def semantic_layer_snapshot_path(runtime_dir: Path | None = None) -> Path:
     return (runtime_dir or runtime_dir_from_env()) / SEMANTIC_LAYER_SNAPSHOT_FILENAME
+
+
+def manual_command_path(runtime_dir: Path | None = None) -> Path:
+    return (runtime_dir or runtime_dir_from_env()) / MANUAL_COMMAND_FILENAME
+
+
+def manual_command_status_path(runtime_dir: Path | None = None) -> Path:
+    return (runtime_dir or runtime_dir_from_env()) / MANUAL_COMMAND_STATUS_FILENAME
 
 
 def _package_share(package_name: str) -> Path:
@@ -456,6 +466,50 @@ def build_pose_snapshot_payload(
         'updated_at': datetime.now(timezone.utc).isoformat(),
         'timestamp': timestamp,
     }
+
+
+def build_manual_command_status_payload(
+    *,
+    command_id: str | None,
+    command_type: str | None,
+    robot_id: str,
+    status: str,
+    message: str,
+    map_id: str = DEFAULT_MAP_ID,
+    requested_by: str = '',
+    frame_id: str = DEFAULT_FRAME_ID,
+    error: str | None = None,
+    target_pose: dict[str, Any] | None = None,
+    home_waypoint_id: str | None = None,
+    received_at: str | None = None,
+    started_at: str | None = None,
+    completed_at: str | None = None,
+) -> dict[str, Any]:
+    updated_at = datetime.now(timezone.utc).isoformat()
+    return {
+        'command_id': command_id,
+        'command_type': command_type,
+        'robot_id': robot_id,
+        'requested_by': requested_by or None,
+        'map_id': map_id,
+        'frame_id': frame_id,
+        'status': status,
+        'message': message,
+        'error': error,
+        'target_pose': target_pose,
+        'home_waypoint_id': home_waypoint_id,
+        'received_at': received_at,
+        'started_at': started_at,
+        'completed_at': completed_at,
+        'updated_at': updated_at,
+    }
+
+
+def read_json_object(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(payload, dict):
+        raise ValueError(f'{path.name} 최상위 payload는 JSON object여야 합니다.')
+    return payload
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
