@@ -41,7 +41,7 @@ export function PlantsPage() {
   const selectedPlant =
     page.plants.find((plant) => plant.id === selectedPlantId) ?? page.plants[0]
   const feedbackMessage = harvestMutation.isSuccess
-    ? harvestMutation.data
+    ? harvestMutation.data.message
     : harvestMutation.isError
       ? harvestMutation.error.message
       : null
