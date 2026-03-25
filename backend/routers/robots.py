@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 
 from robot_command_bridge_service import (
     DuplicateCommandIdError,
+    RobotCommandConflictError,
+    RobotCommandUnavailableError,
     RobotCommandValidationError,
     publish_robot_command,
     read_latest_command_status_payload,
@@ -17,6 +19,7 @@ from robot_map_service import (
     read_pose_payload,
     read_status_payload,
 )
+from robot_runtime_state_service import RobotRuntimeStateError, read_control_state_payload
 
 router = APIRouter()
 
@@ -38,12 +41,17 @@ class RobotCommandReq(BaseModel):
     )
     robot_id: str = Field(..., description="대상 로봇 ID", examples=["AGR-02"])
     command_type: Literal[
+        "emergency_stop",
         "navigate_to_pose",
+        "pause",
+        "pause_motion",
         "pause_patrol",
+        "resume",
+        "resume_motion",
         "resume_patrol",
         "return_home",
         "move_to_zone",
-    ] = Field(..., description="웹에서 요청한 로봇 명령 타입")
+    ] = Field(..., description="웹 또는 제어 패널에서 요청한 로봇 명령 타입")
     requested_by: str = Field(..., description="명령 요청 주체", examples=["frontend-operator"])
     target_zone_id: Optional[str] = Field(
         default=None,
@@ -83,7 +91,12 @@ class RobotCommandReq(BaseModel):
                 {
                     "robot_id": "AGR-02",
                     "requested_by": "frontend-operator",
-                    "command_type": "pause_patrol",
+                    "command_type": "emergency_stop",
+                },
+                {
+                    "robot_id": "AGR-02",
+                    "requested_by": "frontend-operator",
+                    "command_type": "pause",
                 },
                 {
                     "robot_id": "AGR-02",
@@ -103,9 +116,39 @@ class RobotCommandReq(BaseModel):
     }
 
 
+class RobotControlReq(BaseModel):
+    command_id: Optional[str] = Field(
+        default=None,
+        description="중복 실행 방지를 위한 선택적 command id. 비워두면 backend가 생성합니다.",
+    )
+    robot_id: str = Field(..., description="대상 로봇 ID", examples=["AGR-02"])
+    requested_by: str = Field(..., description="명령 요청 주체", examples=["frontend-operator"])
+
+
+def _raise_robot_command_http_error(exc: Exception) -> None:
+    if isinstance(exc, DuplicateCommandIdError):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, RobotCommandConflictError):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, RobotCommandValidationError):
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if isinstance(exc, RobotCommandUnavailableError):
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if isinstance(exc, FileNotFoundError):
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _publish_command_or_raise(**kwargs: Any) -> dict[str, Any]:
+    try:
+        return publish_robot_command(**kwargs)
+    except Exception as exc:  # pragma: no cover - status mapping helper
+        _raise_robot_command_http_error(exc)
+
+
 @router.get("/status")
 def get_robot_status(map_id: Optional[str] = Query(default=None)):
-    """현재 로봇 상태 카드와 실시간 상태 화면용 데이터 조회"""
+    """현재 로봇 상태 카드와 실시간 상태 화면용 authoritative 상태 조회"""
     try:
         return {"data": read_status_payload(map_id)}
     except (FileNotFoundError, ValueError) as exc:
@@ -154,35 +197,72 @@ def get_robot_map_layers(map_id: Optional[str] = Query(default=None)):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.get("/control/status")
+def get_robot_control_status():
+    """agribot_ws runtime executor가 기록한 현재 제어 상태 조회"""
+    try:
+        return {"data": read_control_state_payload()}
+    except RobotRuntimeStateError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/control/emergency-stop")
+def post_robot_emergency_stop(command: RobotControlReq):
+    """비상 정지 버튼 전용 endpoint"""
+    payload = _publish_command_or_raise(
+        command_id=command.command_id,
+        robot_id=command.robot_id,
+        command_type="emergency_stop",
+        requested_by=command.requested_by,
+    )
+    return {"data": payload}
+
+
+@router.post("/control/pause")
+def post_robot_pause(command: RobotControlReq):
+    """일시정지 버튼 전용 endpoint"""
+    payload = _publish_command_or_raise(
+        command_id=command.command_id,
+        robot_id=command.robot_id,
+        command_type="pause",
+        requested_by=command.requested_by,
+    )
+    return {"data": payload}
+
+
+@router.post("/control/resume")
+def post_robot_resume(command: RobotControlReq):
+    """재개 버튼 전용 endpoint"""
+    payload = _publish_command_or_raise(
+        command_id=command.command_id,
+        robot_id=command.robot_id,
+        command_type="resume",
+        requested_by=command.requested_by,
+    )
+    return {"data": payload}
+
+
 @router.post("/commands")
 def post_robot_command(command: RobotCommandReq):
-    """파일 브리지 기반으로 로봇 수동 명령을 runtime executor에 전달합니다."""
-    try:
-        payload = publish_robot_command(
-            command_id=command.command_id,
-            robot_id=command.robot_id,
-            command_type=command.command_type,
-            requested_by=command.requested_by,
-            target_zone_id=command.target_zone_id,
-            map_id=command.map_id,
-            payload=command.payload,
-            target_pose=command.target_pose,
-            preempt_current_navigation=command.preempt_current_navigation,
-        )
-    except DuplicateCommandIdError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except RobotCommandValidationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
+    """파일 브리지 기반으로 로봇 수동/제어 명령을 runtime executor에 전달합니다."""
+    payload = _publish_command_or_raise(
+        command_id=command.command_id,
+        robot_id=command.robot_id,
+        command_type=command.command_type,
+        requested_by=command.requested_by,
+        target_zone_id=command.target_zone_id,
+        map_id=command.map_id,
+        payload=command.payload,
+        target_pose=command.target_pose,
+        preempt_current_navigation=command.preempt_current_navigation,
+    )
     return {"data": payload}
 
 
 @router.get("/commands/latest")
 def get_latest_robot_command_status():
-    """runtime executor가 마지막으로 기록한 수동 명령 상태를 조회합니다."""
+    """runtime executor가 마지막으로 기록한 명령 상태와 현재 control state를 함께 조회합니다."""
     try:
         return {"data": read_latest_command_status_payload()}
-    except RobotCommandValidationError as exc:
+    except RobotRuntimeStateError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

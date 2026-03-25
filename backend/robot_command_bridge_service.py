@@ -1,38 +1,78 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 import uuid
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
-from robot_map_service import read_map_payload
+from robot_runtime_state_service import (
+    RobotRuntimeStateError,
+    build_idle_command_status_payload,
+    build_unavailable_control_state_payload,
+    command_file_path,
+    command_status_file_path,
+    iso_now,
+    read_control_state_payload,
+    read_json_object,
+    read_latest_command_status_payload as _read_latest_command_status_payload,
+    write_json_atomic,
+)
 from zone_service import resolve_zone_payload, resolve_zone_representative_pose
 
 DEFAULT_FRAME_ID = "map"
-DEFAULT_RUNTIME_DIR = Path(os.environ.get("AGRIBOT_RUNTIME_DIR", "/tmp/agribot_runtime"))
-MANUAL_COMMAND_PATH = DEFAULT_RUNTIME_DIR / "robot_manual_command.json"
-MANUAL_COMMAND_STATUS_PATH = DEFAULT_RUNTIME_DIR / "robot_manual_command_status.json"
 ALLOWED_COMMAND_TYPES = {
+    "emergency_stop",
     "navigate_to_pose",
+    "pause",
+    "pause_motion",
     "pause_patrol",
+    "resume",
+    "resume_motion",
     "resume_patrol",
     "return_home",
     "move_to_zone",
 }
+COMMAND_TYPE_ALIASES = {
+    "pause": "pause_motion",
+    "resume": "resume_motion",
+}
 FILE_BRIDGE_COMMAND_TYPES = {
+    "emergency_stop",
     "navigate_to_pose",
+    "pause_motion",
     "pause_patrol",
+    "resume_motion",
     "resume_patrol",
     "return_home",
 }
-TERMINAL_STATUSES = {"succeeded", "failed", "canceled"}
 DEFAULT_PREEMPT_COMMAND_TYPES = {
     "navigate_to_pose",
     "move_to_zone",
     "return_home",
+}
+CONTROL_STATE_REQUIRED_COMMAND_TYPES = {
+    "emergency_stop",
+    "pause_motion",
+    "pause_patrol",
+    "resume_motion",
+    "resume_patrol",
+}
+LATCH_RELEASE_COMMAND_TYPES = {
+    "emergency_stop",
+    "resume_motion",
+    "resume_patrol",
+}
+COMMAND_RECEIPT_MESSAGES = {
+    "emergency_stop": "비상 정지 요청을 접수했습니다.",
+    "pause": "일시정지 요청을 접수했습니다.",
+    "pause_motion": "일시정지 요청을 접수했습니다.",
+    "pause_patrol": "순찰 일시정지 요청을 접수했습니다.",
+    "resume": "재개 요청을 접수했습니다.",
+    "resume_motion": "재개 요청을 접수했습니다.",
+    "resume_patrol": "순찰 재개 요청을 접수했습니다.",
+    "return_home": "홈 복귀 요청을 접수했습니다.",
+    "move_to_zone": "구역 이동 요청을 접수했습니다.",
+    "navigate_to_pose": "좌표 이동 요청을 접수했습니다.",
 }
 
 
@@ -44,36 +84,12 @@ class DuplicateCommandIdError(RobotCommandValidationError):
     pass
 
 
-def _runtime_dir() -> Path:
-    runtime_dir = Path(os.environ.get("AGRIBOT_RUNTIME_DIR", str(DEFAULT_RUNTIME_DIR)))
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-    return runtime_dir
+class RobotCommandConflictError(RobotCommandValidationError):
+    pass
 
 
-def command_file_path() -> Path:
-    return _runtime_dir() / MANUAL_COMMAND_PATH.name
-
-
-def command_status_file_path() -> Path:
-    return _runtime_dir() / MANUAL_COMMAND_STATUS_PATH.name
-
-
-def _iso_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _read_json_object(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise RobotCommandValidationError(f"{path.name} 최상위 payload는 JSON object여야 합니다.")
-    return payload
-
-
-def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_suffix(path.suffix + ".tmp")
-    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp_path.replace(path)
+class RobotCommandUnavailableError(RuntimeError):
+    pass
 
 
 def _generate_command_id() -> str:
@@ -92,8 +108,8 @@ def _check_duplicate_command_id(command_id: str) -> None:
         if not path.exists():
             continue
         try:
-            payload = _read_json_object(path)
-        except (OSError, json.JSONDecodeError, RobotCommandValidationError):
+            payload = read_json_object(path)
+        except (OSError, json.JSONDecodeError, RobotRuntimeStateError):
             continue
         if str(payload.get("command_id", "")).strip() == command_id:
             raise DuplicateCommandIdError(
@@ -146,7 +162,12 @@ def _coerce_target_pose_object(target_pose: dict[str, Any]) -> dict[str, Any]:
     return _coerce_target_pose({"target_pose": target_pose})
 
 
-def _validate_target_pose_bounds(target_pose: dict[str, Any], map_id: str | None = None) -> dict[str, Any]:
+def _validate_target_pose_bounds(
+    target_pose: dict[str, Any],
+    map_id: str | None = None,
+) -> dict[str, Any]:
+    from robot_map_service import read_map_payload
+
     bounds = read_map_payload(map_id)["bounds"]
     x_value = float(target_pose["x"])
     y_value = float(target_pose["y"])
@@ -222,6 +243,128 @@ def _resolve_preempt_current_navigation(
     return command_type in DEFAULT_PREEMPT_COMMAND_TYPES
 
 
+def _normalize_command_for_bridge(command_type: str) -> tuple[str, str]:
+    requested_command_type = _validate_command_type(command_type)
+    return requested_command_type, COMMAND_TYPE_ALIASES.get(
+        requested_command_type,
+        requested_command_type,
+    )
+
+
+def _safe_read_control_state_payload() -> dict[str, Any]:
+    try:
+        return read_control_state_payload()
+    except RobotRuntimeStateError as exc:
+        return build_unavailable_control_state_payload(str(exc))
+
+
+def _safe_read_latest_command_status_payload(
+    *,
+    control_state: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        return _read_latest_command_status_payload()
+    except RobotRuntimeStateError as exc:
+        return {
+            **build_idle_command_status_payload(str(exc), control_state=control_state),
+            "control_state": control_state,
+            "control_mode": control_state["mode"],
+            "control_is_latched": control_state["is_latched"],
+            "control_active_activity": control_state["active_activity"],
+            "control_blocking_reason": control_state["blocking_reason"],
+            "control_message": control_state["message"],
+            "control_resume_available": control_state["resume_available"],
+            "control_updated_at": control_state["updated_at"],
+        }
+
+
+def _effective_active_activity(
+    control_state: dict[str, Any],
+    latest_status: dict[str, Any],
+) -> str:
+    active_activity = str(control_state.get("active_activity") or "").strip() or "idle"
+    if active_activity != "idle":
+        return active_activity
+
+    if str(latest_status.get("status") or "").strip() not in {"pending", "running"}:
+        return active_activity
+
+    requested_command_type = str(latest_status.get("requested_command_type") or "").strip()
+    command_type = str(latest_status.get("command_type") or "").strip()
+    effective_command_type = requested_command_type or command_type
+    if effective_command_type in {"navigate_to_pose", "move_to_zone", "return_home"}:
+        return "manual_navigation"
+    if effective_command_type in {"pause_patrol", "resume_patrol"}:
+        return "patrol"
+    return active_activity
+
+
+def _resume_context_type(control_state: dict[str, Any]) -> str | None:
+    resume_context = control_state.get("resume_context")
+    if not isinstance(resume_context, dict):
+        return None
+    normalized = str(resume_context.get("context_type") or "").strip()
+    return normalized or None
+
+
+def _validate_command_for_current_state(
+    *,
+    requested_command_type: str,
+    normalized_command_type: str,
+    control_state: dict[str, Any],
+    latest_status: dict[str, Any],
+) -> None:
+    if (
+        normalized_command_type in CONTROL_STATE_REQUIRED_COMMAND_TYPES
+        and not bool(control_state.get("available"))
+    ):
+        raise RobotCommandUnavailableError(
+            "executor control state를 읽을 수 없어 제어 명령을 검증할 수 없습니다. "
+            "agribot_ws runtime executor 상태를 먼저 확인하세요."
+        )
+
+    control_mode = str(control_state.get("mode") or "normal")
+    if (
+        bool(control_state.get("is_latched"))
+        and normalized_command_type not in LATCH_RELEASE_COMMAND_TYPES
+    ):
+        raise RobotCommandConflictError(
+            f"현재 제어 상태가 {control_mode} 이라 {requested_command_type} 요청을 받을 수 없습니다. "
+            "resume_motion 또는 resume_patrol 로 먼저 해제하세요."
+        )
+
+    effective_activity = _effective_active_activity(control_state, latest_status)
+    resume_context_type = _resume_context_type(control_state)
+
+    if normalized_command_type == "emergency_stop" and control_mode == "emergency_stop":
+        raise RobotCommandConflictError("이미 비상 정지 상태입니다.")
+
+    if normalized_command_type in {"pause_motion", "pause_patrol"}:
+        if control_mode == "paused":
+            raise RobotCommandConflictError("이미 일시정지 상태입니다.")
+        if control_mode == "emergency_stop":
+            raise RobotCommandConflictError("비상 정지 상태에서는 추가 pause 요청을 받을 수 없습니다.")
+        if effective_activity == "idle":
+            if normalized_command_type == "pause_patrol":
+                raise RobotCommandConflictError("현재 일시정지할 순찰이 없습니다.")
+            raise RobotCommandConflictError("현재 일시정지할 동작이 없습니다.")
+        if normalized_command_type == "pause_patrol" and effective_activity != "patrol":
+            raise RobotCommandConflictError(
+                "현재 순찰 중이 아니어서 pause_patrol 을 적용할 수 없습니다."
+            )
+
+    if normalized_command_type == "resume_motion" and control_mode == "normal":
+        raise RobotCommandConflictError("현재 해제하거나 재개할 제어 latch가 없습니다.")
+
+    if normalized_command_type == "resume_patrol":
+        if control_mode != "normal" and resume_context_type not in {None, "patrol"}:
+            raise RobotCommandConflictError(
+                "저장된 재개 문맥이 순찰이 아니어서 resume_patrol 을 적용할 수 없습니다."
+            )
+        if control_mode == "normal" and effective_activity == "patrol":
+            raise RobotCommandConflictError("이미 순찰이 실행 중입니다.")
+
+
 def _build_bridge_payload(
     *,
     command_id: str,
@@ -240,7 +383,7 @@ def _build_bridge_payload(
         "robot_id": robot_id,
         "requested_by": requested_by,
         "map_id": map_id,
-        "issued_at": _iso_now(),
+        "issued_at": iso_now(),
         "preempt_current_navigation": preempt_current_navigation,
     }
     if payload:
@@ -250,6 +393,64 @@ def _build_bridge_payload(
     if requested_command_type and requested_command_type != command_type:
         bridge_payload["requested_command_type"] = requested_command_type
     return bridge_payload
+
+
+def _build_command_receipt_message(requested_command_type: str) -> str:
+    return COMMAND_RECEIPT_MESSAGES.get(
+        requested_command_type,
+        f"{requested_command_type} 요청을 접수했습니다.",
+    )
+
+
+def _build_publish_response(
+    *,
+    bridge_payload: dict[str, Any],
+    requested_command_type: str,
+    command_type: str,
+    robot_id: str,
+    requested_by: str,
+    map_id: str,
+    preempt_current_navigation: bool,
+    target_pose: dict[str, Any] | None,
+    target_zone_id: str | None,
+    target_zone: dict[str, Any] | None,
+    home_waypoint_id: str | None,
+    current_control_state: dict[str, Any],
+) -> dict[str, Any]:
+    message = _build_command_receipt_message(requested_command_type)
+    response = {
+        "accepted": True,
+        "request_status": "accepted",
+        "message": message,
+        "command_id": bridge_payload["command_id"],
+        "requested_command_type": requested_command_type,
+        "command_type": command_type,
+        "robot_id": robot_id,
+        "requested_by": requested_by,
+        "map_id": map_id,
+        "bridge_file": str(command_file_path()),
+        "status_endpoint": "/api/v1/robot/commands/latest",
+        "control_status_endpoint": "/api/v1/robot/control/status",
+        "target_pose": target_pose,
+        "target_zone_id": target_zone_id,
+        "preempt_current_navigation": preempt_current_navigation,
+        "request": {
+            "accepted": True,
+            "status": "accepted",
+            "message": message,
+            "requested_at": bridge_payload["issued_at"],
+        },
+        "current_control_state": current_control_state,
+    }
+    if target_zone is not None:
+        response["target_zone"] = {
+            "id": target_zone["id"],
+            "name": target_zone["name"],
+            "representative_waypoint_id": target_zone["representative_waypoint_id"],
+        }
+    if home_waypoint_id:
+        response["home_waypoint_id"] = home_waypoint_id
+    return response
 
 
 def publish_robot_command(
@@ -264,10 +465,21 @@ def publish_robot_command(
     map_id: str | None = None,
     preempt_current_navigation: bool | None = None,
 ) -> dict[str, Any]:
+    from robot_map_service import read_map_payload
+
+    requested_command_type, normalized_command_type = _normalize_command_for_bridge(command_type)
+    control_state = _safe_read_control_state_payload()
+    latest_status = _safe_read_latest_command_status_payload(control_state=control_state)
+    _validate_command_for_current_state(
+        requested_command_type=requested_command_type,
+        normalized_command_type=normalized_command_type,
+        control_state=control_state,
+        latest_status=latest_status,
+    )
+
     resolved_map_id = read_map_payload(map_id)["map_id"]
     normalized_robot_id = _normalize_robot_id(robot_id)
     normalized_requested_by = _normalize_requested_by(requested_by)
-    normalized_command_type = _validate_command_type(command_type)
     normalized_payload = _payload_or_empty(payload)
     resolved_command_id = _sanitize_command_id(command_id)
     resolved_preempt_current_navigation = _resolve_preempt_current_navigation(
@@ -291,16 +503,17 @@ def publish_robot_command(
             resolved_map_id,
         )
     elif normalized_command_type == "move_to_zone":
-        zone_id = str(target_zone_id or "").strip()
-        if not zone_id:
+        resolved_target_zone_id = str(target_zone_id or "").strip()
+        if not resolved_target_zone_id:
             raise RobotCommandValidationError(
                 "move_to_zone 명령에는 target_zone_id 가 필요합니다."
             )
-        resolved_zone = resolve_zone_payload(zone_id, resolved_map_id)
+        resolved_zone = resolve_zone_payload(resolved_target_zone_id, resolved_map_id)
         command_payload["target_pose"] = _validate_target_pose_bounds(
-            resolve_zone_representative_pose(zone_id, resolved_map_id),
+            resolve_zone_representative_pose(resolved_target_zone_id, resolved_map_id),
             resolved_map_id,
         )
+        target_zone_id = resolved_target_zone_id
         file_command_type = "navigate_to_pose"
     elif normalized_command_type == "return_home":
         home_waypoint_id = str(normalized_payload.get("home_waypoint_id", "")).strip()
@@ -315,7 +528,7 @@ def publish_robot_command(
     bridge_payload = _build_bridge_payload(
         command_id=resolved_command_id,
         command_type=file_command_type,
-        requested_command_type=normalized_command_type,
+        requested_command_type=requested_command_type,
         robot_id=normalized_robot_id,
         requested_by=normalized_requested_by,
         map_id=resolved_map_id,
@@ -323,67 +536,23 @@ def publish_robot_command(
         payload=command_payload,
         preempt_current_navigation=resolved_preempt_current_navigation,
     )
-    _write_json_atomic(command_file_path(), bridge_payload)
+    write_json_atomic(command_file_path(), bridge_payload)
 
-    response = {
-        "accepted": True,
-        "command_id": resolved_command_id,
-        "requested_command_type": normalized_command_type,
-        "command_type": file_command_type,
-        "robot_id": normalized_robot_id,
-        "requested_by": normalized_requested_by,
-        "map_id": resolved_map_id,
-        "bridge_file": str(command_file_path()),
-        "status_endpoint": "/api/v1/robot/commands/latest",
-        "target_pose": command_payload.get("target_pose"),
-        "preempt_current_navigation": resolved_preempt_current_navigation,
-    }
-    if resolved_zone is not None:
-        response["target_zone"] = {
-            "id": resolved_zone["id"],
-            "name": resolved_zone["name"],
-            "representative_waypoint_id": resolved_zone["representative_waypoint_id"],
-        }
-    if command_payload.get("home_waypoint_id"):
-        response["home_waypoint_id"] = command_payload["home_waypoint_id"]
-    return response
+    return _build_publish_response(
+        bridge_payload=bridge_payload,
+        requested_command_type=requested_command_type,
+        command_type=file_command_type,
+        robot_id=normalized_robot_id,
+        requested_by=normalized_requested_by,
+        map_id=resolved_map_id,
+        preempt_current_navigation=resolved_preempt_current_navigation,
+        target_pose=command_payload.get("target_pose"),
+        target_zone_id=target_zone_id,
+        target_zone=resolved_zone,
+        home_waypoint_id=command_payload.get("home_waypoint_id"),
+        current_control_state=control_state,
+    )
 
 
 def read_latest_command_status_payload() -> dict[str, Any]:
-    status_path = command_status_file_path()
-    if not status_path.exists():
-        return {
-            "source": "runtime_file",
-            "available": False,
-            "status": "idle",
-            "message": "아직 executor가 기록한 command status 파일이 없습니다.",
-            "updated_at": _iso_now(),
-        }
-
-    try:
-        payload = _read_json_object(status_path)
-    except (OSError, json.JSONDecodeError, RobotCommandValidationError) as exc:
-        raise RobotCommandValidationError(
-            f"robot_manual_command_status.json 을 읽지 못했습니다: {exc}"
-        ) from exc
-
-    result = {"source": "runtime_file", "available": True, **payload}
-    command_path = command_file_path()
-    if command_path.exists():
-        try:
-            command_payload = _read_json_object(command_path)
-        except (OSError, json.JSONDecodeError, RobotCommandValidationError):
-            command_payload = {}
-
-        if command_payload.get("command_id") == payload.get("command_id"):
-            requested_command_type = command_payload.get("requested_command_type")
-            if requested_command_type:
-                result["requested_command_type"] = requested_command_type
-            if command_payload.get("target_zone_id"):
-                result["target_zone_id"] = command_payload["target_zone_id"]
-            if "preempt_current_navigation" in command_payload:
-                result["preempt_current_navigation"] = bool(
-                    command_payload["preempt_current_navigation"]
-                )
-
-    return result
+    return _read_latest_command_status_payload()
