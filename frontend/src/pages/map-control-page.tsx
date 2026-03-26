@@ -22,14 +22,7 @@ import {
 } from '@/lib/api/agribot'
 import { resolveSemanticTargetId } from '@/lib/robot-map/farm-semantic-map'
 
-const controlActions = [
-  { id: 'pause', title: '일시 정지', icon: 'pause_circle', tone: 'soft' },
-  { id: 'resume', title: '재개', icon: 'play_circle', tone: 'soft' },
-  { id: 'home', title: '홈 포즈로 복귀', icon: 'home', tone: 'soft' },
-  { id: 'emergency', title: '비상 정지', icon: 'emergency_home', tone: 'danger' },
-] as const
-
-type ControlActionId = (typeof controlActions)[number]['id']
+type ControlActionId = 'pause' | 'resume' | 'home' | 'emergency';
 type PendingControlRequest = {
   action: Exclude<ControlActionId, 'home'>
   baselineToken: string
@@ -40,6 +33,10 @@ type NavigationTransitionFeedback = {
   previousCommandId: string | null
   targetSummary: string
 }
+
+type PendingTargetData =
+  | { type: 'pose'; pose: RobotTargetPose }
+  | { type: 'preset'; preset: RobotZonePreset; pose: RobotTargetPose }
 
 type ControlCurrentState = 'idle' | 'paused' | 'emergency_stopped' | 'resumed'
 
@@ -616,7 +613,7 @@ export function MapControlPage() {
   const queryClient = useQueryClient()
   const [mapZoom, setMapZoom] = useState(1)
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
-  const [pendingTarget, setPendingTarget] = useState<RobotTargetPose | null>(null)
+  const [pendingTarget, setPendingTarget] = useState<PendingTargetData | null>(null)
   const [activeCommandTarget, setActiveCommandTarget] = useState<RobotTargetPose | null>(null)
   const [lastCommandId, setLastCommandId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -842,6 +839,19 @@ export function MapControlPage() {
     return null
   }
 
+  const primaryAction = useMemo(() => {
+    const canPause = controlActionDisabledReason('pause') === null
+    const canResume = controlActionDisabledReason('resume') === null
+
+    if (canPause) {
+      return { id: 'pause' as const, title: '일시 정지', icon: 'pause_circle', tone: 'warning' as const, disabled: false }
+    }
+    if (canResume) {
+      return { id: 'resume' as const, title: '주행 재개', icon: 'play_circle', tone: 'accent' as const, disabled: false }
+    }
+    return { id: 'resume' as const, title: '대기 중', icon: 'play_circle', tone: 'soft' as const, disabled: true }
+  }, [controlActionDisabledReason])
+
   useEffect(() => {
     if (!selectedAssetId && targetAssetId) {
       setSelectedAssetId(targetAssetId)
@@ -963,10 +973,10 @@ export function MapControlPage() {
                 setNotice(movementCommandBlockMessage)
                 return
               }
-              setPendingTarget(target)
+              setPendingTarget({ type: 'pose', pose: target })
               setNotice(`선택 좌표 ${formatPose(target)}. 아래 확인 버튼으로 이동 명령을 보낼 수 있습니다.`)
             }}
-            pendingTarget={pendingTarget}
+            pendingTarget={pendingTarget?.pose ?? null}
             pose={page.robotPose}
             scene={page.scene}
             selectedAssetId={selectedAssetId}
@@ -1011,20 +1021,35 @@ export function MapControlPage() {
           {pendingTarget ? (
             <div className="map-target-sheet">
               <div>
-                <span className="panel-kicker">클릭 이동 확인</span>
-                <strong>{formatPose(pendingTarget)}</strong>
-                <p>빈 지도 영역을 눌러 잡은 목표입니다. 확인을 누르면 `navigate_to_pose`로 전송됩니다.</p>
+                <span className="panel-kicker">
+                  {pendingTarget.type === 'preset' ? pendingTarget.preset.name : '좌표 지정'}
+                </span>
+                <strong>{formatPose(pendingTarget.pose)}</strong>
+                <p>
+                  {pendingTarget.type === 'preset'
+                    ? '선택하신 구역으로의 주행을 시작하시겠습니까?'
+                    : '빈 지도 영역을 눌러 잡은 목표입니다. 확인을 누르면 지정한 좌표로 주행합니다.'}
+                </p>
               </div>
               <div className="map-target-sheet__actions">
                 <button
                   className="action-button"
                   disabled={movementButtonsDisabled}
                   onClick={() => {
-                    navigateMutation.mutate(pendingTarget)
+                    if (movementCommandBlocked) {
+                      setNotice(movementCommandBlockMessage)
+                      return
+                    }
+                    if (pendingTarget.type === 'preset') {
+                      zoneMoveMutation.mutate(pendingTarget.preset)
+                    } else {
+                      navigateMutation.mutate(pendingTarget.pose)
+                    }
+                    setPendingTarget(null)
                   }}
                   type="button"
                 >
-                  이 좌표로 이동
+                  {pendingTarget.type === 'preset' ? '이 구역으로 이동' : '이 좌표로 이동'}
                 </button>
                 <button
                   className="action-button action-button--ghost"
@@ -1039,6 +1064,16 @@ export function MapControlPage() {
               </div>
             </div>
           ) : null}
+          <button
+            className="floating-emergency-button"
+            disabled={controlActionDisabledReason('emergency') !== null}
+            onClick={() => controlMutation.mutate('emergency')}
+            title={controlActionDisabledReason('emergency') ?? '비상 정지'}
+            type="button"
+          >
+            <AppIcon name="emergency_home" filled />
+            <span>비상 정지</span>
+          </button>
         </DevSurface>
 
         <aside className="map-sidebar">
@@ -1271,26 +1306,39 @@ export function MapControlPage() {
             {controlFeedbackMessage ? (
               <p className={`control-feedback ${controlFeedbackTone}`}>{controlFeedbackMessage}</p>
             ) : null}
-            <div className="control-tile-grid">
-              {controlActions.map((action) => (
-                <button
-                  className={`control-tile${action.tone === 'danger' ? ' control-tile--danger' : ''}`}
-                  disabled={controlActionDisabledReason(action.id) !== null}
-                  key={action.title}
-                  onClick={() => {
-                    controlMutation.mutate(action.id)
-                  }}
-                  title={controlActionDisabledReason(action.id) ?? action.title}
-                  type="button"
-                >
-                  <AppIcon
-                    className="control-tile-icon"
-                    filled={action.tone === 'danger'}
-                    name={action.icon}
-                  />
-                  <span>{action.title}</span>
-                </button>
-              ))}
+            <div className="control-tile-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <button
+                className={`control-tile control-tile--${primaryAction.tone}`}
+                disabled={primaryAction.disabled}
+                onClick={() => {
+                  controlMutation.mutate(primaryAction.id)
+                }}
+                title={primaryAction.disabled ? '현재 처리 가능한 제어 작업이 없습니다.' : primaryAction.title}
+                type="button"
+              >
+                <AppIcon
+                  className="control-tile-icon"
+                  filled={primaryAction.id === 'pause'}
+                  name={primaryAction.icon}
+                />
+                <span>{primaryAction.title}</span>
+              </button>
+
+              <button
+                className="control-tile"
+                disabled={controlActionDisabledReason('home') !== null}
+                onClick={() => {
+                  controlMutation.mutate('home')
+                }}
+                title={controlActionDisabledReason('home') ?? '홈 포즈로 복귀'}
+                type="button"
+              >
+                <AppIcon
+                  className="control-tile-icon"
+                  name="home"
+                />
+                <span>홈 복귀</span>
+              </button>
             </div>
           </DevSurface>
 
@@ -1327,7 +1375,7 @@ export function MapControlPage() {
                       setNotice(movementCommandBlockMessage)
                       return
                     }
-                    zoneMoveMutation.mutate(preset)
+                    setPendingTarget({ type: 'preset', preset, pose: preset.representativePose })
                   }}
                   type="button"
                 >
