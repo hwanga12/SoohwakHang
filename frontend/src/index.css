@@ -4590,16 +4590,20 @@ button.robot-facility-map__row-guide.is-clickable {
   place-items: center;
   padding: 24px;
   background: rgba(73, 57, 34, 0.34);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .farm-plant-modal__card {
   position: relative;
   width: min(480px, 100%);
-  display: grid;
-  gap: 14px;
   padding: 18px;
   border: 3px solid rgba(133, 94, 52, 0.14);
   border-radius: 28px;
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.84), transparent 24%),
     linear-gradient(180deg, rgba(255, 252, 246, 0.99), rgba(249, 241, 226, 0.98));
@@ -4607,6 +4611,37 @@ button.robot-facility-map__row-guide.is-clickable {
     0 26px 42px rgba(73, 57, 34, 0.22),
     0 6px 0 rgba(215, 195, 159, 0.9),
     inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.farm-plant-modal__content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.farm-plant-modal__content::-webkit-scrollbar {
+  width: 6px;
+  background: transparent;
+}
+
+.farm-plant-modal__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.farm-plant-modal__content::-webkit-scrollbar-thumb {
+  background: rgba(133, 94, 52, 0.15);
+  border-radius: 10px;
+}
+
+.farm-plant-modal__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(133, 94, 52, 0.3);
 }
 
 .farm-plant-modal__close {
@@ -4631,7 +4666,7 @@ button.robot-facility-map__row-guide.is-clickable {
 
 .farm-plant-modal__media {
   overflow: hidden;
-  min-height: 260px;
+  min-height: clamp(180px, 30vh, 260px);
   border-radius: 22px;
   border: 2px solid rgba(133, 94, 52, 0.1);
   background:
@@ -4691,10 +4726,11 @@ button.robot-facility-map__row-guide.is-clickable {
   .farm-plant-modal__card {
     padding: 16px;
     border-radius: 24px;
+    max-height: calc(100dvh - 28px);
   }
 
   .farm-plant-modal__media {
-    min-height: 220px;
+    min-height: clamp(160px, 28vh, 220px);
   }
 
   .farm-plant-modal__actions {

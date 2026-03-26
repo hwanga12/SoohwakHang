@@ -22,6 +22,7 @@ import {
   getPlantsPageData,
   getRobotPageData,
   harvestFallback,
+  pauseRobotMotion,
   plantsFallback,
   requestHarvestMission,
   robotFallback,
@@ -29,6 +30,7 @@ import {
   sendRobotNavigateCommand,
   sendRobotZoneMove,
   startFieldPatrolMission,
+  stopPatrolMission,
   triggerNutrientInjection,
   type HarvestPageData,
   type MissionDispatch,
@@ -134,6 +136,7 @@ type DiagnoseUiState = {
   badgeLabel: string
   badgeTone: 'table-tag--healthy' | 'table-tag--warning' | 'table-tag--danger'
   buttonLabel: string
+  buttonMode: 'start' | 'stop'
   buttonDisabled: boolean
 }
 
@@ -605,6 +608,7 @@ function buildDiagnoseUiState(
       badgeLabel: '전송 중',
       badgeTone: 'table-tag--warning',
       buttonLabel: '진단 요청 전송 중...',
+      buttonMode: 'start',
       buttonDisabled: true,
     }
   }
@@ -616,6 +620,7 @@ function buildDiagnoseUiState(
       badgeLabel: '좌표 없음',
       badgeTone: 'table-tag--danger',
       buttonLabel: '진단하기',
+      buttonMode: 'start',
       buttonDisabled: true,
     }
   }
@@ -625,6 +630,24 @@ function buildDiagnoseUiState(
     activeDiagnoseCommand !== null && activeDiagnoseCommand.plantId === currentPlantId
 
   if (trackingCurrentPlant) {
+    if (blockedMessage && latestCommandStatus.commandId !== activeDiagnoseCommand.commandId) {
+      return {
+        title: '새 진단 이동 차단됨',
+        detail: blockedMessage,
+        badgeLabel:
+          latestCommandStatus.controlState?.mode === 'emergency_stop'
+            ? '비상 정지'
+            : '일시정지',
+        badgeTone:
+          latestCommandStatus.controlState?.mode === 'emergency_stop'
+            ? 'table-tag--danger'
+            : 'table-tag--warning',
+        buttonLabel: '진단하기',
+        buttonMode: 'start',
+        buttonDisabled: true,
+      }
+    }
+
     const commandObserved = latestCommandStatus.commandId === activeDiagnoseCommand.commandId
 
     if (!commandObserved) {
@@ -640,8 +663,9 @@ function buildDiagnoseUiState(
             : '명령은 접수됐고 executor가 최신 상태 파일에 반영하는 중입니다.',
         badgeLabel: pollingDelayed ? '반영 대기' : '접수됨',
         badgeTone: 'table-tag--warning',
-        buttonLabel: '진단 요청 확인 중...',
-        buttonDisabled: true,
+        buttonLabel: '진단 중단',
+        buttonMode: 'stop',
+        buttonDisabled: false,
       }
     }
 
@@ -652,8 +676,9 @@ function buildDiagnoseUiState(
           detail: latestCommandStatus.message || 'executor가 목표 좌표 이동을 준비 중입니다.',
           badgeLabel: 'pending',
           badgeTone: 'table-tag--warning',
-          buttonLabel: '진단 요청 확인 중...',
-          buttonDisabled: true,
+          buttonLabel: '진단 중단',
+          buttonMode: 'stop',
+          buttonDisabled: false,
         }
       case 'running':
         return {
@@ -661,8 +686,9 @@ function buildDiagnoseUiState(
           detail: latestCommandStatus.message || '로봇이 선택한 식물의 진단 위치로 이동 중입니다.',
           badgeLabel: 'running',
           badgeTone: 'table-tag--warning',
-          buttonLabel: '진단 위치로 이동 중...',
-          buttonDisabled: true,
+          buttonLabel: '진단 중단',
+          buttonMode: 'stop',
+          buttonDisabled: false,
         }
       case 'succeeded':
         return {
@@ -671,6 +697,7 @@ function buildDiagnoseUiState(
           badgeLabel: 'succeeded',
           badgeTone: 'table-tag--healthy',
           buttonLabel: '다시 진단하기',
+          buttonMode: 'start',
           buttonDisabled: blockedMessage !== null,
         }
       case 'failed':
@@ -680,6 +707,7 @@ function buildDiagnoseUiState(
           badgeLabel: 'failed',
           badgeTone: 'table-tag--danger',
           buttonLabel: '다시 진단하기',
+          buttonMode: 'start',
           buttonDisabled: blockedMessage !== null,
         }
       case 'canceled':
@@ -689,6 +717,7 @@ function buildDiagnoseUiState(
           badgeLabel: 'canceled',
           badgeTone: 'table-tag--warning',
           buttonLabel: '다시 진단하기',
+          buttonMode: 'start',
           buttonDisabled: blockedMessage !== null,
         }
       default:
@@ -709,6 +738,7 @@ function buildDiagnoseUiState(
           ? 'table-tag--danger'
           : 'table-tag--warning',
       buttonLabel: '진단하기',
+      buttonMode: 'start',
       buttonDisabled: true,
     }
   }
@@ -719,12 +749,16 @@ function buildDiagnoseUiState(
     badgeLabel: '대기',
     badgeTone: 'table-tag--healthy',
     buttonLabel: '진단하기',
+    buttonMode: 'start',
     buttonDisabled: false,
   }
 }
 
 export function FarmCommandPage() {
   const queryClient = useQueryClient()
+  const [activeStopRequest, setActiveStopRequest] = useState<
+    'diagnosis' | 'harvest' | 'patrol-diagnosis' | 'patrol-harvest' | null
+  >(null)
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null)
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false)
@@ -817,6 +851,41 @@ export function FarmCommandPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
       await queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] })
+    },
+  })
+  const stopMotionMutation = useMutation({
+    mutationFn: pauseRobotMotion,
+    onSuccess: async () => {
+      const refreshJobs = [
+        queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
+        queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['robot', 'command-status'] }),
+        queryClient.invalidateQueries({ queryKey: ['page', 'harvest'] }),
+        queryClient.invalidateQueries({ queryKey: ['page', 'plants'] }),
+      ]
+
+      if (activeHarvestMission?.missionId) {
+        refreshJobs.push(queryClient.invalidateQueries({ queryKey: ['missions', 'status', activeHarvestMission.missionId] }))
+      }
+
+      await Promise.all(refreshJobs)
+    },
+  })
+  const stopPatrolMutation = useMutation({
+    mutationFn: stopPatrolMission,
+    onSuccess: async () => {
+      const refreshJobs = [
+        queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
+        queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['page', 'harvest'] }),
+        queryClient.invalidateQueries({ queryKey: ['page', 'plants'] }),
+      ]
+
+      if (activePatrolMission?.missionId) {
+        refreshJobs.push(queryClient.invalidateQueries({ queryKey: ['missions', 'status', activePatrolMission.missionId] }))
+      }
+
+      await Promise.all(refreshJobs)
     },
   })
   const diagnoseMutation = useMutation({
@@ -1224,10 +1293,28 @@ export function FarmCommandPage() {
   const missionRequestInFlight =
     harvestMutation.isPending
     || patrolMutation.isPending
+    || stopMotionMutation.isPending
+    || stopPatrolMutation.isPending
     || (harvestMissionFeedback !== null && !harvestMissionFeedback.isTerminal)
     || (patrolMissionFeedback !== null && !patrolMissionFeedback.isTerminal)
   const harvestActionDisabled = missionControlBlocked || missionRequestInFlight
   const patrolActionDisabled = missionControlBlocked || missionRequestInFlight
+  const selectedPlantHasActiveHarvestRequest =
+    selectedPlantDetail !== null
+    && activeHarvestMission?.plantId === selectedPlantDetail.id
+    && harvestMissionFeedback !== null
+    && !harvestMissionFeedback.isTerminal
+    && !missionControlBlocked
+  const diagnosisPatrolActive =
+    activePatrolMission?.mode === 'diagnosis'
+    && patrolMissionFeedback !== null
+    && !patrolMissionFeedback.isTerminal
+    && !missionControlBlocked
+  const harvestPatrolActive =
+    activePatrolMission?.mode === 'harvest'
+    && patrolMissionFeedback !== null
+    && !patrolMissionFeedback.isTerminal
+    && !missionControlBlocked
   const selectedPlantHarvestRuntime = useMemo(
     () => (
       selectedPlantDetail
@@ -1516,6 +1603,55 @@ export function FarmCommandPage() {
     })
   }
 
+  const handleStopMotion = (context: 'diagnosis' | 'harvest') => {
+    if (stopMotionMutation.isPending) {
+      return
+    }
+
+    setUiMessage(null)
+    setActivityState(context === 'diagnosis' ? '진단 이동 중단 요청 중' : '수확 중단 요청 중')
+    setActiveStopRequest(context)
+    stopMotionMutation.mutate(undefined, {
+      onSuccess: (message) => {
+        if (context === 'diagnosis') {
+          setActiveDiagnoseCommand(null)
+          setObservedDiagnoseState(null)
+        }
+
+        setActivityState('일시정지')
+        setUiMessage(message)
+      },
+      onError: (error: Error) => {
+        setUiMessage(error.message)
+      },
+      onSettled: () => {
+        setActiveStopRequest(null)
+      },
+    })
+  }
+
+  const handleStopPatrol = (mode: 'diagnosis' | 'harvest') => {
+    if (stopPatrolMutation.isPending) {
+      return
+    }
+
+    setUiMessage(null)
+    setActivityState(mode === 'diagnosis' ? '진단 패트롤 중단 요청 중' : '수확 패트롤 중단 요청 중')
+    setActiveStopRequest(mode === 'diagnosis' ? 'patrol-diagnosis' : 'patrol-harvest')
+    stopPatrolMutation.mutate(undefined, {
+      onSuccess: (message) => {
+        setActivityState('일시정지')
+        setUiMessage(message)
+      },
+      onError: (error: Error) => {
+        setUiMessage(error.message)
+      },
+      onSettled: () => {
+        setActiveStopRequest(null)
+      },
+    })
+  }
+
   const handleDiagnose = () => {
     const targetPlant = selectedAsset?.kind === 'plant'
       ? selectedPlantDetail
@@ -1680,17 +1816,43 @@ export function FarmCommandPage() {
       ? patrolMissionFeedback
       : harvestMissionFeedback
   const harvestButtonLabel =
-    selectedPlantHarvestRuntime?.isHandled
-      ? '수확 및 적재 완료'
-      : harvestMutation.isPending && activeHarvestMission === null
-        ? '수확 요청 중...'
-        : selectedPlantHarvestRuntime?.isActive
-          ? `${selectedPlantHarvestRuntime.phaseLabel}`
-          : missionRequestInFlight && activeHarvestMission !== null
-            ? '다른 수확 진행 중...'
-            : '수확하기'
+    selectedPlantHasActiveHarvestRequest
+      ? activeStopRequest === 'harvest' && stopMotionMutation.isPending
+        ? '수확 중단 요청 중...'
+        : '수확 중단'
+      : selectedPlantHarvestRuntime?.isHandled
+        ? '수확 및 적재 완료'
+        : harvestMutation.isPending && activeHarvestMission === null
+          ? '수확 요청 중...'
+          : selectedPlantHarvestRuntime?.isActive
+            ? `${selectedPlantHarvestRuntime.phaseLabel}`
+            : missionRequestInFlight && activeHarvestMission !== null
+              ? '다른 수확 진행 중...'
+              : '수확하기'
   const harvestButtonDisabled =
-    harvestActionDisabled || selectedPlantHarvestRuntime?.isHandled === true
+    selectedPlantHasActiveHarvestRequest
+      ? stopMotionMutation.isPending
+      : harvestActionDisabled || selectedPlantHarvestRuntime?.isHandled === true
+  const diagnosisPatrolButtonLabel =
+    diagnosisPatrolActive
+      ? activeStopRequest === 'patrol-diagnosis' && stopPatrolMutation.isPending
+        ? '패트롤로 병 진단 중단 요청 중...'
+        : '패트롤로 병 진단 중단'
+      : patrolMutation.isPending && activePatrolMission === null
+        ? '진단 패트롤 요청 중...'
+        : '패트롤로 병 진단'
+  const diagnosisPatrolButtonDisabled =
+    diagnosisPatrolActive ? stopPatrolMutation.isPending : patrolActionDisabled
+  const harvestPatrolButtonLabel =
+    harvestPatrolActive
+      ? activeStopRequest === 'patrol-harvest' && stopPatrolMutation.isPending
+        ? '패트롤로 전체 수확 중단 요청 중...'
+        : '패트롤로 전체 수확 중단'
+      : patrolMutation.isPending && activePatrolMission === null
+        ? '수확 패트롤 요청 중...'
+        : '패트롤로 전체 수확'
+  const harvestPatrolButtonDisabled =
+    harvestPatrolActive ? stopPatrolMutation.isPending : patrolActionDisabled
 
   const resultItems = [
     {
@@ -1914,23 +2076,33 @@ export function FarmCommandPage() {
               <div className="farm-action-row">
                 <button
                   className="action-button"
-                  disabled={patrolActionDisabled}
+                  disabled={diagnosisPatrolButtonDisabled}
                   onClick={() => {
+                    if (diagnosisPatrolActive) {
+                      handleStopPatrol('diagnosis')
+                      return
+                    }
+
                     handleStartPatrol('diagnosis')
                   }}
                   type="button"
                 >
-                  {patrolMutation.isPending && activePatrolMission === null ? '진단 패트롤 요청 중...' : '패트롤로 병 진단'}
+                  {diagnosisPatrolButtonLabel}
                 </button>
                 <button
                   className="action-button action-button--warning"
-                  disabled={patrolActionDisabled}
+                  disabled={harvestPatrolButtonDisabled}
                   onClick={() => {
+                    if (harvestPatrolActive) {
+                      handleStopPatrol('harvest')
+                      return
+                    }
+
                     handleStartPatrol('harvest')
                   }}
                   type="button"
                 >
-                  {patrolMutation.isPending && activePatrolMission === null ? '수확 패트롤 요청 중...' : '패트롤로 전체 수확'}
+                  {harvestPatrolButtonLabel}
                 </button>
               </div>
               {missionControlBlockMessage ? <p className="muted">{missionControlBlockMessage}</p> : null}
@@ -2073,126 +2245,144 @@ export function FarmCommandPage() {
             >
               <AppIcon name="remove" />
             </button>
+            <div className="farm-plant-modal__content">
+              <div className="farm-plant-modal__media">
+                <MockupImage
+                  alt={`${selectedPlantDetail.name} 확인 이미지`}
+                  className="farm-plant-modal__image"
+                  height="100%"
+                  label={selectedPlantObservation?.displayLabel || selectedPlantDetail.latestDisplayLabel || '발표용 이미지'}
+                  src={selectedPlantPreviewImage || previewImageForAsset('plant', selectedPlantAsset.status)}
+                />
+              </div>
 
-            <div className="farm-plant-modal__media">
-              <MockupImage
-                alt={`${selectedPlantDetail.name} 확인 이미지`}
-                className="farm-plant-modal__image"
-                height="100%"
-                label={selectedPlantObservation?.displayLabel || selectedPlantDetail.latestDisplayLabel || '발표용 이미지'}
-                src={selectedPlantPreviewImage || previewImageForAsset('plant', selectedPlantAsset.status)}
-              />
-            </div>
-
-            <div className="farm-plant-modal__body">
-              <div className="split-row">
-                <div>
-                  <span className="panel-kicker">작물 확인</span>
-                  <h3 className="list-title" id="farm-plant-modal-title">{selectedPlantDetail.name}</h3>
+              <div className="farm-plant-modal__body">
+                <div className="split-row">
+                  <div>
+                    <span className="panel-kicker">작물 확인</span>
+                    <h3 className="list-title" id="farm-plant-modal-title">{selectedPlantDetail.name}</h3>
+                  </div>
+                  <span className={`table-tag table-tag--${selectedTag.tone}`}>{selectedTag.label}</span>
                 </div>
-                <span className={`table-tag table-tag--${selectedTag.tone}`}>{selectedTag.label}</span>
-              </div>
 
-              <p className="farm-helper-copy">
-                {selectedPlantHarvestRuntime?.isActive || selectedPlantHarvestRuntime?.isHandled
-                  ? `${selectedPlantHarvestRuntime.statusLabel} · ${selectedPlantHarvestRuntime.detail}`
-                  : selectedPlantObservation
-                    ? `상태가 좋지 않은 잎을 진단한 결과 ${selectedPlantObservation.displayLabel}로 기록되었습니다. ${selectedPlantDetail.recommendedAction}`
-                    : selectedPlantHarvestRuntime
-                      ? `${selectedPlantHarvestRuntime.statusLabel} · ${selectedPlantHarvestRuntime.detail}`
-                      : `${selectedPlantDetail.status} · ${selectedPlantDetail.recommendedAction}`}
-              </p>
+                <div className="farm-plant-modal__actions">
+                  <button
+                    className={diagnoseUiState.buttonMode === 'stop' ? 'action-button action-button--warning' : 'action-button'}
+                    disabled={
+                      diagnoseUiState.buttonMode === 'stop'
+                        ? stopMotionMutation.isPending
+                        : diagnoseUiState.buttonDisabled
+                    }
+                    onClick={() => {
+                      if (diagnoseUiState.buttonMode === 'stop') {
+                        handleStopMotion('diagnosis')
+                        return
+                      }
 
-              <div className="chip-row">
-                <span className="chip">{selectedPlantDetail.zoneLabel}</span>
-                <span className="chip">{selectedPlantDetail.positionLabel}</span>
-                <span className="chip">건강도 {selectedPlantDetail.health}%</span>
-                {selectedPlantHarvestRuntime ? <span className="chip">{selectedPlantHarvestRuntime.phaseLabel}</span> : null}
-                {selectedPlantHarvestRuntime ? <span className="chip">{selectedPlantHarvestRuntime.basketLabel}</span> : null}
-                {selectedPlantObservation?.reviewedAt ? <span className="chip">{selectedPlantObservation.reviewedAt}</span> : null}
-              </div>
-              {missionControlBlockMessage ? <p className="muted">{missionControlBlockMessage}</p> : null}
-              {selectedPlantHarvestRuntime ? (
+                      handleDiagnose()
+                    }}
+                    type="button"
+                  >
+                    {diagnoseUiState.buttonMode === 'stop' && activeStopRequest === 'diagnosis' && stopMotionMutation.isPending
+                      ? '진단 중단 요청 중...'
+                      : diagnoseUiState.buttonLabel}
+                  </button>
+                  <button
+                    className="action-button action-button--warning"
+                    disabled={harvestButtonDisabled}
+                    onClick={() => {
+                      if (selectedPlantHasActiveHarvestRequest) {
+                        handleStopMotion('harvest')
+                        return
+                      }
+
+                      handleHarvest()
+                    }}
+                    type="button"
+                  >
+                    {harvestButtonLabel}
+                  </button>
+                </div>
+
+                <p className="farm-helper-copy">
+                  {selectedPlantHarvestRuntime?.isActive || selectedPlantHarvestRuntime?.isHandled
+                    ? `${selectedPlantHarvestRuntime.statusLabel} · ${selectedPlantHarvestRuntime.detail}`
+                    : selectedPlantObservation
+                      ? `상태가 좋지 않은 잎을 진단한 결과 ${selectedPlantObservation.displayLabel}로 기록되었습니다. ${selectedPlantDetail.recommendedAction}`
+                      : selectedPlantHarvestRuntime
+                        ? `${selectedPlantHarvestRuntime.statusLabel} · ${selectedPlantHarvestRuntime.detail}`
+                        : `${selectedPlantDetail.status} · ${selectedPlantDetail.recommendedAction}`}
+                </p>
+
+                <div className="chip-row">
+                  <span className="chip">{selectedPlantDetail.zoneLabel}</span>
+                  <span className="chip">{selectedPlantDetail.positionLabel}</span>
+                  <span className="chip">건강도 {selectedPlantDetail.health}%</span>
+                  {selectedPlantHarvestRuntime ? <span className="chip">{selectedPlantHarvestRuntime.phaseLabel}</span> : null}
+                  {selectedPlantHarvestRuntime ? <span className="chip">{selectedPlantHarvestRuntime.basketLabel}</span> : null}
+                  {selectedPlantObservation?.reviewedAt ? <span className="chip">{selectedPlantObservation.reviewedAt}</span> : null}
+                </div>
+                {missionControlBlockMessage ? <p className="muted">{missionControlBlockMessage}</p> : null}
+                {selectedPlantHarvestRuntime ? (
+                  <div className="farm-plant-modal__feedback">
+                    <div className="farm-plant-modal__feedback-head">
+                      <strong>{selectedPlantHarvestRuntime.statusLabel}</strong>
+                      <span className={`table-tag table-tag--${
+                        selectedPlantHarvestRuntime.isHandled
+                          ? 'healthy'
+                          : selectedPlantHarvestRuntime.isActive
+                            ? 'warning'
+                            : 'accent'
+                      }`}
+                      >
+                        {selectedPlantHarvestRuntime.phaseLabel}
+                      </span>
+                    </div>
+                    <p className="muted">{selectedPlantHarvestRuntime.detail}</p>
+                    <div className="chip-row">
+                      <span className="chip">{selectedPlantHarvestRuntime.latestResultLabel}</span>
+                      {activeHarvestMission?.missionId ? <span className="chip">{activeHarvestMission.missionId}</span> : null}
+                    </div>
+                  </div>
+                ) : null}
+                {harvestMissionFeedback ? (
+                  <>
+                    <div className="chip-row">
+                      <span className={`table-tag ${harvestMissionFeedback.tagTone}`}>{harvestMissionFeedback.badgeLabel}</span>
+                      {activeHarvestMission?.plantName ? <span className="chip">{activeHarvestMission.plantName}</span> : null}
+                      {harvestMissionFeedback.missionId ? <span className="chip">{harvestMissionFeedback.missionId}</span> : null}
+                    </div>
+                    <p className="muted">{harvestMissionFeedback.title} · {harvestMissionFeedback.detail}</p>
+                  </>
+                ) : null}
+
                 <div className="farm-plant-modal__feedback">
                   <div className="farm-plant-modal__feedback-head">
-                    <strong>{selectedPlantHarvestRuntime.statusLabel}</strong>
-                    <span className={`table-tag table-tag--${
-                      selectedPlantHarvestRuntime.isHandled
-                        ? 'healthy'
-                        : selectedPlantHarvestRuntime.isActive
-                          ? 'warning'
-                          : 'accent'
-                    }`}
-                    >
-                      {selectedPlantHarvestRuntime.phaseLabel}
+                    <strong>최근 진단 결과</strong>
+                    <span className={`table-tag ${selectedPlantObservation ? 'table-tag--danger' : 'table-tag--warning'}`}>
+                      {selectedPlantObservation ? 'live' : '대기'}
                     </span>
                   </div>
-                  <p className="muted">{selectedPlantHarvestRuntime.detail}</p>
-                  <div className="chip-row">
-                    <span className="chip">{selectedPlantHarvestRuntime.latestResultLabel}</span>
-                    {activeHarvestMission?.missionId ? <span className="chip">{activeHarvestMission.missionId}</span> : null}
-                  </div>
+                  <p className="muted">
+                    {selectedPlantObservation
+                      ? `${selectedPlantObservation.displayLabel} · ${selectedPlantObservation.reviewedAt || '시각 기록 대기'}`
+                      : '상태가 좋지 않은 잎을 진단하면 사진과 라벨이 여기 표시됩니다.'}
+                  </p>
+                  <p className="muted">
+                    {selectedPlantObservation?.detail
+                      || 'backend에서 실제 진단 결과가 들어오면 mock 이미지 대신 실제 사진이 우선 표시됩니다.'}
+                  </p>
                 </div>
-              ) : null}
-              {harvestMissionFeedback ? (
-                <>
-                  <div className="chip-row">
-                    <span className={`table-tag ${harvestMissionFeedback.tagTone}`}>{harvestMissionFeedback.badgeLabel}</span>
-                    {activeHarvestMission?.plantName ? <span className="chip">{activeHarvestMission.plantName}</span> : null}
-                    {harvestMissionFeedback.missionId ? <span className="chip">{harvestMissionFeedback.missionId}</span> : null}
-                  </div>
-                  <p className="muted">{harvestMissionFeedback.title} · {harvestMissionFeedback.detail}</p>
-                </>
-              ) : null}
 
-              <div className="farm-plant-modal__feedback">
-                <div className="farm-plant-modal__feedback-head">
-                  <strong>최근 진단 결과</strong>
-                  <span className={`table-tag ${selectedPlantObservation ? 'table-tag--danger' : 'table-tag--warning'}`}>
-                    {selectedPlantObservation ? 'live' : '대기'}
-                  </span>
+                <div className="farm-plant-modal__feedback">
+                  <div className="farm-plant-modal__feedback-head">
+                    <strong>{diagnoseUiState.title}</strong>
+                    <span className={`table-tag ${diagnoseUiState.badgeTone}`}>
+                      {diagnoseUiState.badgeLabel}
+                    </span>
+                  </div>
+                  <p className="muted">{diagnoseUiState.detail}</p>
                 </div>
-                <p className="muted">
-                  {selectedPlantObservation
-                    ? `${selectedPlantObservation.displayLabel} · ${selectedPlantObservation.reviewedAt || '시각 기록 대기'}`
-                    : '상태가 좋지 않은 잎을 진단하면 사진과 라벨이 여기 표시됩니다.'}
-                </p>
-                <p className="muted">
-                  {selectedPlantObservation?.detail
-                    || 'backend에서 실제 진단 결과가 들어오면 mock 이미지 대신 실제 사진이 우선 표시됩니다.'}
-                </p>
-              </div>
-
-              <div className="farm-plant-modal__actions">
-                <button
-                  className="action-button"
-                  disabled={diagnoseUiState.buttonDisabled}
-                  onClick={() => {
-                    handleDiagnose()
-                  }}
-                  type="button"
-                >
-                  {diagnoseUiState.buttonLabel}
-                </button>
-                <button
-                  className="action-button action-button--warning"
-                  disabled={harvestButtonDisabled}
-                  onClick={() => {
-                    handleHarvest()
-                  }}
-                  type="button"
-                >
-                  {harvestButtonLabel}
-                </button>
-              </div>
-              <div className="farm-plant-modal__feedback">
-                <div className="farm-plant-modal__feedback-head">
-                  <strong>{diagnoseUiState.title}</strong>
-                  <span className={`table-tag ${diagnoseUiState.badgeTone}`}>
-                    {diagnoseUiState.badgeLabel}
-                  </span>
-                </div>
-                <p className="muted">{diagnoseUiState.detail}</p>
               </div>
             </div>
           </div>
@@ -2226,56 +2416,57 @@ export function FarmCommandPage() {
             >
               <AppIcon name="remove" />
             </button>
+            <div className="farm-plant-modal__content">
+              <div className="farm-plant-modal__media">
+                <MockupImage
+                  alt={`${selectedSprinklerAsset.label} 확인 이미지`}
+                  className="farm-plant-modal__image"
+                  height="100%"
+                  src={previewImageForAsset('sprinkler', selectedSprinklerAsset.status)}
+                />
+              </div>
 
-            <div className="farm-plant-modal__media">
-              <MockupImage
-                alt={`${selectedSprinklerAsset.label} 확인 이미지`}
-                className="farm-plant-modal__image"
-                height="100%"
-                src={previewImageForAsset('sprinkler', selectedSprinklerAsset.status)}
-              />
-            </div>
-
-            <div className="farm-plant-modal__body">
-              <div className="split-row">
-                <div>
-                  <span className="panel-kicker">급수 확인</span>
-                  <h3 className="list-title" id="farm-sprinkler-modal-title">{selectedSprinklerAsset.label}</h3>
+              <div className="farm-plant-modal__body">
+                <div className="split-row">
+                  <div>
+                    <span className="panel-kicker">급수 확인</span>
+                    <h3 className="list-title" id="farm-sprinkler-modal-title">{selectedSprinklerAsset.label}</h3>
+                  </div>
+                  <span className={`table-tag table-tag--${selectedTag.tone}`}>{selectedTag.label}</span>
                 </div>
-                <span className={`table-tag table-tag--${selectedTag.tone}`}>{selectedTag.label}</span>
-              </div>
 
-              <p className="farm-helper-copy">정상 작동 중 · 물주기와 영양제 주기를 바로 실행할 수 있습니다.</p>
+                <p className="farm-helper-copy">정상 작동 중 · 물주기와 영양제 주기를 바로 실행할 수 있습니다.</p>
 
-              <div className="chip-row">
-                <span className="chip">zone {selectedSprinklerAsset.zoneId}</span>
-                <span className="chip">x {selectedSprinklerAsset.position.x.toFixed(1)} / y {selectedSprinklerAsset.position.y.toFixed(1)}</span>
-                <span className="chip">{selectedActionRecord?.label ?? '작업 대기'}</span>
-              </div>
+                <div className="chip-row">
+                  <span className="chip">zone {selectedSprinklerAsset.zoneId}</span>
+                  <span className="chip">x {selectedSprinklerAsset.position.x.toFixed(1)} / y {selectedSprinklerAsset.position.y.toFixed(1)}</span>
+                  <span className="chip">{selectedActionRecord?.label ?? '작업 대기'}</span>
+                </div>
 
-              <div className="farm-plant-modal__actions">
-                <button
-                  className="action-button action-button--soft"
-                  disabled={wateringMutation.isPending}
-                  onClick={() => {
-                    handleWatering()
-                    closeAssetModal()
-                  }}
-                  type="button"
-                >
-                  {wateringMutation.isPending ? '물 주는 중...' : '물주기'}
-                </button>
-                <button
-                  className="action-button"
-                  disabled={nutrientMutation.isPending}
-                  onClick={() => {
-                    handleNutrient()
-                    closeAssetModal()
-                  }}
-                  type="button"
-                >
-                  {nutrientMutation.isPending ? '영양제 주는 중...' : '영양제 주기'}
-                </button>
+                <div className="farm-plant-modal__actions">
+                  <button
+                    className="action-button action-button--soft"
+                    disabled={wateringMutation.isPending}
+                    onClick={() => {
+                      handleWatering()
+                      closeAssetModal()
+                    }}
+                    type="button"
+                  >
+                    {wateringMutation.isPending ? '물 주는 중...' : '물주기'}
+                  </button>
+                  <button
+                    className="action-button"
+                    disabled={nutrientMutation.isPending}
+                    onClick={() => {
+                      handleNutrient()
+                      closeAssetModal()
+                    }}
+                    type="button"
+                  >
+                    {nutrientMutation.isPending ? '영양제 주는 중...' : '영양제 주기'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
