@@ -1,7 +1,7 @@
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
 import os
 
@@ -20,6 +20,15 @@ def generate_launch_description():
         default_value=default_params,
         description='Harvest action server parameter file.',
     )
+    runtime_dir_arg = DeclareLaunchArgument(
+        'runtime_dir',
+        default_value=EnvironmentVariable('AGRIBOT_RUNTIME_DIR', default_value='/tmp/agribot_runtime'),
+        description='Shared runtime directory for harvest runtime artifacts.',
+    )
+    runtime_dir_env = SetEnvironmentVariable(
+        'AGRIBOT_RUNTIME_DIR',
+        LaunchConfiguration('runtime_dir'),
+    )
 
     harvest_action_server = Node(
         package='agribot_navigation',
@@ -35,5 +44,7 @@ def generate_launch_description():
     return LaunchDescription([
         use_sim_time_arg,
         params_file_arg,
+        runtime_dir_arg,
+        runtime_dir_env,
         harvest_action_server,
     ])

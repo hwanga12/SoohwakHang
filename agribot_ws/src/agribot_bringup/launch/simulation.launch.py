@@ -20,7 +20,7 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -28,10 +28,12 @@ import os
 
 def generate_launch_description():
     gz_partition = 'agribot_sim'
+    runtime_dir = LaunchConfiguration('runtime_dir')
     
     # Environment variables
     env_vars = [
         SetEnvironmentVariable('GZ_PARTITION', gz_partition),
+        SetEnvironmentVariable('AGRIBOT_RUNTIME_DIR', runtime_dir),
         # Ensure agribot_interfaces python bindings are found
         SetEnvironmentVariable(
             'PYTHONPATH', 
@@ -75,6 +77,11 @@ def generate_launch_description():
         'use_iot',
         default_value='true',
         description='Launch the IoT status/result publishing stack.',
+    )
+    runtime_dir_arg = DeclareLaunchArgument(
+        'runtime_dir',
+        default_value=EnvironmentVariable('AGRIBOT_RUNTIME_DIR', default_value='/tmp/agribot_runtime'),
+        description='Shared runtime directory for backend file bridge and ROS executors.',
     )
     use_perception_arg = DeclareLaunchArgument(
         'use_perception',
@@ -157,11 +164,12 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        *env_vars,
         use_iot_arg,
+        runtime_dir_arg,
         use_perception_arg,
         backend_confirm_url_arg,
         mqtt_force_log_only_arg,
+        *env_vars,
         spawn_agribot,
         runtime_snapshot_exporter,
         robot_manual_command_executor,
