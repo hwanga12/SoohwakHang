@@ -3,7 +3,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/agribot_env.sh"
+
 BACKEND_DIR="${REPO_ROOT}/backend"
 PYTHON_BIN="${BACKEND_DIR}/.venv/bin/python"
 BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
@@ -31,4 +32,6 @@ if command -v pgrep >/dev/null 2>&1; then
 fi
 
 cd "${BACKEND_DIR}"
+export AGRIBOT_RUNTIME_DIR
+echo "Using AGRIBOT_RUNTIME_DIR=${AGRIBOT_RUNTIME_DIR}"
 exec "${PYTHON_BIN}" -m uvicorn main:app --host "${BACKEND_HOST}" --port "${BACKEND_PORT}"

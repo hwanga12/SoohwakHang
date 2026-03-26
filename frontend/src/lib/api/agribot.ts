@@ -2513,6 +2513,53 @@ export async function sendRobotControlAction(
   )
 }
 
+export async function pauseRobotMotion() {
+  return postWithFallback(
+    [
+      {
+        path: '/robot/control/pause',
+        body: {
+          robot_id: 'AGR-02',
+          requested_by: 'frontend-operator',
+        },
+      },
+      {
+        path: '/robot/commands',
+        body: {
+          robot_id: 'AGR-02',
+          requested_by: 'frontend-operator',
+          command_type: 'pause_motion',
+        },
+      },
+    ],
+    '주행 중단 요청을 접수했습니다. 실제 정지 상태를 확인하는 중입니다.',
+  )
+}
+
+export async function stopPatrolMission() {
+  return postWithFallback(
+    [
+      {
+        path: '/missions/patrol/stop',
+        body: {
+          robot_id: 'AGR-02',
+          requested_by: 'frontend-operator',
+          reason: 'ui_stop',
+        },
+      },
+      {
+        path: '/robot/commands',
+        body: {
+          robot_id: 'AGR-02',
+          requested_by: 'frontend-operator',
+          command_type: 'pause_patrol',
+        },
+      },
+    ],
+    '패트롤 중단 요청을 접수했습니다. 실제 정지 상태를 확인하는 중입니다.',
+  )
+}
+
 export async function getLatestRobotCommandStatus(): Promise<RobotCommandStatus> {
   const payload = await safeGet('/robot/commands/latest')
   return readRobotCommandStatus(payload) ?? robotFallback.latestCommandStatus
