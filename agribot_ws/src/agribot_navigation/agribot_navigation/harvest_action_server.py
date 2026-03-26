@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import math
 from pathlib import Path
@@ -28,14 +29,27 @@ from .harvest_action_support import (
     PHASE_PROGRESS_PCT,
     alignment_required,
     build_basket_state,
+    build_basket_state_payload,
     build_feedback,
     build_failure_alert_payload,
     build_harvest_event,
+    build_harvest_event_payload,
     build_mission_status,
+    build_mission_status_payload,
     build_result,
     ensure_harvest_target_available,
     resolve_harvest_goal,
     should_retry_phase,
+)
+from .harvest_runtime_store import (
+    harvest_action_status_path,
+    harvest_action_status_record_path,
+    harvest_basket_state_path,
+    harvest_event_record_path,
+    harvest_failure_alert_path,
+    harvest_latest_event_path,
+    runtime_dir_from_env,
+    write_json_atomic,
 )
 from .harvest_routing import (
     CropCatalog,
@@ -102,6 +116,7 @@ class HarvestActionServerNode(Node):
         self._basket_state_topic = str(self.get_parameter('basket_state_topic').value)
         self._mission_status_topic = str(self.get_parameter('mission_status_topic').value)
         self._failure_alert_topic = str(self.get_parameter('failure_alert_topic').value)
+        self._runtime_dir = runtime_dir_from_env()
         self._nav_server_wait_sec = float(self.get_parameter('nav_server_wait_sec').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
         self._patrol_pause_timeout_sec = float(self.get_parameter('patrol_pause_timeout_sec').value)
@@ -219,7 +234,8 @@ class HarvestActionServerNode(Node):
             f'harvest_event_topic={self._harvest_event_topic}, '
             f'basket_state_topic={self._basket_state_topic}, '
             f'mission_status_topic={self._mission_status_topic}, '
-            f'failure_alert_topic={self._failure_alert_topic}'
+            f'failure_alert_topic={self._failure_alert_topic}, '
+            f'runtime_dir={self._runtime_dir}'
         )
         self._publish_basket_state()
 
@@ -451,7 +467,7 @@ class HarvestActionServerNode(Node):
                 success=True,
             )
             event.header.stamp = self.get_clock().now().to_msg()
-            self._harvest_event_publisher.publish(event)
+            self._publish_harvest_event(event)
             self._publish_basket_state()
             harvest_completed = True
             success_event_id = event_id
@@ -531,7 +547,7 @@ class HarvestActionServerNode(Node):
                     failure_reason=str(exc),
                 )
                 event.header.stamp = self.get_clock().now().to_msg()
-                self._harvest_event_publisher.publish(event)
+                self._publish_harvest_event(event)
             self._publish_execution_status(
                 current_phase=self._last_execution_phase or 'CANCELED',
                 state='CANCELED',
@@ -567,7 +583,7 @@ class HarvestActionServerNode(Node):
                     failure_reason=str(exc),
                 )
                 event.header.stamp = self.get_clock().now().to_msg()
-                self._harvest_event_publisher.publish(event)
+                self._publish_harvest_event(event)
             safe_stop_completed = self._perform_safety_stop(reason=str(exc))
             failure_phase = self._last_execution_phase or 'FAILED'
             safe_stop_message = (
@@ -815,6 +831,12 @@ class HarvestActionServerNode(Node):
             harvest_completed=harvest_completed,
         )
         self._failure_alert_publisher.publish(alert)
+        try:
+            payload = json.loads(alert.data)
+        except json.JSONDecodeError:
+            payload = {'raw_payload': alert.data}
+        payload['updated_at'] = self._iso_now()
+        write_json_atomic(harvest_failure_alert_path(self._runtime_dir), payload)
         self.get_logger().error(
             f'Published harvest failure alert for {self._current_tomato_id}: {failure_reason}'
         )
@@ -961,6 +983,8 @@ class HarvestActionServerNode(Node):
         )
         state.header.stamp = self.get_clock().now().to_msg()
         self._basket_state_publisher.publish(state)
+        payload = build_basket_state_payload(state, updated_at=self._iso_now())
+        write_json_atomic(harvest_basket_state_path(self._runtime_dir), payload)
 
     def _resolve_failure_plant_id(self, goal_request: HarvestTomato.Goal) -> str:
         plant_id = self._normalize_request_text(goal_request.plant_id)
@@ -980,6 +1004,16 @@ class HarvestActionServerNode(Node):
         if normalized.lower() in {'none', 'null'}:
             return ''
         return normalized
+
+    @staticmethod
+    def _iso_now() -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    def _publish_harvest_event(self, event: HarvestEvent) -> None:
+        self._harvest_event_publisher.publish(event)
+        payload = build_harvest_event_payload(event, occurred_at=self._iso_now())
+        write_json_atomic(harvest_latest_event_path(self._runtime_dir), payload)
+        write_json_atomic(harvest_event_record_path(event.event_id, self._runtime_dir), payload)
 
     def _publish_execution_status(
         self,
@@ -1012,6 +1046,12 @@ class HarvestActionServerNode(Node):
         )
         status.header.stamp = self.get_clock().now().to_msg()
         self._mission_status_publisher.publish(status)
+        payload = build_mission_status_payload(status, updated_at=self._iso_now())
+        write_json_atomic(harvest_action_status_path(self._runtime_dir), payload)
+        write_json_atomic(
+            harvest_action_status_record_path(self._current_mission_id, self._runtime_dir),
+            payload,
+        )
 
     def _clear_execution_context(self) -> None:
         self._current_mission_id = ''

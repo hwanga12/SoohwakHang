@@ -6,6 +6,7 @@ thin_inference_node:
     backend_confirm_url: http://127.0.0.1:8000/api/v1/inference/confirm
     zone_id: greenhouse_01
     robot_id: agribot
+    model_device: auto
     imgsz: 640
     confidence_threshold: 0.35
     frame_stride: 8

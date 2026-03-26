@@ -6,10 +6,14 @@ from agribot_bringup.control_state import (
 from agribot_bringup.runtime_snapshot_service import (
     build_pose_snapshot_payload,
     build_manual_command_status_payload,
+    build_mission_bridge_status_payload,
     build_semantic_layer_snapshot,
     control_state_path,
     manual_command_path,
     manual_command_status_path,
+    mission_request_path,
+    mission_status_path,
+    mission_status_record_path,
     read_map_metadata,
     runtime_dir_from_env,
 )
@@ -67,6 +71,9 @@ def test_manual_command_paths_and_status_payload_follow_runtime_contract() -> No
     assert manual_command_path(runtime_dir).name == 'robot_manual_command.json'
     assert manual_command_status_path(runtime_dir).name == 'robot_manual_command_status.json'
     assert control_state_path(runtime_dir).name == 'robot_control_state.json'
+    assert mission_request_path(runtime_dir).name == 'robot_mission_request.json'
+    assert mission_status_path(runtime_dir).name == 'robot_mission_status.json'
+    assert mission_status_record_path('mission:patrol/001', runtime_dir).name == 'mission_patrol_001.json'
 
     control_state = build_control_state_payload(
         mode=ControlMode.PAUSED,
@@ -97,6 +104,33 @@ def test_manual_command_paths_and_status_payload_follow_runtime_contract() -> No
     assert payload['home_waypoint_id'] == 'farm_01_home'
     assert payload['control_state']['mode'] == 'paused'
     assert payload['received_at'] == '2026-03-25T00:00:00+00:00'
+
+
+def test_build_mission_bridge_status_payload_preserves_operator_contract() -> None:
+    payload = build_mission_bridge_status_payload(
+        mission_id='mission-patrol-001',
+        command_id='mission-patrol-001',
+        request_type='start_patrol',
+        robot_id='AGR-02',
+        requested_by='frontend-operator',
+        status='running',
+        message='Patrol start 요청이 수락되었습니다.',
+        result='service_started',
+        zone_ids=['farm_01_west', 'farm_01_center'],
+        loop_count=2,
+        patrol_mode='diagnosis',
+        received_at='2026-03-25T00:00:00+00:00',
+        started_at='2026-03-25T00:00:01+00:00',
+    )
+
+    assert payload['mission_id'] == 'mission-patrol-001'
+    assert payload['command_id'] == 'mission-patrol-001'
+    assert payload['request_type'] == 'start_patrol'
+    assert payload['zone_ids'] == ['farm_01_west', 'farm_01_center']
+    assert payload['loop_count'] == 2
+    assert payload['patrol_mode'] == 'diagnosis'
+    assert payload['status'] == 'running'
+    assert payload['result'] == 'service_started'
 
 
 def test_resume_without_context_uses_no_op_status_result_contract() -> None:

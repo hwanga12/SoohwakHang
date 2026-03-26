@@ -1733,8 +1733,88 @@ button {
   border-color: rgba(179, 61, 47, 0.16);
 }
 
+.control-tile:disabled,
+.action-button:disabled,
+.preset-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+  box-shadow: none;
+}
+
+.control-tile:disabled {
+  transform: none;
+}
+
 .control-tile-icon {
   font-size: 28px;
+}
+
+.control-status-banner {
+  display: grid;
+  gap: 14px;
+  margin: 16px 0 14px;
+  padding: 16px 18px;
+  border: 2px solid rgba(var(--primary-rgb), 0.34);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(246, 250, 243, 0.96), rgba(238, 245, 234, 0.96));
+}
+
+.control-status-banner strong,
+.control-status-banner p {
+  margin: 0;
+}
+
+.control-status-banner p {
+  margin-top: 6px;
+  color: color-mix(in srgb, var(--ink) 76%, white);
+}
+
+.control-status-banner--healthy {
+  border-color: rgba(var(--primary-rgb), 0.34);
+}
+
+.control-status-banner--warning {
+  border-color: rgba(var(--warning-rgb), 0.42);
+  background: linear-gradient(180deg, rgba(255, 249, 236, 0.96), rgba(252, 242, 222, 0.96));
+}
+
+.control-status-banner--danger {
+  border-color: rgba(var(--danger-rgb), 0.46);
+  background:
+    radial-gradient(circle at top right, rgba(239, 122, 109, 0.22), transparent 42%),
+    linear-gradient(180deg, rgba(255, 241, 238, 0.98), rgba(255, 231, 225, 0.98));
+  box-shadow: inset 0 0 0 1px rgba(var(--danger-rgb), 0.14);
+}
+
+.control-status-banner__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.control-feedback {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(var(--primary-rgb), 0.22);
+  background: rgba(243, 246, 240, 0.88);
+}
+
+.control-feedback--healthy {
+  color: color-mix(in srgb, var(--ink) 78%, white);
+}
+
+.control-feedback--warning {
+  color: color-mix(in srgb, var(--warning) 70%, black);
+  border-color: rgba(var(--warning-rgb), 0.26);
+  background: rgba(255, 246, 227, 0.92);
+}
+
+.control-feedback--danger {
+  color: color-mix(in srgb, var(--danger) 78%, black);
+  border-color: rgba(var(--danger-rgb), 0.28);
+  background: rgba(255, 236, 231, 0.96);
 }
 
 .status-stack {
@@ -4510,16 +4590,20 @@ button.robot-facility-map__row-guide.is-clickable {
   place-items: center;
   padding: 24px;
   background: rgba(73, 57, 34, 0.34);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .farm-plant-modal__card {
   position: relative;
   width: min(480px, 100%);
-  display: grid;
-  gap: 14px;
   padding: 18px;
   border: 3px solid rgba(133, 94, 52, 0.14);
   border-radius: 28px;
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.84), transparent 24%),
     linear-gradient(180deg, rgba(255, 252, 246, 0.99), rgba(249, 241, 226, 0.98));
@@ -4527,6 +4611,37 @@ button.robot-facility-map__row-guide.is-clickable {
     0 26px 42px rgba(73, 57, 34, 0.22),
     0 6px 0 rgba(215, 195, 159, 0.9),
     inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.farm-plant-modal__content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.farm-plant-modal__content::-webkit-scrollbar {
+  width: 6px;
+  background: transparent;
+}
+
+.farm-plant-modal__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.farm-plant-modal__content::-webkit-scrollbar-thumb {
+  background: rgba(133, 94, 52, 0.15);
+  border-radius: 10px;
+}
+
+.farm-plant-modal__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(133, 94, 52, 0.3);
 }
 
 .farm-plant-modal__close {
@@ -4551,7 +4666,7 @@ button.robot-facility-map__row-guide.is-clickable {
 
 .farm-plant-modal__media {
   overflow: hidden;
-  min-height: 260px;
+  min-height: clamp(180px, 30vh, 260px);
   border-radius: 22px;
   border: 2px solid rgba(133, 94, 52, 0.1);
   background:
@@ -4582,6 +4697,27 @@ button.robot-facility-map__row-guide.is-clickable {
   min-width: 160px;
 }
 
+.farm-plant-modal__feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.farm-plant-modal__feedback-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.farm-plant-modal__feedback-head strong {
+  font-size: 0.95rem;
+}
+
+.farm-plant-modal__feedback .muted {
+  margin: 0;
+}
+
 @media (max-width: 760px) {
   .farm-plant-modal {
     padding: 14px;
@@ -4590,10 +4726,11 @@ button.robot-facility-map__row-guide.is-clickable {
   .farm-plant-modal__card {
     padding: 16px;
     border-radius: 24px;
+    max-height: calc(100dvh - 28px);
   }
 
   .farm-plant-modal__media {
-    min-height: 220px;
+    min-height: clamp(160px, 28vh, 220px);
   }
 
   .farm-plant-modal__actions {

@@ -1,5 +1,6 @@
 import { isAxiosError } from 'axios'
 import { markRouteFailed, markRouteVerified } from '@/app/dev-runtime'
+import { env } from '@/config/env'
 import { apiClient } from '@/lib/api/client'
 import {
   farmSemanticScene,
@@ -103,8 +104,14 @@ export type RobotCommandStatus = {
   preemptCurrentNavigation: boolean
   status: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
   message: string
+  error: string
+  result: string
   updatedAt: string
   targetZoneId: string | null
+  receivedAt: string
+  startedAt: string
+  completedAt: string
+  controlState: RobotControlState | null
 }
 
 export type RobotCommandDispatch = {
@@ -117,11 +124,71 @@ export type RobotCommandDispatch = {
   targetZoneId: string | null
 }
 
+export type MissionDispatch = {
+  missionId: string
+  commandId: string
+  requestType: string
+  requestedType: string
+  statusEndpoint: string
+  message: string
+  operatorMessage: string
+  robotId: string
+  requestedBy: string
+  zoneIds: string[]
+  loopCount: number | null
+  patrolMode: string
+  plantId: string | null
+  fruitId: string | null
+  tomatoId: string | null
+}
+
+export type MissionStatus = {
+  source: DataSource
+  available: boolean
+  missionId: string | null
+  commandId: string | null
+  missionType: string
+  requestType: string
+  requestedType: string
+  status: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+  state: string
+  currentPhase: string
+  progressPct: number | null
+  retryCount: number | null
+  message: string
+  operatorMessage: string
+  detailMessage: string
+  error: string
+  result: string
+  updatedAt: string
+  zoneIds: string[]
+  loopCount: number | null
+  patrolMode: string
+  plantId: string | null
+  fruitId: string | null
+  tomatoId: string | null
+  zoneId: string | null
+  targetId: string | null
+  receivedAt: string
+  startedAt: string
+  completedAt: string
+}
+
 export type RobotPoseSnapshot = {
   x: number
   y: number
   yawDeg: number
   linearSpeedMps: number
+  updatedAt: string
+}
+
+export type RobotControlState = {
+  mode: 'normal' | 'paused' | 'emergency_stop'
+  activeActivity: 'idle' | 'manual_navigation' | 'patrol'
+  blockingReason: string
+  message: string
+  resumeAvailable: boolean
+  resumeContextType: '' | 'manual_navigation' | 'patrol'
   updatedAt: string
 }
 
@@ -153,6 +220,10 @@ export type PlantAlertCard = {
   title: string
   location: string
   action: string
+  detail: string
+  diagnosisLabel: string
+  detectedAt: string
+  imageUrl: string
 }
 
 export type PlantRow = {
@@ -166,6 +237,9 @@ export type PlantRow = {
   health: number
   tone: HealthTone
   status: string
+  latestLabel: string
+  latestDisplayLabel: string
+  latestImageUrl: string
 }
 
 export type PlantsPageData = {
@@ -177,6 +251,24 @@ export type PlantsPageData = {
   growthIndex: string
   alerts: PlantAlertCard[]
   plants: PlantRow[]
+}
+
+export type PlantObservationEntry = {
+  id: string
+  label: string
+  displayLabel: string
+  reviewedAt: string
+  imageUrl: string
+  decisionSource: string
+  healthPercent: number
+  detail: string
+}
+
+export type PlantObservationFeed = {
+  source: DataSource
+  plantId: string
+  plantName: string
+  items: PlantObservationEntry[]
 }
 
 export type DeviceCard = {
@@ -219,6 +311,13 @@ export type HarvestBatch = {
   route: string
   summary: string
   state: string
+  missionId: string
+  plantId: string | null
+  fruitId: string | null
+  currentPhase: string
+  updatedAt: string
+  basketCount: number | null
+  success: boolean | null
 }
 
 export type HarvestPageData = {
@@ -226,6 +325,15 @@ export type HarvestPageData = {
   debug: PageDebugMeta
   basketState: string
   nextSwap: string
+  basketCount: number
+  remainingReadyCount: number
+  lastHarvestedFruitId: string
+  missionStatus: MissionStatus['status']
+  currentPhase: string
+  activeMissionId: string
+  activeTargetId: string
+  detailMessage: string
+  loadedFruitIds: string[]
   metrics: MetricCardData[]
   batches: HarvestBatch[]
   qualityStats: Array<{ label: string; value: string }>
@@ -306,6 +414,31 @@ function readNumber(value: unknown, fallback = 0): number {
   }
 
   return fallback
+}
+
+function readOptionalNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(/[^\d.-]/g, ''))
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+
+  return null
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((item) => readString(item))
+    .filter(Boolean)
 }
 
 function readBoolean(value: unknown, fallback = false): boolean {
@@ -422,6 +555,23 @@ function buildPositionLabel(position: unknown, fallback = '좌표 정보 준비 
   }
 
   return `x ${x.toFixed(1)} / y ${y.toFixed(1)}`
+}
+
+function resolveApiMediaUrl(value: string) {
+  if (!value) {
+    return ''
+  }
+
+  if (/^(?:https?:)?\/\//i.test(value) || value.startsWith('data:')) {
+    return value
+  }
+
+  try {
+    const apiBase = new URL(env.apiBaseUrl)
+    return new URL(value, `${apiBase.origin}/`).toString()
+  } catch {
+    return value
+  }
 }
 
 function normalizeHeadingDegrees(value: unknown, fallback = 0) {
@@ -593,22 +743,48 @@ function readSemanticScene(payload: unknown): SemanticScene | null {
   }
 }
 
+function readRobotControlState(payload: unknown): RobotControlState | null {
+  const record = readRecord(payload)
+  if (!record) {
+    return null
+  }
+
+  const rawMode = readString(record.mode).toLowerCase()
+  const rawActivity = readString(record.active_activity).toLowerCase()
+  const resumeContext = readRecord(record.resume_context)
+  const rawResumeContextType = readString(resumeContext?.context_type).toLowerCase()
+
+  const mode =
+    rawMode === 'paused' || rawMode === 'emergency_stop'
+      ? rawMode
+      : 'normal'
+  const activeActivity =
+    rawActivity === 'manual_navigation' || rawActivity === 'patrol'
+      ? rawActivity
+      : 'idle'
+  const resumeContextType =
+    rawResumeContextType === 'manual_navigation' || rawResumeContextType === 'patrol'
+      ? rawResumeContextType
+      : ''
+
+  return {
+    mode,
+    activeActivity,
+    blockingReason: readString(record.blocking_reason),
+    message: readString(record.message),
+    resumeAvailable: readBoolean(record.resume_available, false),
+    resumeContextType,
+    updatedAt: readString(record.updated_at),
+  }
+}
+
 function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
   const record = readRecord(payload)
   if (!record) {
     return null
   }
 
-  const status = readString(record.status) as RobotCommandStatus['status']
-  const normalizedStatus =
-    status === 'pending'
-    || status === 'running'
-    || status === 'succeeded'
-    || status === 'failed'
-    || status === 'canceled'
-    || status === 'idle'
-      ? status
-      : 'idle'
+  const normalizedStatus = normalizeTaskStatus(record.status)
 
   return {
     source: toQuerySource(payload),
@@ -619,8 +795,76 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
     preemptCurrentNavigation: readBoolean(record.preempt_current_navigation, false),
     status: normalizedStatus,
     message: readString(record.message) || readString(record.note) || '명령 상태 정보가 준비되지 않았습니다.',
+    error: readString(record.error),
+    result: readString(record.result),
     updatedAt: readString(record.updated_at),
     targetZoneId: readString(record.target_zone_id) || null,
+    receivedAt: readString(record.received_at),
+    startedAt: readString(record.started_at),
+    completedAt: readString(record.completed_at),
+    controlState: readRobotControlState(record.control_state),
+  }
+}
+
+function normalizeTaskStatus(value: unknown): RobotCommandStatus['status'] {
+  const status = readString(value) as RobotCommandStatus['status']
+  return (
+    status === 'pending'
+    || status === 'running'
+    || status === 'succeeded'
+    || status === 'failed'
+    || status === 'canceled'
+    || status === 'idle'
+  )
+    ? status
+    : 'idle'
+}
+
+function readMissionStatus(payload: unknown): MissionStatus | null {
+  const record = readRecord(payload)
+  if (!record) {
+    return null
+  }
+
+  return {
+    source: toQuerySource(payload),
+    available: readBoolean(record.available, true),
+    missionId: readString(record.mission_id) || null,
+    commandId: readString(record.command_id) || null,
+    missionType: readString(record.mission_type),
+    requestType: readString(record.request_type),
+    requestedType: readString(record.requested_type) || readString(record.request_type),
+    status: normalizeTaskStatus(record.status),
+    state: readString(record.state),
+    currentPhase: readString(record.current_phase),
+    progressPct: readOptionalNumber(record.progress_pct),
+    retryCount: readOptionalNumber(record.retry_count),
+    message: readString(record.message) || '미션 상태 정보가 준비되지 않았습니다.',
+    operatorMessage:
+      readString(record.operator_message)
+      || readString(record.message)
+      || '미션 상태 정보가 준비되지 않았습니다.',
+    detailMessage:
+      readString(record.detail_message)
+      || readString(record.message)
+      || readString(record.operator_message),
+    error: readString(record.error),
+    result: readString(record.result),
+    updatedAt: readString(record.updated_at),
+    zoneIds: readStringArray(record.zone_ids),
+    loopCount:
+      typeof record.loop_count === 'number' && Number.isFinite(record.loop_count)
+        ? record.loop_count
+        : null,
+    patrolMode: readString(record.patrol_mode),
+    plantId: readString(record.plant_id) || null,
+    fruitId: readString(record.fruit_id) || null,
+    tomatoId: readString(record.tomato_id) || null,
+    zoneId: readString(record.zone_id) || null,
+    targetId: readString(record.target_id) || null,
+    receivedAt: readString(record.received_at),
+    startedAt: readString(record.started_at),
+    completedAt: readString(record.completed_at),
   }
 }
 async function safeGet(path: string) {
@@ -711,6 +955,91 @@ function parseCommandDispatch(payload: unknown, fallbackMessage: string): RobotC
       readString(readRecord(record.target_zone)?.id)
       || readString(record.target_zone_id)
       || null,
+  }
+}
+
+function parseMissionDispatch(payload: unknown, fallbackMessage: string): MissionDispatch {
+  const record = readRecord(payload)
+  if (!record) {
+    throw new Error(fallbackMessage)
+  }
+
+  const missionId = readString(record.mission_id) || readString(record.command_id)
+  const requestType = readString(record.request_type) || readString(record.requested_type)
+  const statusEndpoint = readString(record.status_endpoint)
+
+  if (!missionId) {
+    throw new Error('미션 접수 응답에 mission_id가 없어 상태 추적을 시작할 수 없습니다.')
+  }
+  if (!requestType) {
+    throw new Error('미션 접수 응답에 request_type이 없어 상태 추적을 시작할 수 없습니다.')
+  }
+  if (!statusEndpoint) {
+    throw new Error('미션 접수 응답에 status_endpoint가 없어 authoritative polling을 시작할 수 없습니다.')
+  }
+
+  return {
+    missionId,
+    commandId: readString(record.command_id) || missionId,
+    requestType,
+    requestedType: readString(record.requested_type) || requestType,
+    statusEndpoint,
+    message:
+      readString(record.message)
+      || readString(record.operator_message)
+      || fallbackMessage,
+    operatorMessage:
+      readString(record.operator_message)
+      || readString(record.message)
+      || fallbackMessage,
+    robotId: readString(record.robot_id),
+    requestedBy: readString(record.requested_by),
+    zoneIds: readStringArray(record.zone_ids),
+    loopCount:
+      typeof record.loop_count === 'number' && Number.isFinite(record.loop_count)
+        ? record.loop_count
+        : null,
+    patrolMode: readString(record.patrol_mode),
+    plantId: readString(record.plant_id) || null,
+    fruitId: readString(record.fruit_id) || null,
+    tomatoId: readString(record.tomato_id) || null,
+  }
+}
+
+function buildUnavailableMissionStatus(
+  missionId: string,
+  message: string,
+): MissionStatus {
+  return {
+    source: 'fallback',
+    available: false,
+    missionId,
+    commandId: missionId,
+    missionType: '',
+    requestType: '',
+    requestedType: '',
+    status: 'idle',
+    state: '',
+    currentPhase: '',
+    progressPct: null,
+    retryCount: null,
+    message,
+    operatorMessage: message,
+    detailMessage: message,
+    error: '',
+    result: '',
+    updatedAt: '',
+    zoneIds: [],
+    loopCount: null,
+    patrolMode: '',
+    plantId: null,
+    fruitId: null,
+    tomatoId: null,
+    zoneId: null,
+    targetId: null,
+    receivedAt: '',
+    startedAt: '',
+    completedAt: '',
   }
 }
 
@@ -843,8 +1172,14 @@ const robotFallbackCommandStatus: RobotCommandStatus = {
   preemptCurrentNavigation: false,
   status: 'idle',
   message: '이동 명령 상태를 아직 받지 못했습니다.',
+  error: '',
+  result: '',
   updatedAt: '',
   targetZoneId: null,
+  receivedAt: '',
+  startedAt: '',
+  completedAt: '',
+  controlState: null,
 }
 
 export const robotFallback: RobotPageData = {
@@ -930,6 +1265,10 @@ export const plantsFallback: PlantsPageData = {
       title: '조기 병해 의심',
       location: 'farm01_plant_06 · farm01_plant_06_tomato_01',
       action: '수동 검토 후 관찰 또는 수확 미션 전환',
+      detail: '상태가 좋지 않은 잎을 진단했고, 흰가루병 의심 결과가 저장되었습니다.',
+      diagnosisLabel: '토마토 흰가루병',
+      detectedAt: '09:42',
+      imageUrl: '/mock-images/disease-closeup.png',
     },
     {
       id: 'alert-target-001',
@@ -937,6 +1276,10 @@ export const plantsFallback: PlantsPageData = {
       title: '수확 후보 토마토 재확인',
       location: 'farm01_plant_03 · farm01_plant_03_tomato_01',
       action: 'canonical ID 기준으로 대상 큐에 유지',
+      detail: '수확 후보를 다시 확인하는 발표용 샘플 카드입니다.',
+      diagnosisLabel: '수확 후보 재확인',
+      detectedAt: '09:38',
+      imageUrl: '/mock-images/harvest-closeup.png',
     },
   ],
   plants: [
@@ -951,6 +1294,9 @@ export const plantsFallback: PlantsPageData = {
       health: 96,
       tone: 'healthy',
       status: '수확 후보',
+      latestLabel: '',
+      latestDisplayLabel: '',
+      latestImageUrl: '/mock-images/harvest-closeup.png',
     },
     {
       name: '토마토 06',
@@ -963,6 +1309,9 @@ export const plantsFallback: PlantsPageData = {
       health: 71,
       tone: 'warning',
       status: '재확인 필요',
+      latestLabel: 'tomato_powdery_mildew_disease',
+      latestDisplayLabel: '토마토 흰가루병',
+      latestImageUrl: '/mock-images/disease-closeup.png',
     },
     {
       name: '토마토 10',
@@ -975,6 +1324,9 @@ export const plantsFallback: PlantsPageData = {
       health: 44,
       tone: 'warning',
       status: '병해 점검',
+      latestLabel: 'tomato_gray_mold_disease',
+      latestDisplayLabel: '토마토 잿빛곰팡이병',
+      latestImageUrl: '/mock-images/disease-closeup.png',
     },
     {
       name: '토마토 15',
@@ -987,8 +1339,18 @@ export const plantsFallback: PlantsPageData = {
       health: 89,
       tone: 'healthy',
       status: '순찰 관찰',
+      latestLabel: '',
+      latestDisplayLabel: '',
+      latestImageUrl: '/mock-images/harvest-closeup.png',
     },
   ],
+}
+
+export const emptyPlantObservationFeed: PlantObservationFeed = {
+  source: 'fallback',
+  plantId: '',
+  plantName: '',
+  items: [],
 }
 
 export const environmentFallback: EnvironmentPageData = {
@@ -1071,6 +1433,20 @@ export const harvestFallback: HarvestPageData = {
   },
   basketState: '바구니 A · 68%',
   nextSwap: '35분 후 교체 예정',
+  basketCount: 4,
+  remainingReadyCount: 8,
+  lastHarvestedFruitId: 'farm01_plant_03_tomato_01',
+  missionStatus: 'running',
+  currentPhase: 'STOWING',
+  activeMissionId: 'mission-harvest-demo',
+  activeTargetId: 'farm01_plant_03_tomato_01',
+  detailMessage: '수확한 토마토를 등 바구니에 적재하는 중입니다.',
+  loadedFruitIds: [
+    'farm01_plant_01_tomato_01',
+    'farm01_plant_02_tomato_01',
+    'farm01_plant_03_tomato_01',
+    'farm01_plant_04_tomato_01',
+  ],
   metrics: [
     { label: '오늘 수확', value: '142kg', meta: '전일 대비 18% 증가', tone: 'accent' },
     { label: '적재율', value: '68%', meta: '바구니 B 교체 예상 35분 후', tone: 'warning' },
@@ -1082,16 +1458,37 @@ export const harvestFallback: HarvestPageData = {
       route: '남측 1열 수확 배치',
       summary: '완숙 토마토 우선 수확과 적재를 함께 진행합니다.',
       state: '진행 중',
+      missionId: 'mission-harvest-demo',
+      plantId: 'farm01_plant_03',
+      fruitId: 'farm01_plant_03_tomato_01',
+      currentPhase: 'STOWING',
+      updatedAt: '방금 전',
+      basketCount: 4,
+      success: null,
     },
     {
       route: '동측 3열 대기 배치',
       summary: '다음 바구니 교체 이후 바로 시작할 예정입니다.',
       state: '예정',
+      missionId: 'mission-harvest-queue-01',
+      plantId: 'farm01_plant_09',
+      fruitId: 'farm01_plant_09_tomato_01',
+      currentPhase: '',
+      updatedAt: '10분 전',
+      basketCount: null,
+      success: null,
     },
     {
       route: '출하 바구니 라벨 교체',
       summary: '출하 큐와 적재 ID 정합성을 맞추기 위한 작업입니다.',
       state: '대기',
+      missionId: 'mission-harvest-queue-02',
+      plantId: null,
+      fruitId: null,
+      currentPhase: '',
+      updatedAt: '20분 전',
+      basketCount: null,
+      success: null,
     },
   ],
   qualityStats: [
@@ -1461,6 +1858,21 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
             || readString(item.detail)
             || readString(item.message)
             || '추가 검수가 필요합니다.',
+          detail:
+            readString(item.detail)
+            || readString(item.message)
+            || '상태가 좋지 않은 잎을 진단한 결과가 도착하면 이 카드에 표시됩니다.',
+          diagnosisLabel:
+            readString(item.display_label)
+            || readString(item.label)
+            || readString(item.title)
+            || '진단 결과 대기',
+          detectedAt:
+            readString(item.detected_at)
+            || readString(item.created_at)
+            || readString(item.time)
+            || '',
+          imageUrl: resolveApiMediaUrl(readString(item.image_url)),
         }
       })
       .filter((item): item is PlantAlertCard => item !== null)
@@ -1511,7 +1923,11 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
               ? '수확 요청 가능'
               : readBoolean(item.needs_water)
                 ? '급수 우선 확인'
-                : plantsFallback.plants[Math.min(index, plantsFallback.plants.length - 1)]?.recommendedAction
+                : readString(item.recommended_action)
+                  || readString(item.action)
+                  || readString(item.latest_display_label)
+                  || readString(item.latest_label)
+                  || plantsFallback.plants[Math.min(index, plantsFallback.plants.length - 1)]?.recommendedAction
                   || '추가 관찰 유지',
           health,
           tone,
@@ -1520,6 +1936,20 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
             || readString(item.stage)
             || readString(item.growth_stage)
             || (readBoolean(item.ready_to_harvest) ? '수확 후보' : '관측 중'),
+          latestLabel:
+            readString(item.latest_label)
+            || readString(item.label)
+            || '',
+          latestDisplayLabel:
+            readString(item.latest_display_label)
+            || readString(item.display_label)
+            || readString(item.status)
+            || '',
+          latestImageUrl: resolveApiMediaUrl(
+            readString(item.latest_image_url)
+            || readString(item.image_url)
+            || '',
+          ),
         }
       })
       .filter((item): item is PlantRow => item !== null)
@@ -1536,6 +1966,57 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
         : plantsFallback.criticalCount,
     alerts: parsedAlerts.length > 0 ? parsedAlerts : plantsFallback.alerts,
     plants: parsedPlants.length > 0 ? parsedPlants : plantsFallback.plants,
+  }
+}
+
+export async function getPlantObservations(plantId: string): Promise<PlantObservationFeed> {
+  if (!plantId) {
+    return emptyPlantObservationFeed
+  }
+
+  const path = `/plants/${plantId}/observations`
+  const payload = await safeGet(path)
+  const record = readRecord(payload)
+  const items = asArray(payload)
+
+  const parsedItems =
+    items
+      .map((item, index): PlantObservationEntry | null => {
+        if (!isRecord(item)) {
+          return null
+        }
+
+        const treatmentPlan = readRecord(item.treatment_plan)
+        const displayLabel =
+          readString(item.display_label)
+          || readString(item.label)
+          || readString(item.class_name)
+          || `진단 ${index + 1}`
+
+        return {
+          id: readString(item.id) || `observation-${index + 1}`,
+          label: readString(item.class_name) || readString(item.label) || '',
+          displayLabel,
+          reviewedAt:
+            readString(item.reviewed_at)
+            || readString(item.detected_at)
+            || readString(item.created_at)
+            || '',
+          imageUrl: resolveApiMediaUrl(readString(item.image_url)),
+          decisionSource: readString(item.decision_source) || '',
+          healthPercent: readNumber(item.health_percent, 0),
+          detail:
+            readString(treatmentPlan?.reason)
+            || `${displayLabel} 결과가 저장되어 있습니다.`,
+        }
+      })
+      .filter((item): item is PlantObservationEntry => item !== null)
+
+  return {
+    source: toQuerySource(payload),
+    plantId: readString(record?.plant_id) || plantId,
+    plantName: readString(record?.plant_name) || '',
+    items: parsedItems,
   }
 }
 
@@ -1796,7 +2277,7 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
 
   const batches =
     rows
-      .slice(0, 3)
+      .slice(0, 4)
       .map((item, index): HarvestBatch | null => {
         if (!isRecord(item)) {
           return null
@@ -1814,6 +2295,28 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
             || readString(item.message)
             || '수확 배치 정보가 아직 축약 형태로만 제공됩니다.',
           state: readString(item.state) || readString(item.status) || '진행 중',
+          missionId:
+            readString(item.mission_id)
+            || readString(item.route_id)
+            || readString(item.batch_id)
+            || `harvest-mission-${index + 1}`,
+          plantId: readString(item.plant_id) || null,
+          fruitId: readString(item.fruit_id) || null,
+          currentPhase: readString(item.current_phase),
+          updatedAt:
+            readString(item.updated_at)
+            || readString(item.harvested_at)
+            || readString(item.occurred_at)
+            || '',
+          basketCount: readOptionalNumber(item.basket_count),
+          success:
+            typeof item.success === 'boolean'
+              ? item.success
+              : readString(item.status) === 'succeeded'
+                ? true
+                : readString(item.status) === 'failed'
+                  ? false
+                  : null,
         }
       })
       .filter((item): item is HarvestBatch => item !== null)
@@ -1829,6 +2332,20 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
       || readString(stats?.basket_fill_rate)
       || harvestFallback.basketState,
     nextSwap: readString(stats?.next_swap_eta) || harvestFallback.nextSwap,
+    basketCount: readNumber(stats?.basket_count, harvestFallback.basketCount),
+    remainingReadyCount: readNumber(stats?.remaining_ready_count, harvestFallback.remainingReadyCount),
+    lastHarvestedFruitId:
+      readString(stats?.last_harvested_fruit_id)
+      || harvestFallback.lastHarvestedFruitId,
+    missionStatus: normalizeTaskStatus(stats?.mission_status),
+    currentPhase: readString(stats?.current_phase) || harvestFallback.currentPhase,
+    activeMissionId: readString(stats?.active_mission_id) || harvestFallback.activeMissionId,
+    activeTargetId: readString(stats?.active_target_id) || harvestFallback.activeTargetId,
+    detailMessage: readString(stats?.detail_message) || harvestFallback.detailMessage,
+    loadedFruitIds:
+      readStringArray(stats?.loaded_fruit_ids).length > 0
+        ? readStringArray(stats?.loaded_fruit_ids)
+        : harvestFallback.loadedFruitIds,
     metrics,
     batches: batches.length > 0 ? batches : harvestFallback.batches,
   }
@@ -1906,6 +2423,14 @@ export async function sendRobotControlAction(
     return postWithFallback(
       [
         {
+          path: '/robot/commands',
+          body: {
+            robot_id: robotId,
+            requested_by: 'frontend-operator',
+            command_type: 'pause_motion',
+          },
+        },
+        {
           path: '/missions/patrol/stop',
           body: {
             robot_id: robotId,
@@ -1922,7 +2447,7 @@ export async function sendRobotControlAction(
           },
         },
       ],
-      '순찰 중지 요청을 보냈습니다.',
+      '일시정지 명령을 접수했습니다. 실제 정지 상태를 확인하는 중입니다.',
     )
   }
 
@@ -1934,24 +2459,25 @@ export async function sendRobotControlAction(
           body: {
             robot_id: robotId,
             requested_by: 'frontend-operator',
+            command_type: 'resume_motion',
+          },
+        },
+        {
+          path: '/robot/commands',
+          body: {
+            robot_id: robotId,
+            requested_by: 'frontend-operator',
             command_type: 'resume_patrol',
           },
         },
       ],
-      '순찰 재개 요청을 보냈습니다.',
+      '재개 명령을 접수했습니다. 실제 재개 여부를 확인하는 중입니다.',
     )
   }
 
   if (action === 'home') {
     return postWithFallback(
       [
-        {
-          path: '/missions/return-home',
-          body: {
-            robot_id: robotId,
-            requested_by: 'frontend-operator',
-          },
-        },
         {
           path: '/robot/commands',
           body: {
@@ -1960,8 +2486,15 @@ export async function sendRobotControlAction(
             command_type: 'return_home',
           },
         },
+        {
+          path: '/missions/return-home',
+          body: {
+            robot_id: robotId,
+            requested_by: 'frontend-operator',
+          },
+        },
       ],
-      '홈 복귀 요청을 보냈습니다.',
+      '홈 복귀 명령을 접수했습니다. 상태 카드에서 진행 상황을 확인하세요.',
     )
   }
 
@@ -1976,13 +2509,82 @@ export async function sendRobotControlAction(
         },
       },
     ],
-    '비상 정지 요청을 보냈습니다.',
+    '비상 정지 명령을 접수했습니다. 실제 정지 상태를 확인하는 중입니다.',
+  )
+}
+
+export async function pauseRobotMotion() {
+  return postWithFallback(
+    [
+      {
+        path: '/robot/control/pause',
+        body: {
+          robot_id: 'AGR-02',
+          requested_by: 'frontend-operator',
+        },
+      },
+      {
+        path: '/robot/commands',
+        body: {
+          robot_id: 'AGR-02',
+          requested_by: 'frontend-operator',
+          command_type: 'pause_motion',
+        },
+      },
+    ],
+    '주행 중단 요청을 접수했습니다. 실제 정지 상태를 확인하는 중입니다.',
+  )
+}
+
+export async function stopPatrolMission() {
+  return postWithFallback(
+    [
+      {
+        path: '/missions/patrol/stop',
+        body: {
+          robot_id: 'AGR-02',
+          requested_by: 'frontend-operator',
+          reason: 'ui_stop',
+        },
+      },
+      {
+        path: '/robot/commands',
+        body: {
+          robot_id: 'AGR-02',
+          requested_by: 'frontend-operator',
+          command_type: 'pause_patrol',
+        },
+      },
+    ],
+    '패트롤 중단 요청을 접수했습니다. 실제 정지 상태를 확인하는 중입니다.',
   )
 }
 
 export async function getLatestRobotCommandStatus(): Promise<RobotCommandStatus> {
   const payload = await safeGet('/robot/commands/latest')
   return readRobotCommandStatus(payload) ?? robotFallback.latestCommandStatus
+}
+
+export async function getMissionStatus(missionId: string): Promise<MissionStatus> {
+  try {
+    const response = await apiClient.get(`/missions/${missionId}`)
+    const status = readMissionStatus(response.data)
+
+    if (!status || !status.missionId) {
+      throw new Error('미션 상태 응답에 mission_id가 없어 authoritative polling을 이어갈 수 없습니다.')
+    }
+
+    return status
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status === 404) {
+      return buildUnavailableMissionStatus(
+        missionId,
+        'mission status 파일이 아직 생성되지 않았습니다. bridge 반영을 기다리는 중입니다.',
+      )
+    }
+
+    throw new Error(readApiErrorMessage(error, '미션 상태를 조회하지 못했습니다.'))
+  }
 }
 
 export async function sendRobotNavigateCommand(targetPose: RobotTargetPose) {
@@ -2030,20 +2632,19 @@ export async function requestHarvestMission({
   plantId: string
   fruitId: string
 }) {
-  return postWithFallback(
-    [
-      {
-        path: '/missions/harvest',
-        body: {
-          robot_id: 'AGR-02',
-          plant_id: plantId,
-          fruit_id: fruitId,
-          requested_by: 'frontend-operator',
-        },
-      },
-    ],
-    `${fruitId} 수확 요청을 보냈습니다.`,
-  )
+  try {
+    const response = await apiClient.post('/missions/harvest', {
+      robot_id: 'AGR-02',
+      plant_id: plantId,
+      fruit_id: fruitId,
+      requested_by: 'frontend-operator',
+    })
+    markRouteVerified('POST', '/missions/harvest')
+    return parseMissionDispatch(response.data, `${fruitId} 수확 요청을 접수했습니다.`)
+  } catch (error) {
+    markRouteFailed('POST', '/missions/harvest')
+    throw new Error(readApiErrorMessage(error, '수확 미션 요청을 처리하지 못했습니다.'))
+  }
 }
 
 export async function startFieldPatrolMission({
@@ -2056,34 +2657,23 @@ export async function startFieldPatrolMission({
   const fallbackZones = zoneIds.length > 0 ? zoneIds : ['farm_01_west', 'farm_01_center', 'farm_01_east']
   const successFallback =
     mode === 'diagnosis'
-      ? '밭 전체 병 진단 패트롤을 시작했습니다.'
-      : '밭 전체 수확 패트롤을 시작했습니다.'
+      ? '밭 전체 병 진단 패트롤 요청을 접수했습니다.'
+      : '밭 전체 수확 패트롤 요청을 접수했습니다.'
 
-  return postWithFallback(
-    [
-      {
-        path: '/missions/patrol/start',
-        body: {
-          robot_id: 'AGR-02',
-          zone_ids: fallbackZones,
-          loop_count: 1,
-          requested_by: 'frontend-operator',
-          patrol_mode: mode,
-        },
-      },
-      {
-        path: '/robot/commands',
-        body: {
-          robot_id: 'AGR-02',
-          requested_by: 'frontend-operator',
-          command_type: 'start_patrol',
-          zone_ids: fallbackZones,
-          patrol_mode: mode,
-        },
-      },
-    ],
-    successFallback,
-  )
+  try {
+    const response = await apiClient.post('/missions/patrol/start', {
+      robot_id: 'AGR-02',
+      zone_ids: fallbackZones,
+      loop_count: 1,
+      requested_by: 'frontend-operator',
+      patrol_mode: mode,
+    })
+    markRouteVerified('POST', '/missions/patrol/start')
+    return parseMissionDispatch(response.data, successFallback)
+  } catch (error) {
+    markRouteFailed('POST', '/missions/patrol/start')
+    throw new Error(readApiErrorMessage(error, '패트롤 미션 요청을 처리하지 못했습니다.'))
+  }
 }
 
 export async function acknowledgeAlert(alertId: string) {

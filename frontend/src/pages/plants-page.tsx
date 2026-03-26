@@ -6,17 +6,33 @@ import { AppIcon } from '@/components/app-icon'
 import { DevSurface } from '@/components/dev-surface'
 import { MockupImage } from '@/components/mockup-image'
 import {
+  emptyPlantObservationFeed,
+  getPlantObservations,
   getPlantsPageData,
   plantsFallback,
   requestHarvestMission,
 } from '@/lib/api/agribot'
 
-function getAlertPreview(alertId: string) {
+function getAlertPreview(imageUrl: string, alertId: string) {
+  if (imageUrl) {
+    return imageUrl
+  }
+
   if (alertId.includes('disease')) {
     return '/mock-images/disease-closeup.png'
   }
 
   return '/mock-images/harvest-closeup.png'
+}
+
+function getPlantPreview(imageUrl: string, statusHint: string) {
+  if (imageUrl) {
+    return imageUrl
+  }
+
+  return statusHint.includes('병') || statusHint.includes('재확인')
+    ? '/mock-images/disease-closeup.png'
+    : '/mock-images/harvest-closeup.png'
 }
 
 export function PlantsPage() {
@@ -28,6 +44,12 @@ export function PlantsPage() {
     refetchInterval: 20_000,
   })
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null)
+  const selectedObservationQuery = useQuery({
+    queryKey: ['plants', 'observations', selectedPlantId],
+    queryFn: async () => getPlantObservations(selectedPlantId ?? ''),
+    enabled: Boolean(selectedPlantId),
+    refetchInterval: 20_000,
+  })
   const harvestMutation = useMutation({
     mutationFn: requestHarvestMission,
     onSuccess: async () => {
@@ -40,8 +62,13 @@ export function PlantsPage() {
   const querySource = (path: string) => page.debug.querySources[path] ?? 'fallback'
   const selectedPlant =
     page.plants.find((plant) => plant.id === selectedPlantId) ?? page.plants[0]
+  const selectedObservationPath = selectedPlantId
+    ? `/plants/${selectedPlantId}/observations`
+    : '/plants/{plant_id}/observations'
+  const selectedObservationFeed = selectedObservationQuery.data ?? emptyPlantObservationFeed
+  const selectedObservation = selectedObservationFeed.items[0] ?? null
   const feedbackMessage = harvestMutation.isSuccess
-    ? harvestMutation.data
+    ? harvestMutation.data.message
     : harvestMutation.isError
       ? harvestMutation.error.message
       : null
@@ -146,10 +173,11 @@ export function PlantsPage() {
             <article className="alert-card" key={alert.title}>
               <div className="alert-card-visual">
                 <MockupImage
-                  alt={`${alert.title} 시뮬레이션 이미지`}
+                  alt={`${alert.title} 실제 확인 이미지`}
                   className="alert-card-photo"
                   height="100%"
-                  src={getAlertPreview(alert.id)}
+                  label={alert.diagnosisLabel}
+                  src={getAlertPreview(alert.imageUrl, alert.id)}
                 />
                 <div
                   className={`severity-pill severity-pill--${
@@ -163,6 +191,7 @@ export function PlantsPage() {
                 <div>
                   <h4 className="list-title">{alert.title}</h4>
                   <p className="list-meta">{alert.location}</p>
+                  <p className="muted">{alert.diagnosisLabel}{alert.detectedAt ? ` · ${alert.detectedAt}` : ''}</p>
                 </div>
                 <div className="alert-card-footer">
                   <span className="muted">{alert.action}</span>
@@ -254,6 +283,11 @@ export function PlantsPage() {
             title: '선택 대상 상세와 수확 요청',
             queries: [
               createGetSignal('작물 목록', querySource('/plants'), '/plants'),
+              createGetSignal(
+                '식물 관측 이력',
+                selectedObservationFeed.source,
+                selectedObservationPath,
+              ),
             ],
             actions: [
               createPostAction('수확 요청', ['/missions/harvest']),
@@ -298,10 +332,28 @@ export function PlantsPage() {
                 </article>
               </div>
 
+              <MockupImage
+                alt={`${selectedPlant.name} 최근 진단 이미지`}
+                height={220}
+                label={selectedObservation?.displayLabel || selectedPlant.latestDisplayLabel || '발표용 이미지'}
+                src={getPlantPreview(
+                  selectedObservation?.imageUrl || selectedPlant.latestImageUrl,
+                  selectedObservation?.displayLabel || selectedPlant.latestDisplayLabel || selectedPlant.status,
+                )}
+              />
+
               <div className="detail-list">
                 <article className="detail-line">
                   <span className="detail-label">최근 관측</span>
                   <strong>{selectedPlant.lastObserved}</strong>
+                </article>
+                <article className="detail-line">
+                  <span className="detail-label">최근 진단 결과</span>
+                  <strong>{selectedObservation?.displayLabel || selectedPlant.latestDisplayLabel || '진단 결과 대기'}</strong>
+                </article>
+                <article className="detail-line">
+                  <span className="detail-label">진단 메모</span>
+                  <strong>{selectedObservation?.detail || '상태가 좋지 않은 잎을 진단하면 사진과 결과가 여기 표시됩니다.'}</strong>
                 </article>
                 <article className="detail-line">
                   <span className="detail-label">권장 작업</span>

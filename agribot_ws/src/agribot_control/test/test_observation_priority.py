@@ -49,6 +49,23 @@ def test_diseased_leaf_has_higher_priority_than_ripe_tomato() -> None:
     assert selection.selected_candidate.target_id == 'plant_02'
 
 
+def test_standardized_disease_suffix_is_recognized_as_disease_event() -> None:
+    arbiter = ObservationPriorityArbiter()
+    disease = build_observation(
+        observation_id='obs-disease-standardized',
+        class_name='tomato_gray_mold_disease',
+        plant_id='plant_03',
+        confidence=0.88,
+    )
+
+    selection = arbiter.register_observation(disease, now_ns=1_000)
+
+    assert selection.accepted
+    assert selection.selected_candidate is not None
+    assert selection.selected_candidate.event_kind == 'diseased_leaf'
+    assert selection.selected_candidate.target_id == 'plant_03'
+
+
 def test_duplicate_observation_inside_window_is_ignored() -> None:
     arbiter = ObservationPriorityArbiter(duplicate_window_sec=60.0)
     candidate = build_observation(
