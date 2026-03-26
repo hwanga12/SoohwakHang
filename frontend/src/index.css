@@ -4626,6 +4626,24 @@ button.robot-facility-map__row-guide.is-clickable {
   -webkit-overflow-scrolling: touch;
 }
 
+.farm-plant-modal__content::-webkit-scrollbar {
+  width: 6px;
+  background: transparent;
+}
+
+.farm-plant-modal__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.farm-plant-modal__content::-webkit-scrollbar-thumb {
+  background: rgba(133, 94, 52, 0.15);
+  border-radius: 10px;
+}
+
+.farm-plant-modal__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(133, 94, 52, 0.3);
+}
+
 .farm-plant-modal__close {
   position: absolute;
   top: 14px;
