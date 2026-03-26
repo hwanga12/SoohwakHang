@@ -16,6 +16,7 @@ def _include_launch(package_share: str, launch_file: str, launch_arguments: dict
 def generate_launch_description():
     package_share = get_package_share_directory('agribot_iot')
     control_share = get_package_share_directory('agribot_control')
+    config_dir = os.path.join(package_share, 'config')
 
     use_sim_time_arg = DeclareLaunchArgument(
         'use_sim_time',
@@ -35,32 +36,50 @@ def generate_launch_description():
     environment_sensor = _include_launch(
         package_share,
         'environment_sensor.launch.py',
-        common_args,
+        {
+            **common_args,
+            'params_file': os.path.join(config_dir, 'environment_sensor.yaml'),
+        },
     )
     watering_controller = _include_launch(
         package_share,
         'watering_controller.launch.py',
-        common_args,
+        {
+            **common_args,
+            'params_file': os.path.join(config_dir, 'watering_controller.yaml'),
+        },
     )
     curtain_controller = _include_launch(
         package_share,
         'curtain_controller.launch.py',
-        common_args,
+        {
+            **common_args,
+            'params_file': os.path.join(config_dir, 'curtain_controller.yaml'),
+        },
     )
     fan_controller = _include_launch(
         package_share,
         'fan_controller.launch.py',
-        common_args,
+        {
+            **common_args,
+            'params_file': os.path.join(config_dir, 'fan_controller.yaml'),
+        },
     )
     nutrient_controller = _include_launch(
         package_share,
         'nutrient_controller.launch.py',
-        common_args,
+        {
+            **common_args,
+            'params_file': os.path.join(config_dir, 'nutrient_controller.yaml'),
+        },
     )
     sprinkler_controller = _include_launch(
         package_share,
         'sprinkler_controller.launch.py',
-        common_args,
+        {
+            **common_args,
+            'params_file': os.path.join(config_dir, 'sprinkler_controller.yaml'),
+        },
     )
     manual_actuation_guard = _include_launch(
         control_share,

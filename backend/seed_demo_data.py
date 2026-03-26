@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -9,432 +10,480 @@ from sqlalchemy import text
 
 from database import Base, SQLALCHEMY_DATABASE_URL, SessionLocal, engine
 from models import (
+    ActuationCommand,
     ActuationLog,
     Alert,
     CropObservation,
     EnvironmentSample,
+    Fruit,
     HarvestEvent,
+    IotDevice,
     Mission,
     Plant,
     Robot,
     Zone,
 )
-from robot_map_service import _load_crop_instances, read_map_payload, read_pose_payload
-from zone_service import guess_zone_id_for_x, read_zones_payload
+from robot_map_service import _load_crop_instances, _load_iot_devices, read_map_payload
 
-DEMO_TAG = "[demo-seed]"
-DEFAULT_ZONE_NAME = "farm_01"
-ROBOT_NAME = "agribot"
-ROBOT_STATUS = "PATROL"
-MISSION_TYPE = "PATROL"
-MISSION_STATUS = "RUNNING"
+ROBOT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
+PATROL_MISSION_ID = uuid.UUID("22222222-2222-2222-2222-222222222222")
+DEFAULT_ZONE_ID = "farm_01"
+DEFAULT_ROBOT_NAME = "AGR-02"
 
-HEALTHY_IMAGE_URL = "/mock-images/greenhouse-overview.png"
-DISEASE_IMAGE_URL = "/mock-images/disease-closeup.png"
+
 @dataclass(frozen=True)
-class DiseasePlan:
-    label: str
-    confidence: float
-    health_score: float
-    chemical_name: str
-    amount_ml: float
-    follow_up_alert: str
+class DiseaseScenario:
+    finding_label: str
+    recommended_action: str
+    evidence: str
+    device_id: str
+    command_type: str
+    target_value: float
+    value_unit: str
+    severity: str
 
 
-DISEASE_CASES: dict[str, DiseasePlan] = {
-    "farm01_plant_06": DiseasePlan(
-        label="tomato_powdery_mildew",
-        confidence=0.98,
-        health_score=0.22,
-        chemical_name="sulfur_fungicide",
-        amount_ml=180.0,
-        follow_up_alert="흰가루병 의심 개체를 국소 살포 대상으로 지정",
+DISEASE_SCENARIOS: dict[str, DiseaseScenario] = {
+    "farm01_plant_06": DiseaseScenario(
+        finding_label="tomato_powdery_mildew",
+        recommended_action="약제 살포",
+        evidence="잎 표면 흰가루 패턴과 가장자리 변색이 확인되었습니다.",
+        device_id="sprinkler_1",
+        command_type="SPRAY_PESTICIDE",
+        target_value=3.0,
+        value_unit="sec",
+        severity="CRITICAL",
     ),
-    "farm01_plant_15": DiseasePlan(
-        label="tomato_gray_mold",
-        confidence=0.95,
-        health_score=0.18,
-        chemical_name="botrytis_fungicide",
-        amount_ml=220.0,
-        follow_up_alert="잿빛곰팡이 의심 개체를 격리 관찰 대상으로 지정",
+    "farm01_plant_15": DiseaseScenario(
+        finding_label="tomato_gray_mold",
+        recommended_action="약제 살포",
+        evidence="과실 주변 회색 곰팡이성 패턴이 확인되었습니다.",
+        device_id="sprinkler_2",
+        command_type="SPRAY_PESTICIDE",
+        target_value=3.5,
+        value_unit="sec",
+        severity="CRITICAL",
     ),
-    "farm01_plant_22": DiseasePlan(
-        label="tomato_blossom_end_rot",
-        confidence=0.92,
-        health_score=0.43,
-        chemical_name="calcium_solution",
-        amount_ml=160.0,
-        follow_up_alert="칼슘 결핍 의심 개체를 보정 처치 대상으로 지정",
+    "farm01_plant_22": DiseaseScenario(
+        finding_label="tomato_blossom_end_rot",
+        recommended_action="칼슘액비 살포",
+        evidence="과실 하단 흑변과 칼슘 결핍 패턴이 확인되었습니다.",
+        device_id="sprinkler_1",
+        command_type="SPRAY_CALCIUM_SOLUTION",
+        target_value=2.5,
+        value_unit="sec",
+        severity="WARNING",
     ),
 }
 
-HARVEST_READY_PLANT_IDS = {
-    "farm01_plant_01",
-    "farm01_plant_02",
-    "farm01_plant_03",
-    "farm01_plant_04",
-    "farm01_plant_11",
-    "farm01_plant_12",
-    "farm01_plant_19",
+HARVESTED_FRUITS = {
+    "farm01_plant_01_tomato_01": True,
+    "farm01_plant_03_tomato_01": True,
+    "farm01_plant_19_tomato_01": False,
 }
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="현재 farm 맵 메타데이터에 맞춘 로컬 데모 더미데이터를 PostgreSQL에 적재합니다."
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="DB에 쓰지 않고 어떤 데이터가 들어가는지만 출력합니다.",
-    )
+    parser = argparse.ArgumentParser(description="새 greenhouse 스키마를 생성하고 데모 데이터를 적재합니다.")
+    parser.add_argument("--dry-run", action="store_true", help="DB 변경 없이 요약만 출력합니다.")
     return parser.parse_args()
 
 
-def _reset_tables(db: Any) -> None:
+def _serialize_dt(value: datetime | None) -> str:
+    return "" if value is None else value.isoformat()
+
+
+def _device_type(raw_type: str) -> str:
+    mapping = {
+        "watering": "WATER_PUMP",
+        "curtain": "CURTAIN",
+        "fan": "FAN",
+        "nutrient": "NUTRIENT",
+        "sprinkler": "SPRINKLER",
+    }
+    return mapping.get(raw_type.strip().lower(), raw_type.strip().upper())
+
+
+def _device_unit(raw_type: str) -> str:
+    mapping = {
+        "watering": "ml",
+        "curtain": "percent",
+        "fan": "level",
+        "nutrient": "ml",
+        "sprinkler": "sec",
+    }
+    return mapping.get(raw_type.strip().lower(), "unit")
+
+
+def _device_initial_state(raw_type: str) -> str:
+    mapping = {
+        "curtain": "CLOSED",
+    }
+    return mapping.get(raw_type.strip().lower(), "OFF")
+
+
+def _display_name(plant_id: str) -> str:
+    suffix = plant_id.split("_")[-1]
+    return f"토마토 식물 {suffix}"
+
+
+def _uuid5(label: str) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"agribot-demo:{label}")
+
+
+def _fruit_status(fruit_id: str) -> tuple[str, bool]:
+    if fruit_id in HARVESTED_FRUITS:
+        success = HARVESTED_FRUITS[fruit_id]
+        return ("HARVESTED" if success else "LOST", False)
+    if fruit_id in {
+        "farm01_plant_02_tomato_01",
+        "farm01_plant_04_tomato_01",
+        "farm01_plant_11_tomato_01",
+        "farm01_plant_12_tomato_01",
+    }:
+        return ("VISIBLE", True)
+    return ("VISIBLE", False)
+
+
+def _ripeness_stage(fruit_id: str) -> str:
+    if fruit_id in HARVESTED_FRUITS or fruit_id in {
+        "farm01_plant_02_tomato_01",
+        "farm01_plant_04_tomato_01",
+        "farm01_plant_11_tomato_01",
+        "farm01_plant_12_tomato_01",
+    }:
+        return "RIPE"
+    return "TURNING"
+
+
+def _reset_schema(db: Any) -> None:
     db.execute(
         text(
             """
-            TRUNCATE TABLE
-                crop_observations,
-                harvest_events,
-                alerts,
-                environment_samples,
+            DROP TABLE IF EXISTS
                 actuation_logs,
+                actuation_commands,
+                alerts,
+                harvest_events,
+                crop_observations,
+                missions,
                 missons,
+                fruits,
                 plants,
+                environment_samples,
+                iot_devices,
                 robots,
                 zones
-            RESTART IDENTITY CASCADE
+            CASCADE
             """
         )
     )
+    db.commit()
 
 
-def _build_zone_bounds() -> dict[str, Any]:
-    map_payload = read_map_payload("farm_map")
-    operational_zones = read_zones_payload("farm_map")
-    return {
-        "type": "rectangle",
-        "frame_id": "map",
-        **map_payload["bounds"],
-        "operational_slices": [
-            {
-                "zone_id": zone["id"],
-                "name": zone["name"],
-                "bounds": zone["bounds"],
-                "representative_pose": zone["representative_pose"],
-            }
-            for zone in operational_zones
-        ],
-    }
-
-
-def _build_robot_pose() -> dict[str, Any]:
-    pose_payload = read_pose_payload("farm_map")
-    pose = pose_payload.get("pose", {})
-    return {
-        "x": float(pose.get("x", 0.0)),
-        "y": float(pose.get("y", 0.0)),
-        "z": float(pose.get("z", 0.0)),
-        "yaw": float(pose.get("yaw", 0.0)),
-        "frame_id": str(pose.get("frame_id", "map")),
-        "current_zone_id": str(pose_payload.get("current_zone_id", "farm_01_center")),
-    }
-
-
-def _sprinkler_id_for_x(x_value: float) -> str:
-    if x_value <= -4.0:
-        return "sprinkler_0"
-    if x_value <= 0.0:
-        return "sprinkler_1"
-    if x_value <= 4.0:
-        return "sprinkler_2"
-    return "sprinkler_3"
-
-
-def _plant_index_from_id(plant_id: str) -> int:
-    return int(plant_id.rsplit("_", 1)[-1])
-
-
-def _tomatoes_by_plant(crop_catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    lookup: dict[str, dict[str, Any]] = {}
-    for tomato in crop_catalog.get("tomatoes", []):
-        if not isinstance(tomato, dict):
-            continue
-        parent_plant_id = str(tomato.get("parent_plant_id", "")).strip()
-        if parent_plant_id:
-            lookup[parent_plant_id] = tomato
-    return lookup
-
-
-def _observation_payload(
-    *,
-    robot_row_id: int,
-    plant_row_id: int,
-    mission_row_id: int,
-    observed_at: datetime,
-    disease_plan: DiseasePlan | None,
-) -> dict[str, Any]:
-    if disease_plan is None:
-        return {
-            "robot_id": robot_row_id,
-            "plant_id": plant_row_id,
-            "misson_id": mission_row_id,
-            "class_name": "healthy_leaf",
-            "confidence": 0.96,
-            "health_score": 0.94,
-            "image_url": HEALTHY_IMAGE_URL,
-            "observed_at": observed_at,
-        }
-
-    return {
-        "robot_id": robot_row_id,
-        "plant_id": plant_row_id,
-        "misson_id": mission_row_id,
-        "class_name": disease_plan.label,
-        "confidence": disease_plan.confidence,
-        "health_score": disease_plan.health_score,
-        "image_url": DISEASE_IMAGE_URL,
-        "observed_at": observed_at,
-    }
-
-
-def _build_alert_message(
-    *,
-    plant_id: str,
-    operational_zone_id: str,
-    sprinkler_id: str,
-    disease_plan: DiseasePlan,
-) -> str:
-    return (
-        f"{DEMO_TAG} plant={plant_id} zone={operational_zone_id} "
-        f"sprinkler={sprinkler_id} chemical={disease_plan.chemical_name} "
-        f"reason={disease_plan.follow_up_alert}"
-    )
-
-
-def _build_demo_dataset() -> dict[str, Any]:
+def _build_dataset() -> dict[str, Any]:
     crop_catalog = _load_crop_instances()
-    tomatoes_by_plant = _tomatoes_by_plant(crop_catalog)
+    device_catalog = _load_iot_devices()
+    map_payload = read_map_payload("farm_map")
     now = datetime.utcnow().replace(microsecond=0)
 
-    zone_row = Zone(
-        id=1,
-        name=DEFAULT_ZONE_NAME,
-        bounds=_build_zone_bounds(),
+    zone = Zone(
+        id=DEFAULT_ZONE_ID,
+        name="Farm 01",
+        bounds=map_payload["bounds"],
+        description="farm_world 전체를 하나의 운영 구역으로 사용합니다.",
     )
-    robot_row = Robot(
-        id=1,
-        name=ROBOT_NAME,
-        status=ROBOT_STATUS,
-        battery=82.0,
-        current_pose=_build_robot_pose(),
+    robot = Robot(
+        id=ROBOT_ID,
+        name=DEFAULT_ROBOT_NAME,
+        status="PATROL",
+        battery_level=82.0,
+        current_zone_id=DEFAULT_ZONE_ID,
+        current_pose={"x": 0.0, "y": -8.6, "z": 0.0, "yaw": 1.57, "frame_id": "map"},
         updated_at=now,
     )
-    mission_row = Mission(
-        id=1,
-        robot_id=robot_row.id,
-        mission_type=MISSION_TYPE,
-        status=MISSION_STATUS,
+    patrol_mission = Mission(
+        id=PATROL_MISSION_ID,
+        robot_id=ROBOT_ID,
+        mission_type="PATROL",
+        target_zone_id=DEFAULT_ZONE_ID,
+        target_plant_id=None,
+        target_fruit_id=None,
+        status="RUNNING",
         progress_percent=68,
         started_at=now - timedelta(minutes=18),
         completed_at=None,
     )
 
-    plant_rows: list[Plant] = []
-    observation_rows: list[CropObservation] = []
-    alert_rows: list[Alert] = []
-    actuation_rows: list[ActuationLog] = []
-    harvest_rows: list[HarvestEvent] = []
-    environment_rows: list[EnvironmentSample] = []
-    scenario_rows: list[dict[str, Any]] = []
+    devices: list[IotDevice] = []
+    for device_id, payload in sorted(device_catalog.items()):
+        raw_type = str(payload.get("device_type", "")).strip()
+        devices.append(
+            IotDevice(
+                id=device_id,
+                zone_id=str(payload.get("zone_id", DEFAULT_ZONE_ID)),
+                device_type=_device_type(raw_type),
+                display_name=str(payload.get("display_name", device_id)),
+                control_mode="AUTO",
+                current_state=_device_initial_state(raw_type),
+                current_value=0.0,
+                value_unit=_device_unit(raw_type),
+                is_online=True,
+                last_seen_at=now,
+            )
+        )
 
-    observation_id = 1
-    alert_id = 1
-    actuation_id = 1
-    harvest_id = 1
-    environment_id = 1
+    plants: list[Plant] = []
+    fruits: list[Fruit] = []
+    observations: list[CropObservation] = []
+    alerts: list[Alert] = []
+    actuation_commands: list[ActuationCommand] = []
+    actuation_logs: list[ActuationLog] = []
+    harvest_events: list[HarvestEvent] = []
+    missions: list[Mission] = [patrol_mission]
+    environment_samples: list[EnvironmentSample] = []
 
-    for index, sample in enumerate(range(6), start=1):
-        recorded_at = now - timedelta(minutes=(6 - index) * 5)
-        environment_rows.append(
+    tomatoes_by_plant = {
+        str(item.get("parent_plant_id", "")): item
+        for item in crop_catalog.get("tomatoes", [])
+        if isinstance(item, dict)
+    }
+
+    for sample_index in range(6):
+        recorded_at = now - timedelta(minutes=(5 - sample_index) * 5)
+        environment_samples.append(
             EnvironmentSample(
-                id=environment_id,
-                zone_id=zone_row.id,
-                temperature=24.0 + (index * 0.4),
-                humidity=58.0 + (index * 1.1),
-                soil_moisture=31.0 + (index * 0.8),
+                id=_uuid5(f"env-{sample_index}"),
+                zone_id=DEFAULT_ZONE_ID,
+                temperature=24.2 + sample_index * 0.4,
+                humidity=57.5 + sample_index * 1.2,
+                soil_moisture=28.0 + sample_index * 0.8,
                 recorded_at=recorded_at,
             )
         )
-        environment_id += 1
 
-    for plant_row_id, plant in enumerate(crop_catalog.get("plants", []), start=1):
-        if not isinstance(plant, dict):
+    basket_count = 0
+    for index, plant_payload in enumerate(crop_catalog.get("plants", []), start=1):
+        if not isinstance(plant_payload, dict):
             continue
 
-        plant_id = str(plant.get("plant_id", "")).strip()
-        pose = plant.get("pose", {})
-        x_value = float(pose.get("x", 0.0))
-        operational_zone_id = guess_zone_id_for_x(x_value)
-        tomato = tomatoes_by_plant.get(plant_id, {})
-        tomato_id = str(tomato.get("tomato_id", "")).strip()
-        sprinkler_id = _sprinkler_id_for_x(x_value)
-        disease_plan = DISEASE_CASES.get(plant_id)
-        ready_harvest = plant_id in HARVEST_READY_PLANT_IDS
-        observed_at = now - timedelta(minutes=max(1, 26 - plant_row_id))
+        plant_id = str(plant_payload.get("plant_id", "")).strip()
+        pose = dict(plant_payload.get("pose", {}))
+        tomato_payload = tomatoes_by_plant.get(plant_id, {})
+        fruit_id = str(tomato_payload.get("tomato_id", "")).strip()
+        fruit_pose = dict(tomato_payload.get("pose", {}))
+        scenario = DISEASE_SCENARIOS.get(plant_id)
+        fruit_status, ready_to_harvest = _fruit_status(fruit_id)
+        ripeness_stage = _ripeness_stage(fruit_id)
+        needs_nutrition = scenario is not None and "칼슘" in scenario.recommended_action
+        needs_water = index % 5 == 0
+        last_observed_at = now - timedelta(minutes=max(1, 26 - index))
 
-        plant_rows.append(
+        plants.append(
             Plant(
-                id=plant_row_id,
-                zone_id=zone_row.id,
+                id=plant_id,
+                zone_id=DEFAULT_ZONE_ID,
+                crop_name="tomato",
                 position={
-                    "x": x_value,
-                    "y": y_value,
+                    "x": float(pose.get("x", 0.0)),
+                    "y": float(pose.get("y", 0.0)),
                     "z": float(pose.get("z", 0.75)),
                     "yaw": float(pose.get("yaw", 0.0)),
-                    "operational_zone_id": operational_zone_id,
-                    "nearest_sprinkler_id": sprinkler_id,
-                    "linked_tomato_id": tomato_id,
-                    "world_model_name": plant.get("world_model_name"),
                 },
-                health_score=0.94 if disease_plan is None else disease_plan.health_score,
-                growth_stage="harvest_ready" if ready_harvest else "fruiting",
-                name=plant_id,
-                read_water=not ready_harvest,
-                ready_harvest=ready_harvest,
-                last_observed=observed_at,
+                needs_water=needs_water,
+                ready_to_harvest=ready_to_harvest,
+                needs_nutrition=needs_nutrition,
+                last_observed_at=last_observed_at,
             )
         )
 
-        observation_rows.append(
+        fruits.append(
+            Fruit(
+                id=fruit_id,
+                plant_id=plant_id,
+                position={
+                    "x": float(fruit_pose.get("x", pose.get("x", 0.0))),
+                    "y": float(fruit_pose.get("y", pose.get("y", 0.0))),
+                    "z": float(fruit_pose.get("z", 1.05)),
+                },
+                ripeness_stage=ripeness_stage,
+                ready_to_harvest=ready_to_harvest,
+                current_status=fruit_status,
+                last_observed_at=last_observed_at,
+            )
+        )
+
+        if scenario is None:
+            finding_label = "ripe_tomato" if ready_to_harvest else "healthy_leaf"
+            recommended_action = "수확 요청 가능" if ready_to_harvest else "추가 관찰 유지"
+            evidence = "정상 생육 패턴이 확인되었습니다."
+            image_url = "/mock-images/harvest-closeup.png" if ready_to_harvest else "/mock-images/greenhouse-overview.png"
+        else:
+            finding_label = scenario.finding_label
+            recommended_action = scenario.recommended_action
+            evidence = scenario.evidence
+            image_url = "/mock-images/disease-closeup.png"
+
+        observation_id = _uuid5(f"obs:{plant_id}")
+        observations.append(
             CropObservation(
                 id=observation_id,
-                **_observation_payload(
-                    robot_row_id=robot_row.id,
-                    plant_row_id=plant_row_id,
-                    mission_row_id=mission_row.id,
-                    observed_at=observed_at,
-                    disease_plan=disease_plan,
-                ),
+                robot_id=ROBOT_ID,
+                mission_id=PATROL_MISSION_ID,
+                plant_id=plant_id,
+                fruit_id=fruit_id,
+                finding_label=finding_label,
+                confidence=0.97 if scenario is not None else 0.94,
+                recommended_action=recommended_action,
+                evidence=evidence,
+                image_url=image_url,
+                observed_at=last_observed_at,
             )
         )
-        observation_id += 1
 
-        if disease_plan is not None:
-            alert_rows.append(
+        if scenario is not None:
+            alert_id = _uuid5(f"alert:{plant_id}")
+            alerts.append(
                 Alert(
                     id=alert_id,
-                    robot_id=robot_row.id,
+                    robot_id=ROBOT_ID,
+                    zone_id=DEFAULT_ZONE_ID,
+                    plant_id=plant_id,
+                    observation_id=observation_id,
                     alert_type="DISEASE",
-                    message=_build_alert_message(
-                        plant_id=plant_id,
-                        operational_zone_id=operational_zone_id,
-                        sprinkler_id=sprinkler_id,
-                        disease_plan=disease_plan,
-                    ),
-                    image_url=DISEASE_IMAGE_URL,
-                    detected_at=observed_at + timedelta(seconds=30),
-                    is_acked=False,
+                    severity=scenario.severity,
+                    message=f"{_display_name(plant_id)} 에서 {scenario.finding_label} 이 감지되었습니다.",
+                    image_url="/mock-images/disease-closeup.png",
+                    acknowledged_at=None,
+                    acknowledged_by=None,
+                    detected_at=last_observed_at + timedelta(seconds=30),
                 )
             )
-            alert_id += 1
 
-            actuation_rows.append(
+            command_id = _uuid5(f"command:{plant_id}")
+            actuation_commands.append(
+                ActuationCommand(
+                    id=command_id,
+                    device_id=scenario.device_id,
+                    zone_id=DEFAULT_ZONE_ID,
+                    mission_id=PATROL_MISSION_ID,
+                    observation_id=observation_id,
+                    command_type=scenario.command_type,
+                    command_status="COMPLETED",
+                    target_value=scenario.target_value,
+                    value_unit=scenario.value_unit,
+                    requested_by="backend:demo-seed",
+                    request_source="AI_CONFIRMATION",
+                    requested_at=last_observed_at + timedelta(minutes=2),
+                )
+            )
+            actuation_logs.append(
                 ActuationLog(
-                    id=actuation_id,
-                    robot_id=robot_row.id,
-                    zone_id=zone_row.id,
-                    action_type=f"{DEMO_TAG}:SPRAY:{sprinkler_id}:{disease_plan.chemical_name}",
-                    amount_ml=disease_plan.amount_ml,
-                    executed_at=observed_at + timedelta(minutes=3),
-                    success=True,
+                    id=_uuid5(f"log:{plant_id}"),
+                    command_id=command_id,
+                    device_id=scenario.device_id,
+                    result="SUCCESS",
+                    result_message=f"{scenario.recommended_action} 완료",
+                    state_after="ON",
+                    actual_value=scenario.target_value,
+                    value_unit=scenario.value_unit,
+                    started_at=last_observed_at + timedelta(minutes=2),
+                    finished_at=last_observed_at + timedelta(minutes=2, seconds=10),
                 )
             )
-            actuation_id += 1
 
-        if ready_harvest and plant_id in {"farm01_plant_03", "farm01_plant_12", "farm01_plant_19"}:
-            success = plant_id != "farm01_plant_19"
-            harvest_rows.append(
+        if fruit_id in HARVESTED_FRUITS:
+            success = HARVESTED_FRUITS[fruit_id]
+            if success:
+                basket_count += 1
+            harvest_mission_id = _uuid5(f"mission:harvest:{fruit_id}")
+            missions.append(
+                Mission(
+                    id=harvest_mission_id,
+                    robot_id=ROBOT_ID,
+                    mission_type="HARVEST",
+                    target_zone_id=DEFAULT_ZONE_ID,
+                    target_plant_id=plant_id,
+                    target_fruit_id=fruit_id,
+                    status="COMPLETED" if success else "FAILED",
+                    progress_percent=100 if success else 72,
+                    started_at=last_observed_at + timedelta(minutes=2),
+                    completed_at=last_observed_at + timedelta(minutes=4),
+                )
+            )
+            harvest_events.append(
                 HarvestEvent(
-                    id=harvest_id,
-                    robot_id=robot_row.id,
-                    plant_id=plant_row_id,
-                    fruit_id=_plant_index_from_id(plant_id),
+                    id=_uuid5(f"harvest:{fruit_id}"),
+                    plant_id=plant_id,
+                    fruit_id=fruit_id,
+                    robot_id=ROBOT_ID,
+                    mission_id=harvest_mission_id,
                     success=success,
-                    fail_reason=None if success else f"{DEMO_TAG} fruit lost during gripper alignment",
-                    basket_count=1 if success else 0,
-                    harvested_at=observed_at + timedelta(minutes=5),
+                    fail_reason=None if success else "target_lost",
+                    basket_count=basket_count,
+                    harvested_at=last_observed_at + timedelta(minutes=4),
                 )
-            )
-            harvest_id += 1
-
-        if disease_plan is not None:
-            scenario_rows.append(
-                {
-                    "plant_id": plant_id,
-                    "linked_tomato_id": tomato_id,
-                    "physical_zone_id": DEFAULT_ZONE_NAME,
-                    "operational_zone_id": operational_zone_id,
-                    "sprinkler_id": sprinkler_id,
-                    "disease_label": disease_plan.label,
-                    "chemical_name": disease_plan.chemical_name,
-                }
             )
 
     return {
-        "zone": zone_row,
-        "robot": robot_row,
-        "mission": mission_row,
-        "plants": plant_rows,
-        "environment_samples": environment_rows,
-        "crop_observations": observation_rows,
-        "alerts": alert_rows,
-        "actuation_logs": actuation_rows,
-        "harvest_events": harvest_rows,
-        "scenario_rows": scenario_rows,
+        "zone": zone,
+        "robot": robot,
+        "missions": missions,
+        "devices": devices,
+        "plants": plants,
+        "fruits": fruits,
+        "environment_samples": environment_samples,
+        "observations": observations,
+        "alerts": alerts,
+        "actuation_commands": actuation_commands,
+        "actuation_logs": actuation_logs,
+        "harvest_events": harvest_events,
     }
 
 
 def _print_summary(dataset: dict[str, Any], *, dry_run: bool) -> None:
-    mode = "DRY RUN" if dry_run else "APPLIED"
-    print(f"[{mode}] agribot local demo seed")
-    print(f"database_url={SQLALCHEMY_DATABASE_URL}")
-    print(f"zone={dataset['zone'].name}")
+    mode = "DRY RUN" if dry_run else "APPLY"
+    print(f"[{mode}] database_url={SQLALCHEMY_DATABASE_URL}")
+    print(f"zone={dataset['zone'].id}")
+    print(f"robot={dataset['robot'].name}")
     print(
         "counts="
         f"plants:{len(dataset['plants'])}, "
+        f"fruits:{len(dataset['fruits'])}, "
+        f"devices:{len(dataset['devices'])}, "
         f"environment:{len(dataset['environment_samples'])}, "
-        f"observations:{len(dataset['crop_observations'])}, "
+        f"observations:{len(dataset['observations'])}, "
         f"alerts:{len(dataset['alerts'])}, "
-        f"actuations:{len(dataset['actuation_logs'])}, "
-        f"harvests:{len(dataset['harvest_events'])}"
+        f"commands:{len(dataset['actuation_commands'])}, "
+        f"logs:{len(dataset['actuation_logs'])}, "
+        f"harvest_events:{len(dataset['harvest_events'])}"
     )
-    for row in dataset["scenario_rows"]:
+    for plant_id, scenario in DISEASE_SCENARIOS.items():
         print(
             "scenario="
-            f"plant={row['plant_id']} "
-            f"tomato={row['linked_tomato_id'] or 'n/a'} "
-            f"physical_zone={row['physical_zone_id']} "
-            f"operational_zone={row['operational_zone_id']} "
-            f"sprinkler={row['sprinkler_id']} "
-            f"disease={row['disease_label']} "
-            f"chemical={row['chemical_name']}"
+            f"plant={plant_id} "
+            f"zone={DEFAULT_ZONE_ID} "
+            f"device={scenario.device_id} "
+            f"finding={scenario.finding_label} "
+            f"action={scenario.recommended_action}"
         )
 
 
 def _apply_dataset(dataset: dict[str, Any]) -> None:
     db = SessionLocal()
     try:
-        _reset_tables(db)
+        _reset_schema(db)
+        Base.metadata.create_all(bind=engine)
         db.add(dataset["zone"])
         db.add(dataset["robot"])
-        db.add(dataset["mission"])
+        db.add_all(dataset["missions"])
+        db.add_all(dataset["devices"])
         db.add_all(dataset["plants"])
+        db.add_all(dataset["fruits"])
         db.add_all(dataset["environment_samples"])
-        db.add_all(dataset["crop_observations"])
+        db.add_all(dataset["observations"])
         db.add_all(dataset["alerts"])
+        db.add_all(dataset["actuation_commands"])
         db.add_all(dataset["actuation_logs"])
         db.add_all(dataset["harvest_events"])
         db.commit()
@@ -447,13 +496,10 @@ def _apply_dataset(dataset: dict[str, Any]) -> None:
 
 def main() -> None:
     args = _parse_args()
-    Base.metadata.create_all(bind=engine)
-    dataset = _build_demo_dataset()
+    dataset = _build_dataset()
     _print_summary(dataset, dry_run=args.dry_run)
     if args.dry_run:
         return
-
-    engine.connect().close()
     _apply_dataset(dataset)
 
 

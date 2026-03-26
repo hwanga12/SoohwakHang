@@ -22,13 +22,20 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 import os
+import sys
 
 
 def generate_launch_description():
     gz_partition = 'agribot_sim'
     runtime_dir = LaunchConfiguration('runtime_dir')
+    agribot_interfaces_site_packages = os.path.join(
+        get_package_prefix('agribot_interfaces'),
+        'lib',
+        f'python{sys.version_info.major}.{sys.version_info.minor}',
+        'site-packages',
+    )
     
     # Environment variables
     env_vars = [
@@ -37,7 +44,7 @@ def generate_launch_description():
         # Ensure agribot_interfaces python bindings are found
         SetEnvironmentVariable(
             'PYTHONPATH', 
-            os.path.join(os.getcwd(), 'install/agribot_interfaces/lib/python3.12/site-packages') + 
+            agribot_interfaces_site_packages +
             ':' + os.environ.get('PYTHONPATH', '')
         ),
     ]

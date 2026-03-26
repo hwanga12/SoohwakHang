@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 import uuid
 from typing import Any
 
@@ -39,8 +38,8 @@ class MissionBridgeUnavailableError(RuntimeError):
 
 
 def _generate_mission_id(prefix: str) -> str:
-    timestamp = int(time.time() * 1000)
-    return f"{prefix}-{timestamp}-{uuid.uuid4().hex[:8]}"
+    del prefix
+    return str(uuid.uuid4())
 
 
 def _sanitize_mission_id(mission_id: str | None, *, prefix: str) -> str:

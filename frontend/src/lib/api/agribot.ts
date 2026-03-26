@@ -1055,8 +1055,8 @@ export const dashboardFallback: DashboardPageData = {
       '/zones': 'fallback',
     },
   },
-  heroStatus: '서측 2열 순찰과 환경 점검이 함께 진행 중입니다.',
-  location: 'farm_01 · 서측 2열',
+  heroStatus: 'farm_01 전체 순찰과 환경 점검이 함께 진행 중입니다.',
+  location: 'Farm 01',
   activeTask: '수확 후보 토마토 검수와 급수 권고 확인',
   battery: '82%',
   batteryMeta: '현재 적재 기준으로 2시간 10분 연속 운행 예상',
@@ -1113,21 +1113,9 @@ export const dashboardFallback: DashboardPageData = {
   ],
   zones: [
     {
-      id: 'farm_01_west',
-      name: '서측 재배 라인',
-      summary: '수확 후보 2건이 이 라인에 몰려 있습니다.',
-      tone: 'healthy',
-    },
-    {
-      id: 'farm_01_center',
-      name: '중앙 재배 라인',
-      summary: '급수 승인과 센서 동기화 확인이 필요합니다.',
-      tone: 'warning',
-    },
-    {
-      id: 'farm_01_east',
-      name: '동측 재배 라인',
-      summary: '수확 배치 대기 중이며 현재는 안정 상태입니다.',
+      id: 'farm_01',
+      name: 'Farm 01',
+      summary: '온실 전체를 하나의 운영 구역으로 사용합니다.',
       tone: 'healthy',
     },
   ],
@@ -1195,7 +1183,7 @@ export const robotFallback: RobotPageData = {
     },
   },
   waypoint: 'inspection_b12',
-  zoneLabel: 'farm_01 · 서측 2열',
+  zoneLabel: 'Farm 01',
   poseLabel: 'map 기준 x 2.0 / y -5.9',
   pose: {
     x: 2.0,
@@ -1222,22 +1210,10 @@ export const robotFallback: RobotPageData = {
   ],
   zonePresets: [
     {
-      id: 'farm_01_west',
-      name: '서측 라인',
-      detail: '수확 후보와 병해 검토가 집중된 구역',
-      representativePose: { x: -8, y: -8.6, z: 0, yaw: 0, frameId: 'map' },
-    },
-    {
-      id: 'farm_01_center',
-      name: '중앙 라인',
-      detail: '급수 승인과 센서 점검이 필요한 구역',
-      representativePose: { x: 0, y: -8.6, z: 0, yaw: 0, frameId: 'map' },
-    },
-    {
-      id: 'farm_01_east',
-      name: '동측 라인',
-      detail: '다음 수확 배치가 대기 중인 구역',
-      representativePose: { x: 8, y: -8.6, z: 0, yaw: 0, frameId: 'map' },
+      id: 'farm_01',
+      name: 'Farm 01',
+      detail: '온실 전체를 하나의 운영 구역으로 사용합니다.',
+      representativePose: { x: 0, y: 0, z: 0, yaw: 0, frameId: 'map' },
     },
   ],
   map: robotFallbackMap,
@@ -2654,7 +2630,7 @@ export async function startFieldPatrolMission({
   mode: 'diagnosis' | 'harvest'
   zoneIds: string[]
 }) {
-  const fallbackZones = zoneIds.length > 0 ? zoneIds : ['farm_01_west', 'farm_01_center', 'farm_01_east']
+  const fallbackZones = zoneIds.length > 0 ? zoneIds : ['farm_01']
   const successFallback =
     mode === 'diagnosis'
       ? '밭 전체 병 진단 패트롤 요청을 접수했습니다.'
