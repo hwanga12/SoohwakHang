@@ -1549,10 +1549,10 @@ export function FarmCommandPage() {
     setActivityState('이동중')
 
     const guideZoneMap: Record<string, string> = {
-      'row-1': robot.zonePresets[0]?.id ?? 'farm_01_west',
-      'row-2': robot.zonePresets[0]?.id ?? 'farm_01_west',
-      'row-3': robot.zonePresets[1]?.id ?? 'farm_01_center',
-      'row-4': robot.zonePresets[2]?.id ?? 'farm_01_east',
+      'row-1': robot.zonePresets[0]?.id ?? 'farm_01',
+      'row-2': robot.zonePresets[0]?.id ?? 'farm_01',
+      'row-3': robot.zonePresets[0]?.id ?? 'farm_01',
+      'row-4': robot.zonePresets[0]?.id ?? 'farm_01',
     }
     const zoneId = guideZoneMap[guideId]
 

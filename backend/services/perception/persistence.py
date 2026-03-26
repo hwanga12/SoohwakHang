@@ -3,30 +3,40 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from database import SessionLocal
-from models import ActuationLog, CropObservation, Plant, Robot, Zone
+from models import (
+    ActuationCommand,
+    ActuationLog,
+    Alert,
+    CropObservation,
+    Fruit,
+    IotDevice,
+    Plant,
+    Robot,
+    Zone,
+)
 from services.actuation.schemas import ActuationDispatchResult, DiseaseTreatmentPlan, Point3D
 from services.perception.schemas import ThinInferenceConfirmRequest
 
 
-_ZONE_ALIASES = {
-    'farm_01': 'farm_01',
-    'greenhouse_01': 'farm_01',
-}
+DEFAULT_ZONE_ID = "farm_01"
 
 
 @dataclass(frozen=True)
 class PersistenceRefs:
-    robot_row_id: int
-    zone_row_id: int
-    plant_row_id: int
-    crop_observation_row_id: int
-    actuation_log_row_id: int | None = None
+    robot_row_id: str
+    zone_row_id: str
+    plant_row_id: str
+    crop_observation_row_id: str
+    actuation_command_row_id: str | None = None
+    actuation_log_row_id: str | None = None
+    alert_row_id: str | None = None
 
 
 class ObservationPersistenceService:
-    """Persist backend-confirmed disease observations and any resulting treatment logs."""
+    """Persist backend-confirmed observations into the normalized greenhouse schema."""
 
     def persist_confirmation(
         self,
@@ -42,46 +52,84 @@ class ObservationPersistenceService:
         db = SessionLocal()
         try:
             zone = _get_or_create_zone(db, request.zone_id)
-            robot = _get_or_create_robot(db, request.robot_id)
+            robot = _get_or_create_robot(db, request.robot_id, zone_id=zone.id)
             plant = _get_or_create_plant(
                 db,
-                zone=zone,
-                plant_name=request.plant_id,
+                zone_id=zone.id,
+                plant_id=request.plant_id,
                 target_position=request.target_position,
                 reviewed_at=reviewed_at,
+                final_label=final_label,
             )
+            fruit = _get_or_create_fruit(
+                db,
+                plant=plant,
+                fruit_id=request.fruit_id,
+                target_position=request.target_position,
+                reviewed_at=reviewed_at,
+                final_label=final_label,
+            )
+
             observation = CropObservation(
                 robot_id=robot.id,
+                mission_id=None,
                 plant_id=plant.id,
-                misson_id=None,
-                class_name=final_label,
+                fruit_id=None if fruit is None else fruit.id,
+                finding_label=final_label,
                 confidence=float(final_confidence),
-                health_score=_estimate_health_score(final_label),
+                recommended_action=_recommended_action(final_label, treatment_plan),
+                evidence=_build_evidence_text(
+                    request=request,
+                    final_label=final_label,
+                    final_confidence=final_confidence,
+                    treatment_plan=treatment_plan,
+                ),
                 image_url=image_path,
                 observed_at=reviewed_at,
             )
             db.add(observation)
-            actuation_log = _build_actuation_log(
+            db.flush()
+
+            alert = _build_alert(
                 robot=robot,
                 zone=zone,
+                plant=plant,
+                observation=observation,
                 reviewed_at=reviewed_at,
+            )
+            if alert is not None:
+                db.add(alert)
+                db.flush()
+
+            command = _build_actuation_command(
+                db=db,
+                zone=zone,
+                observation=observation,
+                reviewed_at=reviewed_at,
+                requested_by=request.requested_by,
                 treatment_plan=treatment_plan,
                 dispatch_result=dispatch_result,
             )
-            if actuation_log is not None:
-                db.add(actuation_log)
+            if command is not None:
+                db.add(command)
+                db.flush()
+            log = _build_actuation_log(
+                command=command,
+                reviewed_at=reviewed_at,
+                dispatch_result=dispatch_result,
+            )
+            if log is not None:
+                db.add(log)
 
             db.commit()
-            db.refresh(observation)
-            if actuation_log is not None:
-                db.refresh(actuation_log)
-
             return PersistenceRefs(
-                robot_row_id=int(robot.id),
-                zone_row_id=int(zone.id),
-                plant_row_id=int(plant.id),
-                crop_observation_row_id=int(observation.id),
-                actuation_log_row_id=None if actuation_log is None else int(actuation_log.id),
+                robot_row_id=str(robot.id),
+                zone_row_id=zone.id,
+                plant_row_id=plant.id,
+                crop_observation_row_id=str(observation.id),
+                actuation_command_row_id=None if command is None else str(command.id),
+                actuation_log_row_id=None if log is None else str(log.id),
+                alert_row_id=None if alert is None else str(alert.id),
             )
         except Exception:
             db.rollback()
@@ -90,131 +138,277 @@ class ObservationPersistenceService:
             db.close()
 
 
-def _get_or_create_zone(db: Any, zone_name: str) -> Zone:
-    normalized_zone_name = _normalize_zone_name(zone_name)
-    zone = db.query(Zone).filter(Zone.name == normalized_zone_name).first()
+def _get_or_create_zone(db: Any, zone_id: str) -> Zone:
+    normalized_zone_id = zone_id.strip() or DEFAULT_ZONE_ID
+    zone = db.query(Zone).filter(Zone.id == normalized_zone_id).first()
     if zone is not None:
         return zone
 
     zone = Zone(
-        name=normalized_zone_name,
-        bounds=None,
+        id=normalized_zone_id,
+        name="Farm 01",
+        bounds={"min_x": -10.0, "max_x": 10.0, "min_y": -10.0, "max_y": 10.0},
+        description="farm_world 전체 운영 구역",
     )
     db.add(zone)
     db.flush()
     return zone
 
 
-def _get_or_create_robot(db: Any, robot_name: str) -> Robot:
-    normalized_robot_name = robot_name.strip() or 'agribot'
+def _get_or_create_robot(db: Any, robot_name: str, *, zone_id: str) -> Robot:
+    normalized_robot_name = robot_name.strip() or "AGR-02"
     robot = db.query(Robot).filter(Robot.name == normalized_robot_name).first()
     if robot is not None:
+        robot.current_zone_id = zone_id
+        robot.updated_at = datetime.utcnow()
         return robot
 
     robot = Robot(
         name=normalized_robot_name,
-        status='IDLE',
-        battery=None,
+        status="PATROL",
+        battery_level=82.0,
+        current_zone_id=zone_id,
         current_pose=None,
+        updated_at=datetime.utcnow(),
     )
     db.add(robot)
     db.flush()
     return robot
 
 
+def _point_to_json(point: Point3D | None) -> dict[str, float]:
+    if point is None:
+        return {"x": 0.0, "y": 0.0, "z": 0.0}
+    return {
+        "x": float(point.x),
+        "y": float(point.y),
+        "z": float(point.z),
+    }
+
+
 def _get_or_create_plant(
     db: Any,
     *,
-    zone: Zone,
-    plant_name: str,
+    zone_id: str,
+    plant_id: str,
     target_position: Point3D | None,
     reviewed_at: datetime,
+    final_label: str,
 ) -> Plant:
-    normalized_plant_name = plant_name.strip() or f'{zone.name}_unknown_target'
-    plant = (
-        db.query(Plant)
-        .filter(Plant.zone_id == zone.id, Plant.name == normalized_plant_name)
-        .first()
-    )
+    normalized_plant_id = plant_id.strip() or "farm01_plant_unknown"
+    plant = db.query(Plant).filter(Plant.id == normalized_plant_id).first()
     if plant is None:
         plant = Plant(
-            zone_id=zone.id,
+            id=normalized_plant_id,
+            zone_id=zone_id,
+            crop_name="tomato",
             position=_point_to_json(target_position),
-            health_score=None,
-            growth_stage='',
-            name=normalized_plant_name,
-            read_water=None,
-            ready_harvest=None,
-            last_observed=reviewed_at,
+            needs_water=False,
+            ready_to_harvest=False,
+            needs_nutrition=False,
+            last_observed_at=reviewed_at,
         )
         db.add(plant)
         db.flush()
     else:
         if target_position is not None:
             plant.position = _point_to_json(target_position)
-        plant.last_observed = reviewed_at
+        plant.last_observed_at = reviewed_at
 
+    if "calcium" in final_label or "blossom_end_rot" in final_label:
+        plant.needs_nutrition = True
+    if "ripe" in final_label:
+        plant.ready_to_harvest = True
     return plant
+
+
+def _get_or_create_fruit(
+    db: Any,
+    *,
+    plant: Plant,
+    fruit_id: str,
+    target_position: Point3D | None,
+    reviewed_at: datetime,
+    final_label: str,
+) -> Fruit | None:
+    normalized_fruit_id = fruit_id.strip()
+    if not normalized_fruit_id:
+        return None
+
+    fruit = db.query(Fruit).filter(Fruit.id == normalized_fruit_id).first()
+    if fruit is None:
+        fruit = Fruit(
+            id=normalized_fruit_id,
+            plant_id=plant.id,
+            position=_point_to_json(target_position),
+            ripeness_stage="RIPE" if "ripe" in final_label else "TURNING",
+            ready_to_harvest="ripe" in final_label,
+            current_status="VISIBLE",
+            last_observed_at=reviewed_at,
+        )
+        db.add(fruit)
+        db.flush()
+    else:
+        if target_position is not None:
+            fruit.position = _point_to_json(target_position)
+        fruit.last_observed_at = reviewed_at
+        if "ripe" in final_label:
+            fruit.ripeness_stage = "RIPE"
+            fruit.ready_to_harvest = True
+    return fruit
+
+
+def _recommended_action(
+    final_label: str,
+    treatment_plan: DiseaseTreatmentPlan | None,
+) -> str:
+    normalized = final_label.strip().lower()
+    if treatment_plan is not None and treatment_plan.action_required and treatment_plan.treatment_label:
+        return treatment_plan.treatment_label
+    if "ripe" in normalized:
+        return "수확 요청"
+    if normalized in {"healthy_leaf", "healthy", "normal"}:
+        return "추가 관찰 유지"
+    return "운영자 재확인"
+
+
+def _build_evidence_text(
+    *,
+    request: ThinInferenceConfirmRequest,
+    final_label: str,
+    final_confidence: float,
+    treatment_plan: DiseaseTreatmentPlan | None,
+) -> str:
+    evidence = (
+        f"preliminary={request.preliminary_label or 'n/a'}, "
+        f"final={final_label}, confidence={final_confidence:.2f}"
+    )
+    if request.bbox is not None:
+        evidence += (
+            f", bbox=({request.bbox.x1:.1f},{request.bbox.y1:.1f})-"
+            f"({request.bbox.x2:.1f},{request.bbox.y2:.1f})"
+        )
+    if treatment_plan is not None and treatment_plan.reason:
+        evidence += f", treatment_reason={treatment_plan.reason}"
+    return evidence
+
+
+def _build_alert(
+    *,
+    robot: Robot,
+    zone: Zone,
+    plant: Plant,
+    observation: CropObservation,
+    reviewed_at: datetime,
+) -> Alert | None:
+    normalized = observation.finding_label.strip().lower()
+    if normalized in {"healthy_leaf", "healthy", "normal", "ripe_tomato"}:
+        return None
+
+    severity = "WARNING"
+    if "powdery" in normalized or "gray_mold" in normalized:
+        severity = "CRITICAL"
+
+    return Alert(
+        robot_id=robot.id,
+        zone_id=zone.id,
+        plant_id=plant.id,
+        observation_id=observation.id,
+        alert_type="DISEASE",
+        severity=severity,
+        message=f"{plant.id} 에서 {observation.finding_label} 감지",
+        image_url=observation.image_url,
+        acknowledged_at=None,
+        acknowledged_by=None,
+        detected_at=reviewed_at,
+    )
+
+
+def _get_or_create_device(
+    db: Any,
+    *,
+    device_id: str,
+    zone_id: str,
+) -> IotDevice:
+    device = db.query(IotDevice).filter(IotDevice.id == device_id).first()
+    if device is not None:
+        return device
+
+    device = IotDevice(
+        id=device_id,
+        zone_id=zone_id,
+        device_type="SPRINKLER" if "sprinkler" in device_id else "WATER_PUMP",
+        display_name=device_id,
+        control_mode="AUTO",
+        current_state="OFF",
+        current_value=0.0,
+        value_unit="sec",
+        is_online=True,
+        last_seen_at=datetime.utcnow(),
+    )
+    db.add(device)
+    db.flush()
+    return device
+
+
+def _build_actuation_command(
+    *,
+    db: Any,
+    zone: Zone,
+    observation: CropObservation,
+    reviewed_at: datetime,
+    requested_by: str,
+    treatment_plan: DiseaseTreatmentPlan | None,
+    dispatch_result: ActuationDispatchResult | None,
+) -> ActuationCommand | None:
+    if treatment_plan is None or dispatch_result is None:
+        return None
+    if not treatment_plan.action_required or treatment_plan.command_payload is None:
+        return None
+
+    device_id = (
+        dispatch_result.device_id
+        or (treatment_plan.selected_sprinkler.device_id if treatment_plan.selected_sprinkler else "")
+        or str(treatment_plan.command_payload.get("device_id", ""))
+    )
+    if not device_id:
+        return None
+
+    device = _get_or_create_device(db, device_id=device_id, zone_id=zone.id)
+    target_value = treatment_plan.command_payload.get("target_value")
+    return ActuationCommand(
+        device_id=device.id,
+        zone_id=zone.id,
+        mission_id=None,
+        observation_id=observation.id,
+        command_type=str(treatment_plan.command_payload.get("command_type", "SPRAY_PESTICIDE")).upper(),
+        command_status=str(dispatch_result.status or "REQUESTED").upper(),
+        target_value=None if target_value is None else float(target_value),
+        value_unit=str(treatment_plan.command_payload.get("unit", "sec")),
+        requested_by=requested_by.strip() or "backend:inference",
+        request_source="AI_CONFIRMATION",
+        requested_at=reviewed_at,
+    )
 
 
 def _build_actuation_log(
     *,
-    robot: Robot,
-    zone: Zone,
+    command: ActuationCommand | None,
     reviewed_at: datetime,
-    treatment_plan: DiseaseTreatmentPlan | None,
     dispatch_result: ActuationDispatchResult | None,
 ) -> ActuationLog | None:
-    if treatment_plan is None or dispatch_result is None:
-        return None
-    if not treatment_plan.action_required:
+    if command is None or dispatch_result is None:
         return None
 
-    command_payload = treatment_plan.command_payload or {}
-    target_value = command_payload.get('target_value')
-    amount_ml = float(target_value) if target_value is not None else None
-
+    result = "SUCCESS" if dispatch_result.dispatched else "FAILED"
     return ActuationLog(
-        robot_id=robot.id,
-        zone_id=zone.id,
-        action_type=str(
-            command_payload.get('command_type')
-            or treatment_plan.treatment_type
-            or 'treatment'
-        ),
-        amount_ml=amount_ml,
-        executed_at=reviewed_at,
-        success=bool(dispatch_result.dispatched),
+        command_id=command.id,
+        device_id=command.device_id,
+        result=result,
+        result_message=dispatch_result.detail_message,
+        state_after="ON" if dispatch_result.dispatched else "ERROR",
+        actual_value=command.target_value,
+        value_unit=command.value_unit,
+        started_at=reviewed_at,
+        finished_at=reviewed_at,
     )
-
-
-def _point_to_json(point: Point3D | None) -> dict[str, float] | None:
-    if point is None:
-        return None
-    return {
-        'x': float(point.x),
-        'y': float(point.y),
-        'z': float(point.z),
-    }
-
-
-def _normalize_zone_name(zone_name: str) -> str:
-    normalized = zone_name.strip().lower()
-    if not normalized:
-        return 'farm_01'
-    return _ZONE_ALIASES.get(normalized, normalized)
-
-
-def _estimate_health_score(label: str) -> float:
-    normalized = label.strip().lower()
-    if not normalized:
-        return 0.0
-    if normalized in {'healthy', 'healthy_leaf', 'normal', 'normal_leaf'}:
-        return 1.0
-    if 'powdery' in normalized or 'gray_mold' in normalized:
-        return 0.15
-    if 'calcium' in normalized:
-        return 0.35
-    if 'crack' in normalized:
-        return 0.45
-    return 0.25

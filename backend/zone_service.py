@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from robot_map_service import REPO_ROOT, ZONE_LABELS, read_layers_payload, read_map_payload
+from robot_map_service import read_layers_payload, read_map_payload
 
 PATROL_WAYPOINTS_PATH = (
-    REPO_ROOT
+    Path(__file__).resolve().parent.parent
     / "agribot_ws"
     / "src"
     / "agribot_navigation"
@@ -14,6 +14,8 @@ PATROL_WAYPOINTS_PATH = (
     / "patrol_waypoints.yaml"
 )
 
+DEFAULT_ZONE_ID = "farm_01"
+DEFAULT_ZONE_NAME = "Farm 01"
 ZONE_BOUNDARY_WEST_MAX_X = -1.5
 ZONE_BOUNDARY_CENTER_MAX_X = 4.0
 
@@ -41,7 +43,10 @@ class ZoneResolutionError(ValueError):
 
 
 def zone_label_for_id(zone_id: str) -> str:
-    return ZONE_LABELS.get(zone_id, zone_id)
+    if zone_id == DEFAULT_ZONE_ID:
+        return DEFAULT_ZONE_NAME
+    metadata = ZONE_METADATA.get(zone_id)
+    return zone_id if metadata is None else str(metadata["name"])
 
 
 def guess_zone_id_for_x(x_value: float) -> str:
@@ -109,14 +114,12 @@ def _zone_bounds(map_bounds: dict[str, float]) -> dict[str, dict[str, float]]:
     }
 
 
-def _representative_pose_for_zone(
-    zone_id: str,
+def _representative_pose_for_waypoint(
+    waypoint_id: str,
     *,
     frame_id: str,
     waypoint_poses: dict[str, dict[str, float]],
 ) -> dict[str, Any]:
-    metadata = ZONE_METADATA[zone_id]
-    waypoint_id = metadata["representative_waypoint_id"]
     pose = waypoint_poses.get(waypoint_id)
     if pose is None:
         raise ZoneResolutionError(f"대표 waypoint를 찾지 못했습니다: {waypoint_id}")
@@ -130,11 +133,50 @@ def _representative_pose_for_zone(
     }
 
 
+def _representative_pose_for_zone(
+    zone_id: str,
+    *,
+    frame_id: str,
+    waypoint_poses: dict[str, dict[str, float]],
+) -> dict[str, Any]:
+    metadata = ZONE_METADATA[zone_id]
+    return _representative_pose_for_waypoint(
+        str(metadata["representative_waypoint_id"]),
+        frame_id=frame_id,
+        waypoint_poses=waypoint_poses,
+    )
+
+
+def _aggregate_zone_payload(map_id: str | None = None) -> dict[str, Any]:
+    map_payload = read_map_payload(map_id)
+    layers_payload = read_layers_payload(map_id)
+    waypoint_poses = _load_waypoint_poses()
+    frame_id = "map"
+    representative_pose = _representative_pose_for_waypoint(
+        "farm_01_home",
+        frame_id=frame_id,
+        waypoint_poses=waypoint_poses,
+    )
+    plant_count = sum(1 for asset in layers_payload.get("assets", []) if asset.get("kind") == "plant")
+    return {
+        "id": DEFAULT_ZONE_ID,
+        "name": DEFAULT_ZONE_NAME,
+        "label": DEFAULT_ZONE_NAME,
+        "description": "farm_world.sdf 전체를 하나의 운영 구역으로 사용합니다.",
+        "representative_waypoint_id": "farm_01_home",
+        "representative_pose": representative_pose,
+        "bounds": map_payload["bounds"],
+        "plant_count": plant_count,
+        "map_id": map_payload["map_id"],
+    }
+
+
 def read_zones_payload(map_id: str | None = None) -> list[dict[str, Any]]:
     map_payload = read_map_payload(map_id)
     layers_payload = read_layers_payload(map_id)
     waypoint_poses = _load_waypoint_poses()
     zone_bounds = _zone_bounds(map_payload["bounds"])
+    frame_id = "map"
 
     plant_counts = {zone_id: 0 for zone_id in ZONE_METADATA}
     for asset in layers_payload.get("assets", []):
@@ -146,22 +188,18 @@ def read_zones_payload(map_id: str | None = None) -> list[dict[str, Any]]:
 
     zones: list[dict[str, Any]] = []
     for zone_id, metadata in ZONE_METADATA.items():
-        representative_pose = _representative_pose_for_zone(
-            zone_id,
-            frame_id=str(map_payload["origin"].get("frame_id", "map"))
-            if isinstance(map_payload.get("origin"), dict)
-            else "map",
-            waypoint_poses=waypoint_poses,
-        )
-        representative_pose["frame_id"] = "map"
         zones.append(
             {
                 "id": zone_id,
-                "name": metadata["name"],
+                "name": str(metadata["name"]),
                 "label": zone_label_for_id(zone_id),
-                "description": metadata["description"],
-                "representative_waypoint_id": metadata["representative_waypoint_id"],
-                "representative_pose": representative_pose,
+                "description": str(metadata["description"]),
+                "representative_waypoint_id": str(metadata["representative_waypoint_id"]),
+                "representative_pose": _representative_pose_for_zone(
+                    zone_id,
+                    frame_id=frame_id,
+                    waypoint_poses=waypoint_poses,
+                ),
                 "bounds": zone_bounds[zone_id],
                 "plant_count": plant_counts[zone_id],
                 "map_id": map_payload["map_id"],
@@ -172,8 +210,12 @@ def read_zones_payload(map_id: str | None = None) -> list[dict[str, Any]]:
 
 
 def resolve_zone_payload(zone_id: str, map_id: str | None = None) -> dict[str, Any]:
+    resolved_zone_id = str(zone_id).strip()
+    if resolved_zone_id == DEFAULT_ZONE_ID:
+        return _aggregate_zone_payload(map_id)
+
     for zone in read_zones_payload(map_id):
-        if zone["id"] == zone_id:
+        if zone["id"] == resolved_zone_id:
             return zone
     raise ZoneResolutionError(f"알 수 없는 zone_id 입니다: {zone_id}")
 

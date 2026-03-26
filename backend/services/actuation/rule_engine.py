@@ -61,12 +61,14 @@ _RULE_LABEL_ALIASES = {
     'tomato_powdery_mildew_disease': 'tomato_powdery_mildew',
     'tomato_calcium_deficiency_disease': 'tomato_calcium_deficiency',
     'tomato_gray_mold_disease': 'tomato_gray_mold',
+    'tomato_blossom_end_rot': 'tomato_calcium_deficiency',
+    'blossom_end_rot': 'tomato_calcium_deficiency',
     'tomato_fruit_cracking_disease': 'tomato_crack',
 }
 _NO_ACTION_LABELS = {
     'tomato_gray_mold',
-    'tomato_crack',
     'tomato_gray_mold_disease',
+    'tomato_crack',
     'tomato_fruit_cracking_disease',
     'tomato_macro_npk_deficiency_disease',
 }
@@ -109,7 +111,7 @@ class DiseaseTreatmentRuleEngine:
                 target_position=target_position,
                 reason=(
                     'No spray rule is configured for this disease.'
-                    if normalized_label in _NO_ACTION_LABELS
+                    if normalized_label in _NO_ACTION_LABELS or canonical_rule_label in _NO_ACTION_LABELS
                     else 'Disease label is not supported by the treatment rule engine.'
                 ),
             )

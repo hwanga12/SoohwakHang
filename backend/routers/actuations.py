@@ -12,10 +12,12 @@ from services.actuation.schemas import (
     DiseaseTreatmentPlan,
     DiseaseTreatmentPlanRequest,
 )
+from services.operations_service import OperationsService
 
 router = APIRouter()
 _treatment_rule_engine = DiseaseTreatmentRuleEngine()
 _treatment_dispatcher = TreatmentCommandDispatcher()
+_operations_service = OperationsService()
 
 class ApproveReq(BaseModel):
     reviewed_by: str
@@ -63,7 +65,7 @@ class NutrientsReq(BaseModel):
 @router.get("/recommendations")
 def get_recommendations():
     """IoT 자동 추천 목록 조회"""
-    return {"message": "List of recommendations"}
+    return {"data": _operations_service.list_recommendations()}
 
 @router.post("/treatment-plan", response_model=DiseaseTreatmentPlan)
 def build_treatment_plan(req: DiseaseTreatmentPlanRequest):
@@ -98,34 +100,82 @@ def dispatch_disease_treatment(req: DiseaseTreatmentDispatchRequest):
 @router.post("/recommendations/{id}/approve")
 def approve_recommendation(id: str, req: ApproveReq):
     """추천 승인 후 실제 명령으로 전환"""
-    return {"message": f"Approved recommendation {id}"}
+    return {
+        "data": _operations_service.approve_recommendation(
+            id,
+            reviewed_by=req.reviewed_by,
+            auto_execute=bool(req.auto_execute),
+        )
+    }
 
 @router.post("/recommendations/{id}/reject")
 def reject_recommendation(id: str, req: RejectReq):
     """추천 거절"""
-    return {"message": f"Rejected recommendation {id}"}
+    return {"data": {"id": id, "status": "REJECTED", "reviewed_by": req.reviewed_by, "comment": req.comment}}
 
 @router.post("/watering")
 def water_plants(req: WateringReq):
     """급수 명령 생성"""
-    return {"message": "Watering command sent"}
+    return {
+        "data": _operations_service.create_manual_command(
+            zone_id=req.zone_id,
+            device_id=req.device_id,
+            command_type="WATERING",
+            target_value=req.target_value,
+            value_unit=req.value_unit,
+            requested_by=req.requested_by,
+            request_source=req.request_source,
+            recommendation_id=req.recommendation_id,
+        )
+    }
 
 @router.post("/curtain")
 def control_curtain(req: CurtainReq):
     """천장 커튼 제어명령 생성"""
-    return {"message": "Curtain command sent"}
+    return {
+        "data": _operations_service.create_manual_command(
+            zone_id=req.zone_id,
+            device_id=req.device_id,
+            command_type="CURTAIN",
+            target_value=req.target_value,
+            value_unit=req.value_unit,
+            requested_by=req.requested_by,
+            request_source=req.request_source,
+        )
+    }
 
 @router.post("/fan")
 def control_fan(req: FanReq):
     """환기팬 제어 명령 생성"""
-    return {"message": "Fan command sent"}
+    return {
+        "data": _operations_service.create_manual_command(
+            zone_id=req.zone_id,
+            device_id=req.device_id,
+            command_type="FAN",
+            target_value=req.target_value,
+            value_unit=req.value_unit,
+            requested_by=req.requested_by,
+            request_source=req.request_source,
+        )
+    }
 
 @router.post("/nutrients")
 def control_nutrients(req: NutrientsReq):
     """영양제 실행 명령 생성"""
-    return {"message": "Nutrients command sent"}
+    return {
+        "data": _operations_service.create_manual_command(
+            zone_id=req.zone_id,
+            device_id=req.device_id,
+            command_type="NUTRIENTS",
+            target_value=req.target_value,
+            value_unit=req.value_unit,
+            requested_by=req.requested_by,
+            request_source=req.request_source,
+            recommendation_id=req.recommendation_id,
+        )
+    }
 
 @router.get("/history")
 def get_actuation_history():
     """장치 실행 이력 조회"""
-    return {"message": "List of actuation history"}
+    return {"data": _operations_service.list_actuation_history()}

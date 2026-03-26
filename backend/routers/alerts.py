@@ -25,8 +25,6 @@ def ack_alert(alert_id: str, req: AlertAckReq):
     """알림 읽음 처리"""
     service = _get_read_service()
     try:
-        service.resolve_media_path(alert_id)
+        return {"data": service.acknowledge_alert(alert_id, req.acknowledged_by)}
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    return {"data": service.acknowledge_alert(alert_id, req.acknowledged_by)}
