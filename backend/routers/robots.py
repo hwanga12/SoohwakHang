@@ -56,7 +56,7 @@ class RobotCommandReq(BaseModel):
     target_zone_id: Optional[str] = Field(
         default=None,
         description="move_to_zone 에서 사용할 대상 zone id",
-        examples=["farm_01_center"],
+        examples=["farm_01"],
     )
     map_id: Optional[str] = Field(
         default=None,
@@ -102,7 +102,7 @@ class RobotCommandReq(BaseModel):
                     "robot_id": "AGR-02",
                     "requested_by": "frontend-operator",
                     "command_type": "move_to_zone",
-                    "target_zone_id": "farm_01_east",
+                    "target_zone_id": "farm_01",
                 },
                 {
                     "robot_id": "AGR-02",
