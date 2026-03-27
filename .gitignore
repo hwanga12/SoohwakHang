@@ -17,6 +17,11 @@ __pycache__/
 env/
 venv/
 .venv/
+.venv/
+.venv_ripeness/
+__pycache__/
+runs/
+*.pt
 
 # ─── C++ / C ───
 *.o
