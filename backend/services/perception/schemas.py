@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from services.actuation.schemas import (
-    ActuationDispatchResult,
-    DiseaseTreatmentPlan,
-    Point3D,
-)
+from services.actuation.schemas import ActuationDispatchResult, DiseaseTreatmentPlan, Point3D
 
 
 class BoundingBox(BaseModel):
@@ -46,3 +42,5 @@ class ThinInferenceConfirmResponse(BaseModel):
     decision_source: str
     treatment_plan: DiseaseTreatmentPlan | None = None
     dispatch_result: ActuationDispatchResult | None = None
+    disease_judgment_id: str | None = None
+    harvest_decision_id: str | None = None
