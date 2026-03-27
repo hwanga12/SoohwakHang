@@ -20,6 +20,16 @@ fi
 
 source_ros_setup_files
 
+if command -v pgrep >/dev/null 2>&1; then
+    while read -r pid cmdline; do
+        [[ -z "${pid:-}" ]] && continue
+        if [[ "${cmdline}" == *"ros2 launch agribot_navigation harvest_action_server.launch.py"* ]] \
+            || [[ "${cmdline}" == *"/agribot_navigation/lib/agribot_navigation/harvest_action_server"* ]]; then
+            kill "${pid}" 2>/dev/null || true
+        fi
+    done < <(pgrep -af 'ros2 launch agribot_navigation harvest_action_server.launch.py|/agribot_navigation/lib/agribot_navigation/harvest_action_server' || true)
+fi
+
 export AGRIBOT_RUNTIME_DIR
 echo "Using AGRIBOT_RUNTIME_DIR=${AGRIBOT_RUNTIME_DIR}"
 exec ros2 launch agribot_navigation harvest_action_server.launch.py "runtime_dir:=${AGRIBOT_RUNTIME_DIR}"

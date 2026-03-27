@@ -127,10 +127,16 @@ export type RobotCommandDispatch = {
 export type DemoDiagnosisResult = {
   observationId: string
   finalLabel: string
+  displayLabel: string
   finalConfidence: number
   imagePath: string
+  imageUrl: string
   reviewedAt: string
   decisionSource: string
+  detail: string
+  healthPercent: number
+  recommendedAction: string
+  diagnosisNeeded: boolean
 }
 
 export type MissionDispatch = {
@@ -547,6 +553,16 @@ const PLANT_DIAGNOSIS_KEYWORDS = [
   '이상',
 ]
 
+const PLANT_NON_DIAGNOSIS_KEYWORDS = [
+  'healthy_leaf',
+  'healthy',
+  'normal',
+  '정상 잎',
+  '정상',
+  'ripe_tomato',
+  '수확 가능 토마토',
+]
+
 function extractPlantId(value: unknown) {
   const normalized = readString(value)
   if (!normalized) {
@@ -567,6 +583,16 @@ export function plantNeedsDiagnosis(plant?: {
     return false
   }
 
+  const latestState = normalizeSearchText(
+    plant.latestLabel,
+    plant.latestDisplayLabel,
+    plant.status,
+  )
+
+  if (latestState && includesAnyKeyword(latestState, PLANT_NON_DIAGNOSIS_KEYWORDS)) {
+    return false
+  }
+
   const normalized = normalizeSearchText(
     plant.latestLabel,
     plant.latestDisplayLabel,
@@ -579,6 +605,122 @@ export function plantNeedsDiagnosis(plant?: {
   }
 
   return includesAnyKeyword(normalized, PLANT_DIAGNOSIS_KEYWORDS)
+}
+
+function displayLabelForDiagnosis(label: string) {
+  const normalized = label.trim().toLowerCase()
+
+  if (!normalized) {
+    return '진단 결과'
+  }
+
+  if (normalized.includes('healthy')) {
+    return '정상 잎'
+  }
+
+  if (normalized.includes('ripe')) {
+    return '수확 가능 토마토'
+  }
+
+  if (normalized.includes('powder')) {
+    return '토마토 흰가루병'
+  }
+
+  if (normalized.includes('gray_mold') || normalized.includes('gray mold')) {
+    return '토마토 잿빛곰팡이병'
+  }
+
+  if (normalized.includes('blossom') || normalized.includes('rot')) {
+    return '배꼽썩음병'
+  }
+
+  if (normalized.includes('blight')) {
+    return '토마토 역병'
+  }
+
+  if (normalized.includes('wilt')) {
+    return '토마토 시듦병'
+  }
+
+  if (normalized.includes('spot')) {
+    return '토마토 반점병'
+  }
+
+  return label
+}
+
+function healthPercentForDiagnosis(label: string) {
+  const normalized = label.trim().toLowerCase()
+
+  if (!normalized) {
+    return 55
+  }
+
+  if (normalized.includes('healthy')) {
+    return 96
+  }
+
+  if (normalized.includes('ripe')) {
+    return 92
+  }
+
+  if (normalized.includes('gray_mold') || normalized.includes('gray mold')) {
+    return 34
+  }
+
+  if (normalized.includes('powder')) {
+    return 38
+  }
+
+  if (normalized.includes('blossom') || normalized.includes('rot')) {
+    return 41
+  }
+
+  if (normalized.includes('blight')) {
+    return 35
+  }
+
+  if (normalized.includes('wilt') || normalized.includes('spot')) {
+    return 44
+  }
+
+  return 52
+}
+
+function recommendedActionForDiagnosis(label: string, displayLabel: string) {
+  const normalized = label.trim().toLowerCase()
+
+  if (!normalized) {
+    return '추가 관찰 유지'
+  }
+
+  if (normalized.includes('healthy')) {
+    return '추가 관찰 유지'
+  }
+
+  if (normalized.includes('ripe')) {
+    return '수확 요청 가능'
+  }
+
+  return `${displayLabel} 수동 검토`
+}
+
+function detailForDiagnosis(label: string, displayLabel: string, treatmentReason: string) {
+  if (treatmentReason) {
+    return treatmentReason
+  }
+
+  const normalized = label.trim().toLowerCase()
+
+  if (normalized.includes('healthy')) {
+    return '정상 생육 패턴이 확인되었습니다.'
+  }
+
+  if (normalized.includes('ripe')) {
+    return '수확 가능한 성숙 상태가 확인되었습니다.'
+  }
+
+  return `${displayLabel} 징후가 확인되었습니다.`
 }
 
 function isFieldRelevantText(...values: unknown[]) {
@@ -946,6 +1088,8 @@ async function postWithFallback(
   attempts: Array<{ path: string; body: unknown }>,
   successFallback: string,
 ) {
+  let lastNon404Error: unknown = null
+
   for (const attempt of attempts) {
     try {
       const response = await apiClient.post(attempt.path, attempt.body)
@@ -973,7 +1117,12 @@ async function postWithFallback(
       }
 
       markRouteFailed('POST', attempt.path)
+      lastNon404Error = error
     }
+  }
+
+  if (lastNon404Error) {
+    throw new Error(readApiErrorMessage(lastNon404Error, successFallback))
   }
 
   throw new Error('연결 가능한 API 엔드포인트를 찾지 못했습니다.')
@@ -2023,7 +2172,7 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
                 : baseRecommendedAction,
           health,
           tone,
-          status: diagnosisNeeded ? '진단 필요' : baseStatus,
+          status: diagnosisNeeded ? '조치 필요' : baseStatus,
           latestLabel,
           latestDisplayLabel,
           latestImageUrl: resolveApiMediaUrl(
@@ -2510,6 +2659,13 @@ export async function sendRobotControlAction(
     return postWithFallback(
       [
         {
+          path: '/robot/control/pause',
+          body: {
+            robot_id: robotId,
+            requested_by: 'frontend-operator',
+          },
+        },
+        {
           path: '/robot/commands',
           body: {
             robot_id: robotId,
@@ -2542,6 +2698,13 @@ export async function sendRobotControlAction(
     return postWithFallback(
       [
         {
+          path: '/robot/control/resume',
+          body: {
+            robot_id: robotId,
+            requested_by: 'frontend-operator',
+          },
+        },
+        {
           path: '/robot/commands',
           body: {
             robot_id: robotId,
@@ -2570,18 +2733,18 @@ export async function sendRobotControlAction(
           body: {
             robot_id: robotId,
             requested_by: 'frontend-operator',
-            command_type: 'return_home',
-          },
-        },
-        {
-          path: '/missions/return-home',
-          body: {
-            robot_id: robotId,
-            requested_by: 'frontend-operator',
+            command_type: 'navigate_to_pose',
+            target_pose: {
+              x: 0,
+              y: 0,
+              z: 0,
+              yaw: 0,
+              frame_id: 'map',
+            },
           },
         },
       ],
-      '홈 복귀 명령을 접수했습니다. 상태 카드에서 진행 상황을 확인하세요.',
+      '가운데 복귀 명령을 접수했습니다. 상태 카드에서 진행 상황을 확인하세요.',
     )
   }
 
@@ -2725,13 +2888,31 @@ export async function runDemoDiagnosis({
     }
 
     markRouteVerified('POST', '/inference/demo/confirm')
+    const treatmentPlan = readRecord(payload.treatment_plan)
+    const observationId = readString(payload.observation_id)
+    const finalLabel = readString(payload.final_label)
+    const displayLabel = displayLabelForDiagnosis(finalLabel)
+    const treatmentReason = readString(treatmentPlan?.reason)
+    const recommendedAction = recommendedActionForDiagnosis(finalLabel, displayLabel)
+    const diagnosisNeeded = plantNeedsDiagnosis({
+      status: displayLabel,
+      recommendedAction,
+      latestLabel: finalLabel,
+      latestDisplayLabel: displayLabel,
+    })
     return {
-      observationId: readString(payload.observation_id),
-      finalLabel: readString(payload.final_label),
+      observationId,
+      finalLabel,
+      displayLabel,
       finalConfidence: readNumber(payload.final_confidence),
       imagePath: readString(payload.image_path),
+      imageUrl: resolveApiMediaUrl(observationId ? `/api/v1/media/${observationId}` : ''),
       reviewedAt: readString(payload.reviewed_at),
       decisionSource: readString(payload.decision_source),
+      detail: detailForDiagnosis(finalLabel, displayLabel, treatmentReason),
+      healthPercent: healthPercentForDiagnosis(finalLabel),
+      recommendedAction,
+      diagnosisNeeded,
     } satisfies DemoDiagnosisResult
   } catch (error) {
     markRouteFailed('POST', '/inference/demo/confirm')

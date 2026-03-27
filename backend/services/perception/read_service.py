@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import joinedload
 
 from database import SessionLocal
@@ -164,6 +165,16 @@ def _resolve_runtime_image_path(metadata_path: Path, image_format: str) -> Path 
 
 
 def _runtime_detail(payload: dict[str, Any]) -> str:
+    finding_label = str(
+        payload.get("final_label")
+        or payload.get("request", {}).get("preliminary_label")
+        or ""
+    ).strip().lower()
+    if finding_label in {"healthy_leaf", "healthy", "normal"}:
+        return "정상 생육 패턴이 확인되었습니다."
+    if finding_label == "ripe_tomato":
+        return "수확 가능한 토마토가 확인되었습니다."
+
     treatment_plan = payload.get("treatment_plan")
     dispatch_result = payload.get("dispatch_result")
     if isinstance(treatment_plan, dict):
@@ -181,6 +192,12 @@ def _runtime_detail(payload: dict[str, Any]) -> str:
 
 
 def _runtime_recommended_action(payload: dict[str, Any], finding_label: str) -> str:
+    normalized = finding_label.strip().lower()
+    if normalized in {"healthy_leaf", "healthy", "normal"}:
+        return "추가 관찰 유지"
+    if normalized == "ripe_tomato":
+        return "수확 요청"
+
     treatment_plan = payload.get("treatment_plan")
     if isinstance(treatment_plan, dict) and bool(treatment_plan.get("action_required")):
         treatment_label = str(treatment_plan.get("treatment_label") or "").strip()
@@ -287,6 +304,13 @@ def _runtime_observation_item(record: RuntimeObservationRecord) -> dict[str, Any
     }
 
 
+def _rollback_quietly(db: Any) -> None:
+    try:
+        db.rollback()
+    except Exception:
+        pass
+
+
 class ObservationReadService:
     def list_alerts(self) -> list[dict[str, Any]]:
         runtime_records = _runtime_observation_records()
@@ -319,16 +343,20 @@ class ObservationReadService:
 
         db = SessionLocal()
         try:
-            alerts = (
-                db.query(Alert)
-                .options(
-                    joinedload(Alert.zone),
-                    joinedload(Alert.plant),
-                    joinedload(Alert.observation),
+            try:
+                alerts = (
+                    db.query(Alert)
+                    .options(
+                        joinedload(Alert.zone),
+                        joinedload(Alert.plant),
+                        joinedload(Alert.observation),
+                    )
+                    .order_by(Alert.detected_at.desc())
+                    .all()
                 )
-                .order_by(Alert.detected_at.desc())
-                .all()
-            )
+            except OperationalError:
+                _rollback_quietly(db)
+                return runtime_rows
             runtime_ids = {row["id"] for row in runtime_rows}
             db_rows: list[dict[str, Any]] = []
             for alert in alerts:
@@ -370,18 +398,23 @@ class ObservationReadService:
             db.close()
 
     def list_plants(self) -> list[dict[str, Any]]:
+        runtime_records = _runtime_observation_records()
         db = SessionLocal()
         try:
-            plants = (
-                db.query(Plant)
-                .options(
-                    joinedload(Plant.zone),
-                    joinedload(Plant.fruits),
-                    joinedload(Plant.observations),
+            try:
+                plants = (
+                    db.query(Plant)
+                    .options(
+                        joinedload(Plant.zone),
+                        joinedload(Plant.fruits),
+                        joinedload(Plant.observations),
+                    )
+                    .order_by(Plant.id.asc())
+                    .all()
                 )
-                .order_by(Plant.id.asc())
-                .all()
-            )
+            except OperationalError:
+                _rollback_quietly(db)
+                plants = []
             rows = {
                 plant.id: {
                     "id": plant.id,
@@ -436,7 +469,7 @@ class ObservationReadService:
                 )
 
             latest_runtime_by_plant: dict[str, RuntimeObservationRecord] = {}
-            for record in _runtime_observation_records():
+            for record in runtime_records:
                 if not record.plant_id or record.plant_id in latest_runtime_by_plant:
                     continue
                 latest_runtime_by_plant[record.plant_id] = record
@@ -490,16 +523,21 @@ class ObservationReadService:
             db.close()
 
     def get_plant_detail(self, plant_id: str) -> dict[str, Any]:
+        observation_feed = self.get_plant_observations(plant_id)
+        latest = observation_feed["items"][0] if observation_feed["items"] else None
+
         db = SessionLocal()
         try:
-            plant = (
-                db.query(Plant)
-                .options(joinedload(Plant.zone), joinedload(Plant.fruits))
-                .filter(Plant.id == plant_id)
-                .first()
-            )
-            observation_feed = self.get_plant_observations(plant_id)
-            latest = observation_feed["items"][0] if observation_feed["items"] else None
+            try:
+                plant = (
+                    db.query(Plant)
+                    .options(joinedload(Plant.zone), joinedload(Plant.fruits))
+                    .filter(Plant.id == plant_id)
+                    .first()
+                )
+            except OperationalError:
+                _rollback_quietly(db)
+                plant = None
 
             if plant is None:
                 return {
@@ -529,51 +567,55 @@ class ObservationReadService:
             db.close()
 
     def get_plant_observations(self, plant_id: str) -> dict[str, Any]:
+        runtime_records = _runtime_observation_records()
         runtime_items = [
             _runtime_observation_item(record)
-            for record in _runtime_observation_records()
+            for record in runtime_records
             if record.plant_id == plant_id
         ]
 
         db = SessionLocal()
         try:
-            plant = (
-                db.query(Plant)
-                .options(joinedload(Plant.zone))
-                .filter(Plant.id == plant_id)
-                .first()
-            )
+            db_items: list[dict[str, Any]] = []
+            try:
+                plant = (
+                    db.query(Plant)
+                    .options(joinedload(Plant.zone))
+                    .filter(Plant.id == plant_id)
+                    .first()
+                )
+                if plant is not None:
+                    observations = (
+                        db.query(CropObservation)
+                        .options(joinedload(CropObservation.fruit))
+                        .filter(CropObservation.plant_id == plant_id)
+                        .order_by(CropObservation.observed_at.desc())
+                        .all()
+                    )
+                    db_items = [
+                        {
+                            "id": _serialize_uuid(observation.id),
+                            "class_name": observation.finding_label,
+                            "label": observation.finding_label,
+                            "display_label": _display_label(observation.finding_label),
+                            "reviewed_at": _serialize_datetime(observation.observed_at),
+                            "image_url": _api_image_url(observation.image_url or ""),
+                            "media_asset_id": _serialize_uuid(observation.id),
+                            "decision_source": "database",
+                            "health_percent": _health_percent(observation.finding_label),
+                            "detail": observation.evidence or observation.recommended_action or "",
+                            "treatment_plan": {
+                                "reason": observation.evidence or observation.recommended_action or "",
+                            },
+                        }
+                        for observation in observations
+                    ]
+            except OperationalError:
+                _rollback_quietly(db)
+                plant = None
 
             if plant is None and not runtime_items:
                 raise FileNotFoundError(f"알 수 없는 plant_id 입니다: {plant_id}")
-
-            db_items: list[dict[str, Any]] = []
-            if plant is not None:
-                observations = (
-                    db.query(CropObservation)
-                    .options(joinedload(CropObservation.fruit))
-                    .filter(CropObservation.plant_id == plant_id)
-                    .order_by(CropObservation.observed_at.desc())
-                    .all()
-                )
-                db_items = [
-                    {
-                        "id": _serialize_uuid(observation.id),
-                        "class_name": observation.finding_label,
-                        "label": observation.finding_label,
-                        "display_label": _display_label(observation.finding_label),
-                        "reviewed_at": _serialize_datetime(observation.observed_at),
-                        "image_url": _api_image_url(observation.image_url or ""),
-                        "media_asset_id": _serialize_uuid(observation.id),
-                        "decision_source": "database",
-                        "health_percent": _health_percent(observation.finding_label),
-                        "detail": observation.evidence or observation.recommended_action or "",
-                        "treatment_plan": {
-                            "reason": observation.evidence or observation.recommended_action or "",
-                        },
-                    }
-                    for observation in observations
-                ]
 
             items_by_id = {item["id"]: item for item in db_items}
             for item in runtime_items:
@@ -586,7 +628,7 @@ class ObservationReadService:
                 next(
                     (
                         record.zone_id
-                        for record in _runtime_observation_records()
+                        for record in runtime_records
                         if record.plant_id == plant_id and record.zone_id
                     ),
                     "farm_01",

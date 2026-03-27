@@ -189,6 +189,9 @@ def generate_launch_description():
         arguments=[
             '/agribot/lidar@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
         ],
+        remappings=[
+            ('/agribot/lidar', '/agribot/lidar_raw'),
+        ],
         output='screen',
     )
 

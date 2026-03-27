@@ -118,7 +118,11 @@ def generate_launch_description():
         parameters=[{
             'autostart': LaunchConfiguration('autostart'),
             'node_names': ['map_server', 'amcl'],
-            'bond_timeout': 60.0,
+            # Nav2 bond heartbeats are unreliable in this sim stack because the
+            # Gazebo clock can pause/jump while nodes remain healthy. Disable
+            # bond-based kill/restart loops and rely on explicit service
+            # failures instead.
+            'bond_timeout': 0.0,
             'use_sim_time': LaunchConfiguration('use_sim_time'),
         }],
     )

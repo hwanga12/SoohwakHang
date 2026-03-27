@@ -50,7 +50,7 @@ class StartupMapTfBroadcaster(Node):
 
         self._amcl_pose_received = True
         self.get_logger().info(
-            f'Received /amcl_pose ({msg.header.frame_id}), keeping identity map -> odom broadcaster alive.'
+            f'Received /amcl_pose ({msg.header.frame_id}), continuing identity map -> odom broadcaster.'
         )
         self.destroy_subscription(self._initial_pose_subscription)
         self._initial_pose_subscription = None
