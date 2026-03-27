@@ -35,6 +35,9 @@ class MonotonicStampFilter:
             return True
         return False
 
+    def reset(self, stamp_ns: int) -> None:
+        self.last_stamp_ns = stamp_ns
+
 
 class SimTimeGuard(Node):
     """Republish only monotonic simulation messages to keep Nav2 TF stable."""
@@ -49,8 +52,29 @@ class SimTimeGuard(Node):
         self.declare_parameter('joint_states_input_topic', '/joint_states_raw')
         self.declare_parameter('joint_states_output_topic', '/joint_states')
         self.declare_parameter('warning_interval_sec', 2.0)
+        self.declare_parameter('reset_on_time_jump_sec', 1.0)
+        self.declare_parameter('max_forward_jump_sec', 30.0)
+        self.declare_parameter('startup_guard_window_sec', 30.0)
+        self.declare_parameter('startup_max_allowed_stamp_sec', 120.0)
+        self.declare_parameter('max_stamp_ahead_of_uptime_sec', 120.0)
 
         self._warning_interval_sec = max(0.0, float(self.get_parameter('warning_interval_sec').value))
+        self._reset_on_time_jump_ns = int(
+            float(self.get_parameter('reset_on_time_jump_sec').value) * 1_000_000_000
+        )
+        self._max_forward_jump_ns = int(
+            float(self.get_parameter('max_forward_jump_sec').value) * 1_000_000_000
+        )
+        self._startup_guard_window_sec = max(
+            0.0, float(self.get_parameter('startup_guard_window_sec').value)
+        )
+        self._startup_max_allowed_stamp_ns = int(
+            float(self.get_parameter('startup_max_allowed_stamp_sec').value) * 1_000_000_000
+        )
+        self._max_stamp_ahead_of_uptime_ns = int(
+            float(self.get_parameter('max_stamp_ahead_of_uptime_sec').value) * 1_000_000_000
+        )
+        self._startup_monotonic = monotonic()
         self._last_warning_monotonic_by_stream: dict[str, float] = {}
 
         self._clock_filter = MonotonicStampFilter()
@@ -81,38 +105,108 @@ class SimTimeGuard(Node):
 
     def _handle_clock(self, message: Clock) -> None:
         stamp_ns = stamp_to_nanoseconds(message.clock.sec, message.clock.nanosec)
-        if self._clock_filter.accept(stamp_ns):
-            self._clock_publisher.publish(message)
-            return
-        self._warn_drop('clock', stamp_ns, self._clock_filter.last_stamp_ns)
+        self._republish_monotonic(
+            'clock',
+            stamp_ns,
+            message,
+            self._clock_filter,
+            self._clock_publisher.publish,
+        )
 
     def _handle_odom(self, message: Odometry) -> None:
         stamp_ns = stamp_to_nanoseconds(message.header.stamp.sec, message.header.stamp.nanosec)
-        if self._odom_filter.accept(stamp_ns):
-            self._odom_publisher.publish(message)
-            return
-        self._warn_drop('odom', stamp_ns, self._odom_filter.last_stamp_ns)
+        self._republish_monotonic(
+            'odom',
+            stamp_ns,
+            message,
+            self._odom_filter,
+            self._odom_publisher.publish,
+        )
 
     def _handle_joint_states(self, message: JointState) -> None:
         stamp_ns = stamp_to_nanoseconds(message.header.stamp.sec, message.header.stamp.nanosec)
-        if self._joint_state_filter.accept(stamp_ns):
-            self._joint_state_publisher.publish(message)
-            return
-        self._warn_drop('joint_states', stamp_ns, self._joint_state_filter.last_stamp_ns)
+        self._republish_monotonic(
+            'joint_states',
+            stamp_ns,
+            message,
+            self._joint_state_filter,
+            self._joint_state_publisher.publish,
+        )
 
-    def _warn_drop(self, stream_label: str, stamp_ns: int, last_stamp_ns: int | None) -> None:
-        if last_stamp_ns is None:
+    def _republish_monotonic(self, stream_label: str, stamp_ns: int, message, stamp_filter: MonotonicStampFilter, publish) -> None:
+        if stamp_ns > self._max_plausible_stamp_ns():
+            self._warn_drop(
+                stream_label,
+                f'Dropping implausible future {stream_label} sample with stamp '
+                f'{stamp_ns / 1_000_000_000:.3f}s; it is far ahead of node uptime.'
+            )
             return
+
+        if (
+            stamp_filter.last_stamp_ns is None
+            and self._within_startup_guard()
+            and stamp_ns > self._startup_max_allowed_stamp_ns
+        ):
+            self._warn_drop(
+                stream_label,
+                f'Dropping startup {stream_label} sample with implausibly large stamp '
+                f'({stamp_ns / 1_000_000_000:.3f}s) while waiting for the new simulation clock.'
+            )
+            return
+
+        last_stamp_ns = stamp_filter.last_stamp_ns
+        if last_stamp_ns is None:
+            stamp_filter.reset(stamp_ns)
+            publish(message)
+            return
+
+        if stamp_ns > last_stamp_ns:
+            forward_jump_ns = stamp_ns - last_stamp_ns
+            if forward_jump_ns > self._max_forward_jump_ns:
+                self._warn_drop(
+                    stream_label,
+                    f'Dropping implausible future {stream_label} sample '
+                    f'({forward_jump_ns / 1_000_000_000:.3f}s ahead of the latest accepted sample).'
+                )
+                return
+            stamp_filter.reset(stamp_ns)
+            publish(message)
+            return
+
+        backwards_jump_ns = last_stamp_ns - stamp_ns
+        if backwards_jump_ns >= self._reset_on_time_jump_ns:
+            self._warn_reset(stream_label, backwards_jump_ns)
+            stamp_filter.reset(stamp_ns)
+            publish(message)
+            return
+
+        self._warn_drop(
+            stream_label,
+            f'Dropping stale {stream_label} sample after backward timestamp jump '
+            f'({backwards_jump_ns / 1_000_000_000:.3f}s behind latest accepted sample).'
+        )
+
+    def _warn_drop(self, stream_label: str, message: str) -> None:
         now_monotonic = monotonic()
         last_warning = self._last_warning_monotonic_by_stream.get(stream_label, 0.0)
         if now_monotonic - last_warning < self._warning_interval_sec:
             return
         self._last_warning_monotonic_by_stream[stream_label] = now_monotonic
-        delta_sec = max(0.0, (last_stamp_ns - stamp_ns) / 1_000_000_000)
-        self.get_logger().warning(
-            f'Dropping stale {stream_label} sample after backward timestamp jump '
-            f'({delta_sec:.3f}s behind latest accepted sample).'
+        self.get_logger().warning(message)
+
+    def _warn_reset(self, stream_label: str, backwards_jump_ns: int) -> None:
+        self._warn_drop(
+            stream_label,
+            f'Resetting {stream_label} monotonic filter after simulation time moved backward '
+            f'by {backwards_jump_ns / 1_000_000_000:.3f}s.'
         )
+
+    def _within_startup_guard(self) -> bool:
+        return monotonic() - self._startup_monotonic <= self._startup_guard_window_sec
+
+    def _max_plausible_stamp_ns(self) -> int:
+        uptime_sec = max(0.0, monotonic() - self._startup_monotonic)
+        return int((uptime_sec * 1_000_000_000) + self._max_stamp_ahead_of_uptime_ns)
 
 
 def resolve_lock_path() -> Path:

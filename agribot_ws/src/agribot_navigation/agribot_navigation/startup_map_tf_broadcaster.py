@@ -7,7 +7,7 @@ from tf2_ros import TransformBroadcaster
 
 
 class StartupMapTfBroadcaster(Node):
-    """Keep the map frame alive until AMCL starts publishing poses."""
+    """Keep a stable identity map -> odom transform available in simulation."""
 
     def __init__(self) -> None:
         super().__init__('startup_map_tf_broadcaster')
@@ -27,7 +27,7 @@ class StartupMapTfBroadcaster(Node):
             10,
         )
         self._initial_pose_received = False
-        self._stopped = False
+        self._amcl_pose_received = False
 
     def _publish_identity_transform(self) -> None:
         transform = TransformStamped()
@@ -45,16 +45,13 @@ class StartupMapTfBroadcaster(Node):
             )
 
     def _handle_amcl_pose(self, msg: PoseWithCovarianceStamped) -> None:
-        if self._stopped:
+        if self._amcl_pose_received:
             return
 
-        self._stopped = True
+        self._amcl_pose_received = True
         self.get_logger().info(
-            f'Received /amcl_pose ({msg.header.frame_id}), stopping temp broadcaster.'
+            f'Received /amcl_pose ({msg.header.frame_id}), keeping identity map -> odom broadcaster alive.'
         )
-        self._timer.cancel()
-        self.destroy_timer(self._timer)
-        self._timer = None
         self.destroy_subscription(self._initial_pose_subscription)
         self._initial_pose_subscription = None
         self.destroy_subscription(self._amcl_pose_subscription)

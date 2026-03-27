@@ -54,3 +54,31 @@ def test_dispatcher_reports_successful_ros_publish(monkeypatch) -> None:
     assert result.status == 'dispatched'
     assert result.command_id == 'obs-dispatch'
     assert result.device_id == 'sprinkler_3'
+
+
+def test_dispatcher_reports_successful_manual_ros_publish(monkeypatch) -> None:
+    dispatcher = TreatmentCommandDispatcher()
+
+    monkeypatch.setattr(dispatcher, '_validate_runtime', lambda: None)
+
+    def _fake_run(*args, **kwargs):
+        return SimpleNamespace(returncode=0, stdout='manual-published', stderr='')
+
+    monkeypatch.setattr('services.actuation.dispatcher.subprocess.run', _fake_run)
+
+    result = dispatcher.dispatch_manual_command(
+        command_id='manual-001',
+        zone_id='farm_01',
+        device_id='sprinkler_1',
+        device_type='sprinkler',
+        command_type='spray_water',
+        target_value=3.0,
+        unit='sec',
+        requested_by='test:manual-dispatch',
+        reason='manual payload=effect_color=blue',
+    )
+
+    assert result.dispatched is True
+    assert result.status == 'dispatched'
+    assert result.command_id == 'manual-001'
+    assert result.device_id == 'sprinkler_1'
