@@ -47,17 +47,6 @@ def generate_launch_description():
         name='GZ_PARTITION',
         value=gz_partition,
     )
-    gpu_env_actions = []
-    if os.path.exists('/usr/bin/nvidia-smi'):
-        gpu_env_actions = [
-            SetEnvironmentVariable('DRI_PRIME', '1'),
-            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
-            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
-            SetEnvironmentVariable('__VK_LAYER_NV_optimus', 'NVIDIA_only'),
-            SetEnvironmentVariable('GBM_BACKEND', 'nvidia-drm'),
-            SetEnvironmentVariable('GZ_SIM_RENDER_ENGINE', 'ogre2'),
-        ]
-
     # Launch arguments
     world_arg = DeclareLaunchArgument(
         'world',
@@ -105,6 +94,17 @@ def generate_launch_description():
         default_value='true',
         description='Launch RGB-D camera bridges. Disable during LiDAR-only mapping to reduce load.',
     )
+
+    gpu_env_actions = []
+    if os.path.exists('/usr/bin/nvidia-smi'):
+        gpu_env_actions = [
+            SetEnvironmentVariable('DRI_PRIME', '1'),
+            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
+            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
+            SetEnvironmentVariable('__VK_LAYER_NV_optimus', 'NVIDIA_only'),
+            SetEnvironmentVariable('GBM_BACKEND', 'nvidia-drm'),
+            SetEnvironmentVariable('GZ_SIM_RENDER_ENGINE', 'ogre2'),
+        ]
 
     # Gazebo Harmonic simulation
     gz_sim = IncludeLaunchDescription(

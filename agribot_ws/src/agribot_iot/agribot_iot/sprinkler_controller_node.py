@@ -491,6 +491,10 @@ def _build_particle_emitter_block(
 
 def _resolve_rgba(effect_color: str) -> tuple[float, float, float, float]:
     normalized = effect_color.strip().lower()
+    if normalized == 'blue':
+        return (0.15, 0.55, 1.0, 0.42)
+    if normalized == 'green':
+        return (0.2, 0.9, 0.35, 0.42)
     if normalized == 'red':
         return (1.0, 0.1, 0.1, 0.45)
     if normalized == 'yellow':

@@ -15,17 +15,26 @@ class OdomTfBroadcaster(Node):
     def __init__(self) -> None:
         super().__init__('odom_tf_broadcaster')
         self.declare_parameter('reset_on_time_jump_sec', 1.0)
+        self.declare_parameter('max_forward_jump_sec', 30.0)
+        self.declare_parameter('max_stamp_ahead_of_uptime_sec', 120.0)
         self.declare_parameter('drop_warning_interval_sec', 2.0)
         self._broadcaster = TransformBroadcaster(self)
         self._last_stamp_ns: int | None = None
         self._reset_on_time_jump_ns = int(
             float(self.get_parameter('reset_on_time_jump_sec').value) * 1_000_000_000
         )
+        self._max_forward_jump_ns = int(
+            float(self.get_parameter('max_forward_jump_sec').value) * 1_000_000_000
+        )
+        self._max_stamp_ahead_of_uptime_ns = int(
+            float(self.get_parameter('max_stamp_ahead_of_uptime_sec').value) * 1_000_000_000
+        )
         self._drop_warning_interval_sec = max(
             0.0,
             float(self.get_parameter('drop_warning_interval_sec').value),
         )
         self._last_drop_warning_monotonic = 0.0
+        self._startup_monotonic = monotonic()
         self._subscription = self.create_subscription(
             Odometry,
             '/odom',
@@ -40,17 +49,29 @@ class OdomTfBroadcaster(Node):
             else self.get_clock().now().to_msg()
         )
         stamp_ns = stamp.sec * 1_000_000_000 + stamp.nanosec
-        if self._last_stamp_ns is not None and stamp_ns <= self._last_stamp_ns:
-            backwards_jump_ns = self._last_stamp_ns - stamp_ns
-            if backwards_jump_ns >= self._reset_on_time_jump_ns:
-                now_monotonic = monotonic()
-                if now_monotonic - self._last_drop_warning_monotonic >= self._drop_warning_interval_sec:
-                    self.get_logger().warning(
-                        'Dropping stale /odom sample after backward timestamp jump; '
+        if stamp_ns > self._max_plausible_stamp_ns():
+            self._warn(
+                'Dropping implausible future /odom sample; '
+                'its timestamp is far ahead of node uptime.'
+            )
+            return
+        if self._last_stamp_ns is not None:
+            if stamp_ns > self._last_stamp_ns:
+                forward_jump_ns = stamp_ns - self._last_stamp_ns
+                if forward_jump_ns > self._max_forward_jump_ns:
+                    self._warn(
+                        'Dropping implausible future /odom sample; '
                         'keeping the latest odom -> base_link TF to avoid poisoning Nav2 TF.'
                     )
-                    self._last_drop_warning_monotonic = now_monotonic
-            return
+                    return
+            else:
+                backwards_jump_ns = self._last_stamp_ns - stamp_ns
+                if backwards_jump_ns >= self._reset_on_time_jump_ns:
+                    self._warn(
+                        'Resetting odom -> base_link TF timeline after simulation time moved backward.'
+                    )
+                else:
+                    return
 
         transform = TransformStamped()
         transform.header.stamp = stamp
@@ -62,6 +83,17 @@ class OdomTfBroadcaster(Node):
         transform.transform.rotation = msg.pose.pose.orientation
         self._last_stamp_ns = stamp_ns
         self._broadcaster.sendTransform(transform)
+
+    def _warn(self, message: str) -> None:
+        now_monotonic = monotonic()
+        if now_monotonic - self._last_drop_warning_monotonic < self._drop_warning_interval_sec:
+            return
+        self.get_logger().warning(message)
+        self._last_drop_warning_monotonic = now_monotonic
+
+    def _max_plausible_stamp_ns(self) -> int:
+        uptime_sec = max(0.0, monotonic() - self._startup_monotonic)
+        return int((uptime_sec * 1_000_000_000) + self._max_stamp_ahead_of_uptime_ns)
 
 
 def main(args=None) -> None:

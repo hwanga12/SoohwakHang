@@ -63,6 +63,46 @@ def test_spray_calcium_command_maps_to_yellow_effect() -> None:
     assert plan.treatment_type == 'calcium_solution_spray'
 
 
+def test_spray_water_command_maps_to_blue_effect() -> None:
+    catalog = load_iot_device_catalog(IOT_DEVICES)
+    device = catalog.devices['sprinkler_0']
+
+    command = IoTCommand()
+    command.command_id = 'sprinkler-04'
+    command.zone_id = 'farm_01'
+    command.device_id = 'sprinkler_0'
+    command.device_type = 'sprinkler'
+    command.command_type = 'spray_water'
+    command.target_value = 3.0
+    command.unit = 'sec'
+
+    plan = plan_sprinkler_command(command, device)
+
+    assert plan.accepted is True
+    assert plan.effect_color == 'blue'
+    assert plan.treatment_type == 'water_spray'
+
+
+def test_spray_nutrient_command_maps_to_green_effect() -> None:
+    catalog = load_iot_device_catalog(IOT_DEVICES)
+    device = catalog.devices['sprinkler_3']
+
+    command = IoTCommand()
+    command.command_id = 'sprinkler-05'
+    command.zone_id = 'farm_01'
+    command.device_id = 'sprinkler_3'
+    command.device_type = 'sprinkler'
+    command.command_type = 'spray_nutrient_solution'
+    command.target_value = 2.5
+    command.unit = 'sec'
+
+    plan = plan_sprinkler_command(command, device)
+
+    assert plan.accepted is True
+    assert plan.effect_color == 'green'
+    assert plan.treatment_type == 'nutrient_solution_spray'
+
+
 def test_stop_spray_completes_immediately_and_reports_payload() -> None:
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['sprinkler_0']
