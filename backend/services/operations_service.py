@@ -21,6 +21,7 @@ from models import (
     Robot,
     Zone,
 )
+from services.actuation.dispatcher import TreatmentCommandDispatcher
 
 
 def _serialize_datetime(value: datetime | None) -> str:
@@ -64,6 +65,92 @@ def _command_title(command_type: str) -> str:
     return mapping.get(normalized, normalized or "장치 제어")
 
 
+def _normalized_device_type(device_type: str) -> str:
+    return str(device_type).strip().upper()
+
+
+def _build_dispatch_reason(
+    *,
+    logical_command_type: str,
+    device_type: str,
+    recommendation_id: str | None,
+) -> str:
+    logical = logical_command_type.strip().upper()
+    normalized_device_type = device_type.strip().lower()
+    reason = (
+        f'Manual actuation request for {normalized_device_type or "unknown"} '
+        f'via {logical or "UNKNOWN"}.'
+    )
+    payload_items: list[str] = []
+    if recommendation_id:
+        payload_items.append(f'recommendation_id={recommendation_id}')
+
+    if normalized_device_type == 'sprinkler' and logical == 'WATERING':
+        payload_items.extend([
+            'effect_color=blue',
+            'treatment_type=water_spray',
+        ])
+    elif normalized_device_type == 'sprinkler' and logical == 'NUTRIENTS':
+        payload_items.extend([
+            'effect_color=green',
+            'treatment_type=nutrient_solution_spray',
+            'nutrient_type=calcium_boost',
+        ])
+    elif normalized_device_type == 'nutrient':
+        payload_items.append('nutrient_type=calcium_boost')
+
+    if payload_items:
+        reason = f'{reason} payload={",".join(payload_items)}'
+    return reason
+
+
+def _build_dispatch_spec(
+    *,
+    device_type: str,
+    logical_command_type: str,
+    target_value: float,
+    value_unit: str,
+    recommendation_id: str | None,
+) -> dict[str, str | float]:
+    normalized_device_type = _normalized_device_type(device_type)
+    normalized_command_type = logical_command_type.strip().upper()
+    normalized_unit = str(value_unit).strip().lower()
+
+    if normalized_device_type in {'WATERING', 'WATER_PUMP'} and normalized_command_type == 'WATERING':
+        dispatch_device_type = 'watering'
+        dispatch_command_type = 'dispense_water'
+        dispatch_unit = normalized_unit or 'ml'
+    elif normalized_device_type == 'NUTRIENT' and normalized_command_type == 'NUTRIENTS':
+        dispatch_device_type = 'nutrient'
+        dispatch_command_type = 'apply_nutrient_recipe'
+        dispatch_unit = normalized_unit or 'ml'
+    elif normalized_device_type == 'SPRINKLER' and normalized_command_type == 'WATERING':
+        dispatch_device_type = 'sprinkler'
+        dispatch_command_type = 'spray_water'
+        dispatch_unit = normalized_unit or 'sec'
+    elif normalized_device_type == 'SPRINKLER' and normalized_command_type == 'NUTRIENTS':
+        dispatch_device_type = 'sprinkler'
+        dispatch_command_type = 'spray_nutrient_solution'
+        dispatch_unit = normalized_unit or 'sec'
+    else:
+        raise ValueError(
+            '지원하지 않는 수동 제어 조합입니다: '
+            f'device_type={normalized_device_type}, command_type={normalized_command_type}'
+        )
+
+    return {
+        'device_type': dispatch_device_type,
+        'command_type': dispatch_command_type,
+        'target_value': float(target_value),
+        'unit': dispatch_unit,
+        'reason': _build_dispatch_reason(
+            logical_command_type=normalized_command_type,
+            device_type=dispatch_device_type,
+            recommendation_id=recommendation_id,
+        ),
+    }
+
+
 def _result_tone(result: str) -> str:
     normalized = result.strip().upper()
     if normalized in {"FAILED", "TIMEOUT"}:
@@ -93,6 +180,8 @@ def _select_focus_mission(missions: list[Mission]) -> Mission | None:
 
 
 class OperationsService:
+    _manual_command_dispatcher = TreatmentCommandDispatcher()
+
     def list_zones(self) -> list[dict[str, Any]]:
         db = SessionLocal()
         try:
@@ -287,13 +376,21 @@ class OperationsService:
             if device is None:
                 raise FileNotFoundError(f"알 수 없는 device_id 입니다: {device_id}")
 
+            dispatch_spec = _build_dispatch_spec(
+                device_type=device.device_type,
+                logical_command_type=command_type,
+                target_value=target_value,
+                value_unit=value_unit,
+                recommendation_id=recommendation_id,
+            )
+
             command = ActuationCommand(
                 device_id=device.id,
                 zone_id=zone_id,
                 mission_id=None,
                 observation_id=None,
                 command_type=command_type,
-                command_status="COMPLETED",
+                command_status="REQUESTED",
                 target_value=target_value,
                 value_unit=value_unit,
                 requested_by=requested_by,
@@ -302,15 +399,31 @@ class OperationsService:
             db.add(command)
             db.flush()
 
+            dispatch_result = self._manual_command_dispatcher.dispatch_manual_command(
+                command_id=_serialize_uuid(command.id),
+                zone_id=zone_id,
+                device_id=device.id,
+                device_type=str(dispatch_spec["device_type"]),
+                command_type=str(dispatch_spec["command_type"]),
+                target_value=float(dispatch_spec["target_value"]),
+                unit=str(dispatch_spec["unit"]),
+                requested_by=requested_by,
+                reason=str(dispatch_spec["reason"]),
+            )
+            command.command_status = "DISPATCHED" if dispatch_result.dispatched else "FAILED"
+
             log = ActuationLog(
                 command_id=command.id,
                 device_id=device.id,
-                result="SUCCESS",
+                result="SUCCESS" if dispatch_result.dispatched else "FAILED",
                 result_message=(
-                    f"{_command_title(command_type)} 완료"
-                    + (f" · recommendation={recommendation_id}" if recommendation_id else "")
+                    dispatch_result.detail_message
+                    or (
+                        f"{_command_title(command_type)} 완료"
+                        + (f" · recommendation={recommendation_id}" if recommendation_id else "")
+                    )
                 ),
-                state_after="ON" if target_value > 0 else "OFF",
+                state_after="ON" if dispatch_result.dispatched and target_value > 0 else "OFF",
                 actual_value=target_value,
                 value_unit=value_unit,
                 started_at=datetime.utcnow(),
@@ -318,10 +431,11 @@ class OperationsService:
             )
             db.add(log)
 
-            device.current_state = "ON" if target_value > 0 else "OFF"
-            device.current_value = target_value
-            device.value_unit = value_unit
-            device.last_seen_at = datetime.utcnow()
+            if dispatch_result.dispatched:
+                device.current_state = "ON" if target_value > 0 else "OFF"
+                device.current_value = target_value
+                device.value_unit = value_unit
+                device.last_seen_at = datetime.utcnow()
             db.commit()
 
             return {
@@ -330,7 +444,10 @@ class OperationsService:
                 "device_name": device.display_name,
                 "command_type": command.command_type,
                 "command_status": command.command_status,
-                "message": f"{device.display_name} 제어 요청을 기록했습니다.",
+                "message": (
+                    dispatch_result.detail_message
+                    or f"{device.display_name} 제어 요청을 기록했습니다."
+                ),
             }
         except Exception:
             db.rollback()

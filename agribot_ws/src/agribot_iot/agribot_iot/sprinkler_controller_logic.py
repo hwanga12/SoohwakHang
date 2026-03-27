@@ -27,6 +27,14 @@ class SprinklerExecutionPlan:
 
 
 _COMMAND_PROFILES = {
+    'spray_water': {
+        'treatment_type': 'water_spray',
+        'effect_color': 'blue',
+    },
+    'spray_nutrient_solution': {
+        'treatment_type': 'nutrient_solution_spray',
+        'effect_color': 'green',
+    },
     'spray_pesticide': {
         'treatment_type': 'pesticide_spray',
         'effect_color': 'red',
