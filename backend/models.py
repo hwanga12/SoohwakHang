@@ -236,6 +236,31 @@ class Alert(Base):
     observation = relationship("CropObservation", back_populates="alerts")
 
 
+class AiJudgment(Base):
+    __tablename__ = "ai_judgments"
+
+    id = _uuid_column(primary_key=True)
+    plant_id = Column(String(50), ForeignKey("plants.id"), nullable=True, index=True)
+    fruit_id = Column(String(50), ForeignKey("fruits.id"), nullable=True, index=True)
+    zone_id = Column(String(50), ForeignKey("zones.id"), nullable=True, index=True)
+    judgment_type = Column(String(30), nullable=False, index=True)
+    model_name = Column(String(100), nullable=False)
+    model_version = Column(String(50), nullable=False)
+    raw_label = Column(String(100), nullable=False)
+    canonical_code = Column(String(100), nullable=False, index=True)
+    confidence = Column(Float, nullable=False, default=0.0)
+    risk_level = Column(String(20), nullable=True)
+    recommended_action_code = Column(String(50), nullable=False, default="NONE")
+    requires_approval = Column(Boolean, nullable=False, default=False)
+    payload_json = Column(JSONB, nullable=False, default=dict)
+    image_url = Column(String(255), nullable=True)
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow, index=True)
+
+    plant = relationship("Plant")
+    fruit = relationship("Fruit")
+    zone = relationship("Zone")
+
+
 class HarvestEvent(Base):
     __tablename__ = "harvest_events"
 
