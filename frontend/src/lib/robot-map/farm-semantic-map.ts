@@ -88,8 +88,8 @@ function buildSprinklerAssets(): SemanticAsset[] {
     id: `sprinkler_${index}`,
     linkedId: 'farm_01_watering',
     kind: 'sprinkler',
-    label: `${index}번 급수 헤드`,
-    shortLabel: `H${index}`,
+    label: `${index + 1}번 급수 헤드`,
+    shortLabel: `S${index + 1}`,
     zoneId: 'farm_01',
     description: '물주기나 영양제 주기를 직접 실행할 수 있는 급수 포인트',
     position: {

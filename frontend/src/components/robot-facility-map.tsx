@@ -103,29 +103,18 @@ function occupancyMessage(value: number) {
   return ''
 }
 
-function assetFlag(asset: SemanticAsset) {
-  if (asset.status === 'attention') {
-    return {
-      label: '조치 필요',
-      tone: 'danger',
-    } as const
+function buttonLabelForAsset(asset: SemanticAsset, showFullLabel: boolean) {
+  if (asset.kind !== 'plant') {
+    return showFullLabel ? asset.label : asset.shortLabel
   }
 
-  if (asset.status === 'handled') {
-    return {
-      label: '조치 완료',
-      tone: 'accent',
-    } as const
-  }
+  const numericLabel =
+    asset.shortLabel.match(/\d+/)?.[0]
+    ?? asset.label.match(/\d+/)?.[0]
+    ?? asset.shortLabel
+    ?? asset.label
 
-  if (asset.status === 'target') {
-    return {
-      label: '수확 후보',
-      tone: 'warning',
-    } as const
-  }
-
-  return null
+  return numericLabel
 }
 
 function PlantGlyph({
@@ -133,27 +122,24 @@ function PlantGlyph({
 }: {
   status: SemanticAsset['status']
 }) {
-  const badgeIcon = status === 'attention' ? 'warning' : status === 'handled' ? 'task_alt' : null
+  const badgeIcon = status === 'handled' ? 'task_alt' : null
 
   return (
     <span className={`robot-facility-map__tomato-glyph robot-facility-map__tomato-glyph--${status}`}>
       <span className="robot-facility-map__tomato-shadow" />
       <span className="robot-facility-map__tomato-body" />
-      <span className="robot-facility-map__tomato-shine" />
       <span className="robot-facility-map__tomato-calyx" />
       <span className="robot-facility-map__tomato-leaf robot-facility-map__tomato-leaf--left" />
       <span className="robot-facility-map__tomato-leaf robot-facility-map__tomato-leaf--mid" />
       <span className="robot-facility-map__tomato-leaf robot-facility-map__tomato-leaf--right" />
-      {status === 'target' ? <span className="robot-facility-map__tomato-sparkle" /> : null}
       {status === 'attention' ? (
         <>
           <span className="robot-facility-map__tomato-bruise" />
-          <span className="robot-facility-map__tomato-mold robot-facility-map__tomato-mold--top" />
-          <span className="robot-facility-map__tomato-mold robot-facility-map__tomato-mold--bottom" />
+          <span className="robot-facility-map__asset-alert-dot" />
         </>
       ) : null}
       {badgeIcon ? (
-        <span className="robot-facility-map__asset-badge">
+        <span className="robot-facility-map__asset-badge robot-facility-map__asset-badge--handled">
           <AppIcon filled={status === 'attention'} name={badgeIcon} />
         </span>
       ) : null}
@@ -166,7 +152,7 @@ function SprinklerGlyph({
 }: {
   status: SemanticAsset['status']
 }) {
-  const badgeIcon = status === 'attention' ? 'warning' : status === 'handled' ? 'task_alt' : null
+  const badgeIcon = status === 'handled' ? 'task_alt' : null
 
   return (
     <span className={`robot-facility-map__sprinkler-glyph robot-facility-map__sprinkler-glyph--${status}`}>
@@ -175,8 +161,9 @@ function SprinklerGlyph({
       <span className="robot-facility-map__sprinkler-head">
         <AppIcon name="water_drop" />
       </span>
+      {status === 'attention' ? <span className="robot-facility-map__asset-alert-dot robot-facility-map__asset-alert-dot--sprinkler" /> : null}
       {badgeIcon ? (
-        <span className="robot-facility-map__asset-badge robot-facility-map__asset-badge--sprinkler">
+        <span className="robot-facility-map__asset-badge robot-facility-map__asset-badge--sprinkler robot-facility-map__asset-badge--handled">
           <AppIcon filled={status === 'attention'} name={badgeIcon} />
         </span>
       ) : null}
@@ -246,20 +233,25 @@ function FieldRobotGlyph() {
       <path className="robot-facility-map__robot-shell-shadow" d="M41 73 C48 80 72 80 79 73 V88 C73 94 47 94 41 88Z" />
       <path className="robot-facility-map__robot-gloss robot-facility-map__robot-gloss--primary" d="M45 18 C53 14 66 14 78 20 C72 35 64 52 52 79 C45 62 41 40 45 18Z" fill="url(#farmRobotGlossGradient)" />
       <path className="robot-facility-map__robot-gloss robot-facility-map__robot-gloss--secondary" d="M60 17 C69 17 76 20 80 24 C73 35 66 49 59 65 C58 52 58 35 60 17Z" fill="url(#farmRobotGlossGradient)" />
+      <path className="robot-facility-map__robot-front-mark" d="M48 30 L56 36 L48 42" />
+      <path className="robot-facility-map__robot-front-mark" d="M72 30 L64 36 L72 42" />
       <path className="robot-facility-map__robot-shell-edge" d="M40 28 C47 24 73 24 80 28" />
       <path className="robot-facility-map__robot-shell-edge robot-facility-map__robot-shell-edge--bottom" d="M42 88 C50 92 70 92 78 88" />
-      <path className="robot-facility-map__robot-arm" d="M82 72 L92 80" />
-      <path className="robot-facility-map__robot-arm-tip" d="M91 80 L97 77 M91 80 L96 85" />
     </svg>
   )
 }
 
-function rotationDegreesForPose(pose: RobotTargetPose | RobotPoseSnapshot) {
+function headingDegreesForPose(pose: RobotTargetPose | RobotPoseSnapshot) {
   if ('yawDeg' in pose) {
     return pose.yawDeg ?? 0
   }
 
   return (pose.yaw * 180) / Math.PI
+}
+
+function rotationDegreesForPose(pose: RobotTargetPose | RobotPoseSnapshot) {
+  // The SVG is drawn with the robot front facing upward, while map yaw 0 points to +X.
+  return 90 - headingDegreesForPose(pose)
 }
 
 export function RobotFacilityMap({
@@ -419,7 +411,6 @@ export function RobotFacilityMap({
               width={parsedMap?.width ?? map.width}
             />
           ) : null}
-          <div className="robot-facility-map__boundary" />
 
           {scene.rowGuides.map((guide) => {
             const style = {
@@ -427,15 +418,12 @@ export function RobotFacilityMap({
             }
 
             if (!onSelectGuide) {
-              return (
-                <div className="robot-facility-map__row-guide" key={guide.id} style={style}>
-                  <span>{guide.label}</span>
-                </div>
-              )
+              return <div aria-hidden="true" className="robot-facility-map__row-guide" key={guide.id} style={style} />
             }
 
             return (
               <button
+                aria-label={guide.label}
                 className="robot-facility-map__row-guide is-clickable"
                 key={guide.id}
                 onClick={(event) => {
@@ -443,24 +431,11 @@ export function RobotFacilityMap({
                   onSelectGuide(guide.id)
                 }}
                 style={style}
+                title={guide.label}
                 type="button"
-              >
-                <span>{guide.label}</span>
-              </button>
+              />
             )
           })}
-
-          {scene.laneGuides.map((guide) => (
-            <div
-              className={`robot-facility-map__lane-guide${
-                guide.id === 'lane-mid' ? ' robot-facility-map__lane-guide--primary' : ''
-              }`}
-              key={guide.id}
-              style={{ top: toOverlayPercent(scene, map, map?.origin.x ?? scene.bounds.minX, guide.value).top }}
-            >
-              <span>{guide.label}</span>
-            </div>
-          ))}
 
           {scene.assets.map((asset) => {
             if (map) {
@@ -475,7 +450,6 @@ export function RobotFacilityMap({
             const isSelected = selectedAssetId === asset.id
             const isTarget = targetAssetId === asset.id
             const style = toOverlayPercent(scene, map, asset.position.x, asset.position.y)
-            const flag = assetFlag(asset)
 
             return (
               <button
@@ -500,13 +474,8 @@ export function RobotFacilityMap({
                   )}
                 </span>
                 <span className="robot-facility-map__asset-label">
-                  {showLabels || isSelected || isTarget ? asset.label : asset.shortLabel}
+                  {buttonLabelForAsset(asset, showLabels)}
                 </span>
-                {flag ? (
-                  <span className={`robot-facility-map__asset-flag robot-facility-map__asset-flag--${flag.tone}`}>
-                    {flag.label}
-                  </span>
-                ) : null}
               </button>
             )
           })}
@@ -533,15 +502,9 @@ export function RobotFacilityMap({
 
           <div className="robot-facility-map__robot" style={robotStyle}>
             <span className="robot-facility-map__robot-ping robot-facility-map__robot-ping--outer" />
-            <span className="robot-facility-map__robot-ping robot-facility-map__robot-ping--inner" />
-            <span className="robot-facility-map__robot-origin">
-              <span className="robot-facility-map__robot-origin-dot" />
-            </span>
-            <span className="robot-facility-map__robot-ring" />
             <span className="robot-facility-map__robot-core" style={robotCoreStyle}>
               <FieldRobotGlyph />
             </span>
-            <span className="robot-facility-map__robot-label">AGR-02</span>
           </div>
 
           {map && onSelectMapTarget ? (
@@ -620,8 +583,6 @@ export function summarizeSelectedAsset(asset: SemanticAsset | null) {
 
   if (asset.status === 'attention') {
     chips.unshift('조치 필요')
-  } else if (asset.status === 'handled') {
-    chips.unshift('조치 완료')
   } else if (asset.status === 'target') {
     chips.unshift('수확 후보')
   }
