@@ -4,6 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import OperationalError
 
 from database import SessionLocal
 from harvest_runtime_service import merge_mission_status_with_harvest_action
@@ -189,6 +190,9 @@ def _upsert_mission_row(
             mission.status = status
             mission.progress_percent = progress_percent
         db.commit()
+    except OperationalError:
+        db.rollback()
+        return
     except Exception:
         db.rollback()
         raise

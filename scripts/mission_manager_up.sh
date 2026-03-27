@@ -20,6 +20,16 @@ fi
 
 source_ros_setup_files
 
+if command -v pgrep >/dev/null 2>&1; then
+    while read -r pid cmdline; do
+        [[ -z "${pid:-}" ]] && continue
+        if [[ "${cmdline}" == *"ros2 launch agribot_control mission_manager.launch.py"* ]] \
+            || [[ "${cmdline}" == *"/agribot_control/lib/agribot_control/mission_manager"* ]]; then
+            kill "${pid}" 2>/dev/null || true
+        fi
+    done < <(pgrep -af 'ros2 launch agribot_control mission_manager.launch.py|/agribot_control/lib/agribot_control/mission_manager' || true)
+fi
+
 export AGRIBOT_RUNTIME_DIR
 echo "Using AGRIBOT_RUNTIME_DIR=${AGRIBOT_RUNTIME_DIR}"
 exec ros2 launch agribot_control mission_manager.launch.py "runtime_dir:=${AGRIBOT_RUNTIME_DIR}"

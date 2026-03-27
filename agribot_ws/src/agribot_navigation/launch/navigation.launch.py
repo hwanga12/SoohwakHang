@@ -262,7 +262,8 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'autostart': LaunchConfiguration('autostart'),
-            'bond_timeout': 60.0,
+            # Keep navigation alive across simulation clock pauses/back-jumps.
+            'bond_timeout': 0.0,
             'node_names': [
                 'controller_server',
                 'planner_server',

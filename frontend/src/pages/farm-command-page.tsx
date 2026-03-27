@@ -35,6 +35,12 @@ import {
   triggerSprinklerNutrient,
   triggerSprinklerWatering,
   type HarvestPageData,
+  type HealthTone,
+  type PlantObservationEntry,
+  type PlantObservationFeed,
+  type PlantsPageData,
+  type PlantRow,
+  type DemoDiagnosisResult,
   type MissionDispatch,
   type MissionStatus,
   type RobotCommandStatus,
@@ -55,17 +61,15 @@ const robotControlActions = [
 ] as const
 
 const DEMO_DIAGNOSIS_PLANT_ID = 'farm01_plant_18'
-const DIAGNOSE_CENTER_CONNECTOR_X = 0
-const DIAGNOSE_CONNECTOR_Y_VALUES = [-8.6, 8.6] as const
-const DIAGNOSE_CONNECTOR_REENTRY_Y = 7.8
-const DIAGNOSE_LANE_ALIGNMENT_X_TOLERANCE = 0.75
 
 type ActionRecordTone = 'accent' | 'danger' | 'healthy' | 'warning'
+type AssetActionStatusEffect = 'none' | 'handled'
 
 type AssetActionRecord = {
   label: string
   detail: string
   tone: ActionRecordTone
+  statusEffect: AssetActionStatusEffect
 }
 
 type PatrolActionRecord = {
@@ -130,7 +134,85 @@ type MissionCopy = {
   canceledTitle: string
 }
 
-type DiagnosePhase = 'center_connector' | 'lane_connector' | 'inspection'
+function diagnosisToneFromResult(result: DemoDiagnosisResult): HealthTone {
+  if (result.diagnosisNeeded) {
+    return 'critical'
+  }
+
+  return result.healthPercent < 75 ? 'warning' : 'healthy'
+}
+
+function mergeDiagnosisIntoPlantsPage(
+  current: PlantsPageData | undefined,
+  plantId: string,
+  result: DemoDiagnosisResult,
+): PlantsPageData | undefined {
+  if (!current) {
+    return current
+  }
+
+  const nextPlants = current.plants.map((plant): PlantRow => {
+    if (plant.id !== plantId) {
+      return plant
+    }
+
+    return {
+      ...plant,
+      lastObserved: result.reviewedAt || plant.lastObserved,
+      recommendedAction: result.recommendedAction,
+      health: result.healthPercent,
+      tone: diagnosisToneFromResult(result),
+      status: result.diagnosisNeeded ? '조치 필요' : result.displayLabel,
+      latestLabel: result.finalLabel,
+      latestDisplayLabel: result.displayLabel,
+      latestImageUrl: result.imageUrl,
+    }
+  })
+
+  const diagnosisNeededCount = nextPlants.filter((plant) => plantNeedsDiagnosis(plant)).length
+  const averageHealth =
+    nextPlants.length > 0
+      ? Math.round(nextPlants.reduce((total, plant) => total + plant.health, 0) / nextPlants.length)
+      : null
+
+  return {
+    ...current,
+    source: 'live',
+    healthSummary: averageHealth !== null ? `${averageHealth}%` : current.healthSummary,
+    criticalCount: String(diagnosisNeededCount).padStart(2, '0'),
+    plants: nextPlants,
+  }
+}
+
+function mergeDiagnosisIntoObservationFeed(
+  current: PlantObservationFeed | undefined,
+  plantId: string,
+  plantName: string,
+  result: DemoDiagnosisResult,
+): PlantObservationFeed {
+  const nextItem: PlantObservationEntry = {
+    id: result.observationId,
+    label: result.finalLabel,
+    displayLabel: result.displayLabel,
+    reviewedAt: result.reviewedAt,
+    imageUrl: result.imageUrl,
+    decisionSource: result.decisionSource,
+    healthPercent: result.healthPercent,
+    detail: result.detail,
+  }
+
+  return {
+    source: 'live',
+    plantId,
+    plantName: current?.plantName || plantName,
+    items: [
+      nextItem,
+      ...(current?.items ?? []).filter((item) => item.id !== result.observationId),
+    ],
+  }
+}
+
+type DiagnosePhase = 'staging' | 'lane_entry' | 'inspection'
 
 type DiagnoseRouteStep = {
   phase: DiagnosePhase
@@ -180,6 +262,13 @@ type PlantHarvestRuntime = {
   latestResultLabel: string
   isHandled: boolean
   isActive: boolean
+}
+
+type QueuedDiagnoseStart = {
+  plantId: string
+  fruitId: string
+  plantName: string
+  targetPose: RobotTargetPose
 }
 
 function normalizeHarvestPhase(phase?: string) {
@@ -353,7 +442,7 @@ function selectionTag(
 
   if (status === 'attention') {
     return {
-      label: kind === 'plant' ? '진단 필요' : '조치 필요',
+      label: '조치 필요',
       tone: 'danger',
     } as const
   }
@@ -531,6 +620,9 @@ function clampToSceneBounds(value: number, minValue: number, maxValue: number) {
   return Math.min(Math.max(value, minValue), maxValue)
 }
 
+const DIAGNOSE_ENTRY_MARGIN = 1.4
+const DIAGNOSE_SAME_AISLE_X_TOLERANCE = 0.75
+
 function semanticRowGuideValues(scene: SemanticScene) {
   const rowGuideValues = sortedUniqueValues(
     scene.rowGuides
@@ -549,24 +641,54 @@ function semanticRowGuideValues(scene: SemanticScene) {
   )
 }
 
+function resolveObservationAislePoseX(
+  positionX: number,
+  rowGuideValues: number[],
+  referenceX: number | null,
+) {
+  const nearestRowIndex = rowGuideValues.reduce((bestIndex, currentValue, currentIndex) => {
+    const bestDistance = Math.abs(rowGuideValues[bestIndex] - positionX)
+    const currentDistance = Math.abs(currentValue - positionX)
+    return currentDistance < bestDistance ? currentIndex : bestIndex
+  }, 0)
+
+  const rowCount = rowGuideValues.length
+  const rowValue = rowGuideValues[nearestRowIndex]
+  const candidateXs: number[] = []
+
+  if (nearestRowIndex === 0 && rowCount >= 2) {
+    candidateXs.push(rowValue - ((rowGuideValues[1] - rowValue) / 2))
+  } else if (nearestRowIndex === rowCount - 1 && rowCount >= 2) {
+    candidateXs.push(rowValue + ((rowValue - rowGuideValues[rowCount - 2]) / 2))
+  } else {
+    candidateXs.push((rowGuideValues[nearestRowIndex - 1] + rowValue) / 2)
+    candidateXs.push((rowValue + rowGuideValues[nearestRowIndex + 1]) / 2)
+  }
+
+  const targetX = candidateXs.reduce((bestX, candidateX) => {
+    const bestDistance = Math.abs(bestX - (referenceX ?? 0))
+    const candidateDistance = Math.abs(candidateX - (referenceX ?? 0))
+    return candidateDistance < bestDistance ? candidateX : bestX
+  })
+
+  return {
+    x: targetX,
+    yaw: targetX < positionX ? 0 : Math.PI,
+  }
+}
+
 function buildInspectionPoseFromScene(
   position: { x: number, y: number },
   scene: SemanticScene,
+  currentPose: { x: number, y: number } | null,
 ): RobotTargetPose | null {
   const rowGuideValues = semanticRowGuideValues(scene)
+
   if (rowGuideValues.length < 2) {
     return null
   }
 
-  const leftInspectionX = (rowGuideValues[0] + rowGuideValues[1]) / 2
-  const rightInspectionX =
-    (rowGuideValues[rowGuideValues.length - 2] + rowGuideValues[rowGuideValues.length - 1]) / 2
-  const splitIndex = Math.floor(rowGuideValues.length / 2)
-  const splitX =
-    rowGuideValues.length >= 4
-      ? (rowGuideValues[splitIndex - 1] + rowGuideValues[splitIndex]) / 2
-      : (rowGuideValues[0] + rowGuideValues[rowGuideValues.length - 1]) / 2
-  const targetX = position.x < splitX ? leftInspectionX : rightInspectionX
+  const observationPose = resolveObservationAislePoseX(position.x, rowGuideValues, currentPose?.x ?? null)
   const targetY = clampToSceneBounds(
     position.y,
     scene.bounds.minY + 0.5,
@@ -574,10 +696,10 @@ function buildInspectionPoseFromScene(
   )
 
   return {
-    x: clampToSceneBounds(targetX, scene.bounds.minX + 0.5, scene.bounds.maxX - 0.5),
+    x: clampToSceneBounds(observationPose.x, scene.bounds.minX + 0.5, scene.bounds.maxX - 0.5),
     y: targetY,
     z: 0,
-    yaw: targetX < 0 ? -Math.PI / 2 : Math.PI / 2,
+    yaw: observationPose.yaw,
     frameId: 'map',
   }
 }
@@ -587,6 +709,7 @@ function buildPlantTargetPose(
   preferredScene: SemanticScene,
   fallbackScene: SemanticScene,
   fallbackPositionLabel: string,
+  currentPose: { x: number, y: number } | null,
 ): RobotTargetPose | null {
   const preferredAsset = preferredScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
   const fallbackAsset = fallbackScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
@@ -594,8 +717,8 @@ function buildPlantTargetPose(
 
   if (targetAsset) {
     return (
-      buildInspectionPoseFromScene(targetAsset.position, preferredScene)
-      ?? buildInspectionPoseFromScene(targetAsset.position, fallbackScene)
+      buildInspectionPoseFromScene(targetAsset.position, preferredScene, currentPose)
+      ?? buildInspectionPoseFromScene(targetAsset.position, fallbackScene, currentPose)
     )
   }
 
@@ -605,33 +728,32 @@ function buildPlantTargetPose(
   }
 
   return (
-    buildInspectionPoseFromScene(parsedPose, preferredScene)
-    ?? buildInspectionPoseFromScene(parsedPose, fallbackScene)
+    buildInspectionPoseFromScene(parsedPose, preferredScene, currentPose)
+    ?? buildInspectionPoseFromScene(parsedPose, fallbackScene, currentPose)
   )
 }
 
-function buildDiagnoseConnectorPose(
-  connectorY: number,
-  currentPose: { x: number, y: number },
-): RobotTargetPose {
-  return {
-    x: DIAGNOSE_CENTER_CONNECTOR_X,
-    y: connectorY,
-    z: 0,
-    yaw: connectorY >= currentPose.y ? Math.PI / 2 : -Math.PI / 2,
-    frameId: 'map',
-  }
-}
-
-function buildDiagnoseLaneConnectorPose(
+function buildDiagnoseLaneEntryPose(
   targetPose: RobotTargetPose,
-  connectorY: number,
+  currentPose: { x: number, y: number } | null,
+  scene: SemanticScene,
 ): RobotTargetPose {
+  const candidateEntryYs = [
+    clampToSceneBounds(scene.bounds.maxY - DIAGNOSE_ENTRY_MARGIN, scene.bounds.minY + 0.5, scene.bounds.maxY - 0.5),
+    clampToSceneBounds(scene.bounds.minY + DIAGNOSE_ENTRY_MARGIN, scene.bounds.minY + 0.5, scene.bounds.maxY - 0.5),
+  ]
+  const referenceY = currentPose?.y ?? 0
+  const targetY = candidateEntryYs.reduce((bestY, candidateY) => {
+    const bestScore = Math.abs(referenceY - bestY) + Math.abs(bestY - targetPose.y)
+    const candidateScore = Math.abs(referenceY - candidateY) + Math.abs(candidateY - targetPose.y)
+    return candidateScore < bestScore ? candidateY : bestY
+  })
+
   return {
     x: targetPose.x,
-    y: connectorY,
+    y: targetY,
     z: 0,
-    yaw: connectorY < targetPose.y ? Math.PI / 2 : -Math.PI / 2,
+    yaw: targetY >= targetPose.y ? -Math.PI / 2 : Math.PI / 2,
     frameId: 'map',
   }
 }
@@ -639,104 +761,59 @@ function buildDiagnoseLaneConnectorPose(
 function buildDiagnoseRoutePlan(
   targetPose: RobotTargetPose,
   currentPose: { x: number, y: number } | null,
+  scene: SemanticScene,
 ) {
-  if (!currentPose) {
-    return {
-      steps: [
+  const needsLaneEntry =
+    currentPose === null
+    || Math.abs(currentPose.x - targetPose.x) > DIAGNOSE_SAME_AISLE_X_TOLERANCE
+
+  const steps = needsLaneEntry
+    ? [
         {
-          phase: 'inspection' as const,
-          pose: targetPose,
-        },
-      ],
-      inspectionPose: targetPose,
-    }
-  }
-
-  const insideCropBand = Math.abs(currentPose.y) < DIAGNOSE_CONNECTOR_REENTRY_Y
-  const needsLaneChange =
-    Math.abs(currentPose.x - targetPose.x) > DIAGNOSE_LANE_ALIGNMENT_X_TOLERANCE
-  let bestConnectorY: number = DIAGNOSE_CONNECTOR_Y_VALUES[0]
-  let bestConnectorScore = Number.POSITIVE_INFINITY
-
-  for (const connectorY of DIAGNOSE_CONNECTOR_Y_VALUES) {
-    const centerConnectorPose = buildDiagnoseConnectorPose(connectorY, currentPose)
-    const laneConnectorPose = buildDiagnoseLaneConnectorPose(targetPose, connectorY)
-    const score =
-      Math.hypot(centerConnectorPose.x - currentPose.x, centerConnectorPose.y - currentPose.y)
-      + Math.hypot(laneConnectorPose.x - centerConnectorPose.x, laneConnectorPose.y - centerConnectorPose.y)
-      + Math.hypot(targetPose.x - laneConnectorPose.x, targetPose.y - laneConnectorPose.y)
-
-    if (score < bestConnectorScore) {
-      bestConnectorScore = score
-      bestConnectorY = connectorY
-    }
-  }
-
-  const centerConnectorPose = buildDiagnoseConnectorPose(bestConnectorY, currentPose)
-  const laneConnectorPose = buildDiagnoseLaneConnectorPose(targetPose, bestConnectorY)
-
-  if (insideCropBand && needsLaneChange) {
-    return {
-      steps: [
-        {
-          phase: 'center_connector' as const,
-          pose: centerConnectorPose,
-        },
-        {
-          phase: 'lane_connector' as const,
-          pose: laneConnectorPose,
+          phase: 'lane_entry' as const,
+          pose: buildDiagnoseLaneEntryPose(targetPose, currentPose, scene),
         },
         {
           phase: 'inspection' as const,
           pose: targetPose,
         },
-      ],
-      inspectionPose: targetPose,
-    }
-  }
-
-  if (!insideCropBand && needsLaneChange) {
-    return {
-      steps: [
-        {
-          phase: 'lane_connector' as const,
-          pose: laneConnectorPose,
-        },
+      ]
+    : [
         {
           phase: 'inspection' as const,
           pose: targetPose,
         },
-      ],
-      inspectionPose: targetPose,
-    }
-  }
+      ]
 
   return {
-    steps: [
-      {
-        phase: 'inspection' as const,
-        pose: targetPose,
-      },
-    ],
+    steps,
     inspectionPose: targetPose,
   }
 }
 
 function describeDiagnosePhase(phase: DiagnosePhase) {
   switch (phase) {
-    case 'center_connector':
-      return '중앙 connector band'
-    case 'lane_connector':
-      return 'inspection 통로'
+    case 'staging':
+      return '기준 위치'
+    case 'lane_entry':
+      return '진입 포인트'
     case 'inspection':
     default:
-      return '진단 위치'
+      return '관측 위치'
   }
+}
+
+function canRestartDiagnosisWhilePaused(status: RobotCommandStatus) {
+  return status.controlState?.mode === 'paused' && status.controlState.resumeAvailable
 }
 
 function buildDiagnoseBlockedMessage(status: RobotCommandStatus) {
   if (status.controlState?.mode === 'emergency_stop') {
     return '비상 정지 상태에서는 새 진단 이동 명령을 보낼 수 없습니다.'
+  }
+
+  if (canRestartDiagnosisWhilePaused(status)) {
+    return null
   }
 
   if (status.controlState?.mode === 'paused') {
@@ -768,7 +845,7 @@ function buildDiagnoseUiState(
   if (targetPose === null) {
     return {
       title: '좌표 정보 필요',
-      detail: '선택한 식물의 진단 접근 좌표를 계산하지 못했습니다. live semantic layer를 다시 확인한 뒤 재시도하세요.',
+      detail: '선택한 식물의 통로 관측 좌표를 계산하지 못했습니다. live semantic layer를 다시 확인한 뒤 재시도하세요.',
       badgeLabel: '좌표 없음',
       badgeTone: 'table-tag--danger',
       buttonLabel: '진단하기',
@@ -778,12 +855,13 @@ function buildDiagnoseUiState(
   }
 
   const blockedMessage = buildDiagnoseBlockedMessage(latestCommandStatus)
+  const resumeReadyWhilePaused = canRestartDiagnosisWhilePaused(latestCommandStatus)
   const trackingCurrentPlant =
     activeDiagnoseCommand !== null && activeDiagnoseCommand.plantId === currentPlantId
   const phaseLabel =
     activeDiagnoseCommand !== null
       ? describeDiagnosePhase(activeDiagnoseCommand.phase)
-      : '진단 위치'
+      : '관측 위치'
 
   if (trackingCurrentPlant) {
     if (blockedMessage && latestCommandStatus.commandId !== activeDiagnoseCommand.commandId) {
@@ -828,21 +906,10 @@ function buildDiagnoseUiState(
     switch (latestCommandStatus.status) {
       case 'pending':
         return {
-          title:
-            activeDiagnoseCommand.phase === 'center_connector'
-              ? '중앙 connector band 진입 준비 중'
-              : activeDiagnoseCommand.phase === 'lane_connector'
-                ? 'inspection 통로 진입 준비 중'
-                : '진단 이동 준비 중',
+          title: '관측 위치 이동 준비 중',
           detail:
             latestCommandStatus.message
-            || (
-              activeDiagnoseCommand.phase === 'center_connector'
-                ? 'executor가 중앙 connector band 진입 좌표 이동을 준비 중입니다.'
-                : activeDiagnoseCommand.phase === 'lane_connector'
-                  ? 'executor가 inspection 통로 진입 좌표 이동을 준비 중입니다.'
-                  : 'executor가 목표 좌표 이동을 준비 중입니다.'
-            ),
+            || 'executor가 통로 관측 위치 이동을 준비 중입니다.',
           badgeLabel: 'pending',
           badgeTone: 'table-tag--warning',
           buttonLabel: '진단 중단',
@@ -851,21 +918,10 @@ function buildDiagnoseUiState(
         }
       case 'running':
         return {
-          title:
-            activeDiagnoseCommand.phase === 'center_connector'
-              ? '중앙 connector band로 이동 중'
-              : activeDiagnoseCommand.phase === 'lane_connector'
-                ? 'inspection 통로로 이동 중'
-                : '진단 위치로 이동 중',
+          title: '관측 위치로 이동 중',
           detail:
             latestCommandStatus.message
-            || (
-              activeDiagnoseCommand.phase === 'center_connector'
-                ? '로봇이 먼저 중앙 connector band로 이동해 lane change 공간을 확보하는 중입니다.'
-                : activeDiagnoseCommand.phase === 'lane_connector'
-                  ? '로봇이 안전한 connector band를 거쳐 inspection lane으로 진입 중입니다.'
-                  : '로봇이 선택한 식물의 진단 위치로 이동 중입니다.'
-            ),
+            || '로봇이 선택한 식물을 볼 수 있는 통로 관측 위치로 이동 중입니다.',
           badgeLabel: 'running',
           badgeTone: 'table-tag--warning',
           buttonLabel: '진단 중단',
@@ -874,21 +930,10 @@ function buildDiagnoseUiState(
         }
       case 'succeeded':
         return {
-          title:
-            activeDiagnoseCommand.phase === 'center_connector'
-              ? '중앙 connector band 도착'
-              : activeDiagnoseCommand.phase === 'lane_connector'
-                ? 'inspection 통로 도착'
-                : '진단 위치 도착 완료',
+          title: '관측 위치 도착 완료',
           detail:
             latestCommandStatus.message
-            || (
-              activeDiagnoseCommand.phase === 'center_connector'
-                ? '중앙 connector band 도착 후 inspection 통로로 이동합니다.'
-                : activeDiagnoseCommand.phase === 'lane_connector'
-                  ? 'inspection 통로 도착 후 최종 진단 위치로 이동합니다.'
-                  : '선택한 식물 진단 위치까지 이동을 완료했습니다.'
-            ),
+            || '선택한 식물을 볼 수 있는 통로 관측 위치까지 이동을 완료했습니다.',
           badgeLabel: 'succeeded',
           badgeTone: 'table-tag--healthy',
           buttonLabel: '다시 진단하기',
@@ -924,6 +969,18 @@ function buildDiagnoseUiState(
     }
   }
 
+  if (resumeReadyWhilePaused) {
+    return {
+      title: '진단 재시작 가능',
+      detail: '일시정지된 수동 이동 문맥을 먼저 해제한 뒤, 통로 관측 위치로 진단 이동을 다시 시작합니다.',
+      badgeLabel: '일시정지',
+      badgeTone: 'table-tag--warning',
+      buttonLabel: '다시 진단하기',
+      buttonMode: 'start',
+      buttonDisabled: false,
+    }
+  }
+
   if (blockedMessage) {
     return {
       title: '새 진단 이동 차단됨',
@@ -944,7 +1001,7 @@ function buildDiagnoseUiState(
 
   return {
     title: '진단 이동 준비',
-    detail: '버튼을 누르면 선택한 식물까지 중앙 통로 → inspection 통로 → 진단 위치 순으로 필요한 `navigate_to_pose`를 순차 전송하고 `/robot/commands/latest` 상태를 추적합니다.',
+    detail: '버튼을 누르면 해당 식물을 볼 수 있는 가장 가까운 통로 관측 위치로 `navigate_to_pose`를 한 번 전송하고 `/robot/commands/latest` 상태를 추적합니다.',
     badgeLabel: '대기',
     badgeTone: 'table-tag--healthy',
     buttonLabel: '진단하기',
@@ -972,6 +1029,7 @@ export function FarmCommandPage() {
   const [activeDiagnoseCommand, setActiveDiagnoseCommand] = useState<DiagnoseCommandTracker | null>(null)
   const [observedDiagnoseState, setObservedDiagnoseState] = useState<string | null>(null)
   const [triggeredDemoDiagnosisCommandIds, setTriggeredDemoDiagnosisCommandIds] = useState<Record<string, boolean>>({})
+  const [queuedDiagnoseStart, setQueuedDiagnoseStart] = useState<QueuedDiagnoseStart | null>(null)
 
   const dashboardQuery = useQuery({
     queryKey: ['page', 'dashboard'],
@@ -1106,20 +1164,16 @@ export function FarmCommandPage() {
       })
       setObservedDiagnoseState(null)
       setActivityState(
-        variables.phase === 'center_connector'
-          ? '중앙 통로 진입 중'
-          : variables.phase === 'lane_connector'
-            ? '진단 통로 진입 중'
-            : '진단 이동 준비중',
+        variables.phase === 'inspection'
+          ? '관측 위치 이동 중'
+          : '진단 이동 준비중',
       )
       setSelectedPlantId(variables.plantId)
       setSelectedAssetId(variables.plantId)
       setUiMessage(
-        variables.phase === 'center_connector'
-          ? `${variables.plantName} 중앙 connector band 진입 요청을 접수했습니다. 이후 inspection 통로와 최종 진단 위치로 순차 이동합니다.`
-          : variables.phase === 'lane_connector'
-            ? `${variables.plantName} inspection 통로 진입 요청을 접수했습니다. 통로 도착 뒤 최종 진단 위치로 이동합니다.`
-            : `${variables.plantName} 진단 위치 이동 요청을 접수했습니다. /robot/commands/latest 가 pending/running으로 바뀌는지 확인합니다.`,
+        variables.phase === 'inspection'
+          ? `${variables.plantName} 통로 관측 위치 이동 요청을 접수했습니다. /robot/commands/latest 가 pending/running으로 바뀌는지 확인합니다.`
+          : `${variables.plantName} 진단 이동 요청을 접수했습니다.`,
       )
 
       await Promise.all([
@@ -1147,12 +1201,22 @@ export function FarmCommandPage() {
       rememberAction(
         variables.plantId,
         'AI 진단 저장',
-        `${variables.plantName} 진단 결과 ${result.finalLabel} 이 DB에 저장되었습니다.`,
-        'danger',
+        `${variables.plantName} 진단 결과 ${result.displayLabel} 이 DB에 저장되었습니다.`,
+        result.diagnosisNeeded ? 'danger' : 'healthy',
       )
       setUiMessage(
-        `${variables.plantName} 시연용 AI 진단이 완료되었습니다. ${result.finalLabel} 결과가 저장되었습니다.`,
+        `${variables.plantName} 시연용 AI 진단이 완료되었습니다. ${result.displayLabel} 결과가 저장되었습니다.`,
       )
+
+      queryClient.setQueryData<PlantsPageData>(
+        ['page', 'plants'],
+        (current) => mergeDiagnosisIntoPlantsPage(current, variables.plantId, result),
+      )
+      queryClient.setQueryData<PlantObservationFeed>(
+        ['plants', 'observations', variables.plantId],
+        (current) => mergeDiagnosisIntoObservationFeed(current, variables.plantId, variables.plantName, result),
+      )
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['page', 'plants'] }),
         queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] }),
@@ -1161,7 +1225,7 @@ export function FarmCommandPage() {
       ])
     },
     onError: (error: Error) => {
-      setActivityState('진단 위치 도착')
+      setActivityState('관측 위치 도착')
       setUiMessage(error.message)
     },
   })
@@ -1238,6 +1302,7 @@ export function FarmCommandPage() {
     label: string,
     detail: string,
     tone: ActionRecordTone = 'accent',
+    statusEffect: AssetActionStatusEffect = 'none',
   ) => {
     setActionRecords((current) => ({
       ...current,
@@ -1245,6 +1310,7 @@ export function FarmCommandPage() {
         label,
         detail,
         tone,
+        statusEffect,
       },
     }))
   }
@@ -1306,7 +1372,7 @@ export function FarmCommandPage() {
             || plant.targetId === harvest.activeTargetId
           )
         const status: SemanticAssetStatus =
-          actionRecord || runtimeHandled
+          actionRecord?.statusEffect === 'handled' || runtimeHandled
             ? 'handled'
             : attention
               ? 'attention'
@@ -1334,7 +1400,7 @@ export function FarmCommandPage() {
       }
 
       const sprinklerIndex = Number(asset.id.replace('sprinkler_', ''))
-      const status: SemanticAssetStatus = actionRecord ? 'handled' : 'normal'
+      const status: SemanticAssetStatus = actionRecord?.statusEffect === 'handled' ? 'handled' : 'normal'
 
       return {
         ...asset,
@@ -1422,7 +1488,7 @@ export function FarmCommandPage() {
       positionLabel: `x ${asset.position.x.toFixed(1)} / y ${asset.position.y.toFixed(1)}`,
       recommendedAction: asset.status === 'target' ? '수확 요청 가능' : '개별 진단 권장',
       health: asset.status === 'attention' ? 62 : asset.status === 'target' ? 91 : 84,
-      status: asset.status === 'attention' ? '진단 필요' : asset.status === 'target' ? '수확 후보' : '관찰 중',
+      status: asset.status === 'attention' ? '조치 필요' : asset.status === 'target' ? '수확 후보' : '관찰 중',
       lastObserved: '',
       latestLabel: '',
       latestDisplayLabel: '',
@@ -1613,6 +1679,7 @@ export function FarmCommandPage() {
           label: '수확 완료',
           detail: `${activeHarvestMission.plantName} 수확이 실제 상태 기준으로 완료되었습니다.`,
           tone: 'accent',
+          statusEffect: 'handled',
         },
       }))
     }
@@ -1709,14 +1776,20 @@ export function FarmCommandPage() {
       liveScene,
       mapScene,
       selectedPlantDetail.positionLabel,
+      robotPose
+        ? {
+            x: robotPose.x,
+            y: robotPose.y,
+          }
+        : null,
     )
-  }, [liveScene, mapScene, selectedPlantDetail])
+  }, [liveScene, mapScene, robotPose, selectedPlantDetail])
   const diagnoseUiState = buildDiagnoseUiState(
     latestCommandStatus,
     activeDiagnoseCommand,
     selectedPlantDetail?.id ?? null,
     selectedPlantTargetPose,
-    diagnoseMutation.isPending,
+    diagnoseMutation.isPending || queuedDiagnoseStart !== null,
   )
 
   const feedbackMessage = uiMessage
@@ -1889,6 +1962,40 @@ export function FarmCommandPage() {
     })
   }
 
+  const dispatchDiagnoseStart = (input: QueuedDiagnoseStart) => {
+    const diagnoseRoute = buildDiagnoseRoutePlan(
+      input.targetPose,
+      robotPose
+        ? {
+            x: robotPose.x,
+            y: robotPose.y,
+          }
+        : null,
+      liveScene,
+    )
+    const firstStep = diagnoseRoute.steps[0]
+
+    if (!firstStep) {
+      setUiMessage(`${input.plantName} 진단 경로를 계산하지 못했습니다.`)
+      return
+    }
+
+    setActivityState(firstStep.phase === 'inspection' ? '진단 이동 준비중' : '진단 경로 준비중')
+    setUiMessage(null)
+    setSelectedPlantId(input.plantId)
+    setSelectedAssetId(input.plantId)
+    diagnoseMutation.mutate({
+      plantId: input.plantId,
+      fruitId: input.fruitId,
+      plantName: input.plantName,
+      targetPose: diagnoseRoute.inspectionPose,
+      routeSteps: diagnoseRoute.steps,
+      currentStepIndex: 0,
+      currentTargetPose: firstStep.pose,
+      phase: firstStep.phase,
+    })
+  }
+
   const handleDiagnose = () => {
     const targetPlant = selectedAsset?.kind === 'plant'
       ? selectedPlantDetail
@@ -1903,10 +2010,36 @@ export function FarmCommandPage() {
       liveScene,
       mapScene,
       targetPlant.positionLabel,
+      robotPose
+        ? {
+            x: robotPose.x,
+            y: robotPose.y,
+          }
+        : null,
     )
 
     if (targetPose === null) {
       setUiMessage(`${targetPlant.name} 진단 접근 좌표를 계산하지 못해 이동을 시작할 수 없습니다.`)
+      return
+    }
+
+    const diagnoseStartInput = {
+      plantId: targetPlant.id,
+      fruitId: targetPlant.targetId,
+      plantName: targetPlant.name,
+      targetPose,
+    } satisfies QueuedDiagnoseStart
+
+    if (canRestartDiagnosisWhilePaused(latestCommandStatus)) {
+      setQueuedDiagnoseStart(diagnoseStartInput)
+      setActivityState('일시정지 해제 후 진단 재시작 중')
+      setUiMessage('저장된 일시정지 문맥을 해제한 뒤 새 진단 경로를 시작합니다.')
+      controlMutation.mutate('resume', {
+        onError: (error: Error) => {
+          setQueuedDiagnoseStart(null)
+          setUiMessage(error.message)
+        },
+      })
       return
     }
 
@@ -1916,40 +2049,7 @@ export function FarmCommandPage() {
       return
     }
 
-    const diagnoseRoute = buildDiagnoseRoutePlan(
-      targetPose,
-      robotPose
-        ? {
-            x: robotPose.x,
-            y: robotPose.y,
-          }
-        : null,
-    )
-
-    const firstStep = diagnoseRoute.steps[0]
-    if (!firstStep) {
-      setUiMessage(`${targetPlant.name} 진단 경로를 계산하지 못했습니다.`)
-      return
-    }
-
-    setActivityState(
-      firstStep.phase === 'inspection'
-        ? '진단 이동 준비중'
-        : '진단 경로 준비중',
-    )
-    setUiMessage(null)
-    setSelectedPlantId(targetPlant.id)
-    setSelectedAssetId(targetPlant.id)
-    diagnoseMutation.mutate({
-      plantId: targetPlant.id,
-      fruitId: targetPlant.targetId,
-      plantName: targetPlant.name,
-      targetPose: diagnoseRoute.inspectionPose,
-      routeSteps: diagnoseRoute.steps,
-      currentStepIndex: 0,
-      currentTargetPose: firstStep.pose,
-      phase: firstStep.phase,
-    })
+    dispatchDiagnoseStart(diagnoseStartInput)
   }
 
   const handleHarvest = () => {
@@ -1972,6 +2072,23 @@ export function FarmCommandPage() {
       plantName: targetPlant.name,
     })
   }
+
+  useEffect(() => {
+    if (queuedDiagnoseStart === null) {
+      return
+    }
+
+    if (latestCommandStatus.controlState?.mode !== 'normal') {
+      return
+    }
+
+    setQueuedDiagnoseStart(null)
+    dispatchDiagnoseStart(queuedDiagnoseStart)
+  }, [
+    dispatchDiagnoseStart,
+    latestCommandStatus.controlState?.mode,
+    queuedDiagnoseStart,
+  ])
 
   useEffect(() => {
     if (activeDiagnoseCommand === null) {
@@ -2005,7 +2122,7 @@ export function FarmCommandPage() {
       if (nextStep) {
         setActivityState(
           nextStep.phase === 'inspection'
-            ? '진단 위치 재접근 중'
+            ? '관측 위치 재접근 중'
             : '진단 경로 재접근 중',
         )
         setUiMessage(
@@ -2028,11 +2145,11 @@ export function FarmCommandPage() {
         activeDiagnoseCommand.plantId === DEMO_DIAGNOSIS_PLANT_ID
         && !triggeredDemoDiagnosisCommandIds[activeDiagnoseCommand.commandId]
 
-      setActivityState(shouldRunDemoDiagnosis ? 'AI 진단중' : '진단 위치 도착')
+      setActivityState(shouldRunDemoDiagnosis ? 'AI 진단중' : '관측 위치 도착')
       rememberAction(
         activeDiagnoseCommand.plantId,
         '진단 완료',
-        `${activeDiagnoseCommand.plantName} 진단 위치까지 실제 이동을 완료했습니다.`,
+        `${activeDiagnoseCommand.plantName} 통로 관측 위치까지 실제 이동을 완료했습니다.`,
         'accent',
       )
       if (shouldRunDemoDiagnosis) {
@@ -2041,7 +2158,7 @@ export function FarmCommandPage() {
           [activeDiagnoseCommand.commandId]: true,
         }))
         setUiMessage(
-          `${activeDiagnoseCommand.plantName} 진단 위치 도착 후 시연용 병해 이미지를 AI에 전달합니다.`,
+          `${activeDiagnoseCommand.plantName} 통로 관측 위치 도착 후 시연용 병해 이미지를 AI에 전달합니다.`,
         )
         demoDiagnosisMutation.mutate({
           plantId: activeDiagnoseCommand.plantId,
@@ -2054,7 +2171,7 @@ export function FarmCommandPage() {
 
       setUiMessage(
         latestCommandStatus.message
-        || `${activeDiagnoseCommand.plantName} 진단 위치까지 이동을 완료했습니다.`,
+        || `${activeDiagnoseCommand.plantName} 통로 관측 위치까지 이동을 완료했습니다.`,
       )
       return
     }
@@ -2104,6 +2221,7 @@ export function FarmCommandPage() {
           '물주기 완료',
           `${selectedAsset.label} 물주기 요청을 등록했습니다.`,
           'healthy',
+          'handled',
         )
         setUiMessage(`${selectedAsset.label} 물주기 요청을 등록했습니다.`)
       },
@@ -2127,6 +2245,7 @@ export function FarmCommandPage() {
           '영양제 주기 완료',
           `${selectedAsset.label} 영양제 주기 요청을 등록했습니다.`,
           'accent',
+          'handled',
         )
         setUiMessage(`${selectedAsset.label} 영양제 주기 요청을 등록했습니다.`)
       },
@@ -2366,9 +2485,9 @@ export function FarmCommandPage() {
             createPostAction('전체 수확 패트롤', ['/missions/patrol/start', '/robot/commands'], 'any'),
             createPostAction('물 주기', ['/actuations/recommendations/reco-water-001/approve', '/actuations/watering'], 'any'),
             createPostAction('영양제 주기', ['/actuations/nutrients']),
-            createPostAction('일시정지', ['/missions/patrol/stop', '/robot/commands'], 'any'),
-            createPostAction('재개', ['/robot/commands']),
-            createPostAction('귀가', ['/missions/return-home', '/robot/commands'], 'any'),
+            createPostAction('일시정지', ['/robot/control/pause', '/missions/patrol/stop', '/robot/commands'], 'any'),
+            createPostAction('재개', ['/robot/control/resume', '/robot/commands'], 'any'),
+            createPostAction('귀가', ['/robot/commands']),
           ],
         }}
       >
