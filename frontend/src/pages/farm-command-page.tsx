@@ -620,8 +620,9 @@ function clampToSceneBounds(value: number, minValue: number, maxValue: number) {
   return Math.min(Math.max(value, minValue), maxValue)
 }
 
-const DIAGNOSE_ENTRY_MARGIN = 1.4
 const DIAGNOSE_SAME_AISLE_X_TOLERANCE = 0.75
+const DIAGNOSE_SAME_LANE_Y_TOLERANCE = 0.75
+const DIAGNOSE_OBSERVATION_DWELL_MS = 1200
 
 function semanticRowGuideValues(scene: SemanticScene) {
   const rowGuideValues = sortedUniqueValues(
@@ -641,6 +642,24 @@ function semanticRowGuideValues(scene: SemanticScene) {
   )
 }
 
+function semanticLaneGuideValues(scene: SemanticScene) {
+  const laneGuideValues = sortedUniqueValues(
+    scene.laneGuides
+      .filter((guide) => guide.axis === 'y')
+      .map((guide) => guide.value),
+  )
+
+  if (laneGuideValues.length > 0) {
+    return laneGuideValues
+  }
+
+  return sortedUniqueValues(
+    scene.assets
+      .filter((asset) => asset.kind === 'plant')
+      .map((asset) => asset.position.y),
+  )
+}
+
 function resolveObservationAislePoseX(
   positionX: number,
   rowGuideValues: number[],
@@ -655,14 +674,27 @@ function resolveObservationAislePoseX(
   const rowCount = rowGuideValues.length
   const rowValue = rowGuideValues[nearestRowIndex]
   const candidateXs: number[] = []
+  const appendMidpointCandidate = (leftRowValue: number, rightRowValue: number) => {
+    candidateXs.push((leftRowValue + rightRowValue) / 2)
+  }
 
   if (nearestRowIndex === 0 && rowCount >= 2) {
     candidateXs.push(rowValue - ((rowGuideValues[1] - rowValue) / 2))
   } else if (nearestRowIndex === rowCount - 1 && rowCount >= 2) {
     candidateXs.push(rowValue + ((rowValue - rowGuideValues[rowCount - 2]) / 2))
   } else {
-    candidateXs.push((rowGuideValues[nearestRowIndex - 1] + rowValue) / 2)
-    candidateXs.push((rowValue + rowGuideValues[nearestRowIndex + 1]) / 2)
+    appendMidpointCandidate(rowGuideValues[nearestRowIndex - 1], rowValue)
+    appendMidpointCandidate(rowValue, rowGuideValues[nearestRowIndex + 1])
+  }
+
+  if (candidateXs.length === 0) {
+    const fallbackSpacing =
+      nearestRowIndex >= rowCount / 2
+        ? rowValue - rowGuideValues[nearestRowIndex - 1]
+        : rowGuideValues[nearestRowIndex + 1] - rowValue
+    candidateXs.push(
+      rowValue + (nearestRowIndex >= rowCount / 2 ? fallbackSpacing / 2 : -(fallbackSpacing / 2)),
+    )
   }
 
   const targetX = candidateXs.reduce((bestX, candidateX) => {
@@ -683,21 +715,22 @@ function buildInspectionPoseFromScene(
   currentPose: { x: number, y: number } | null,
 ): RobotTargetPose | null {
   const rowGuideValues = semanticRowGuideValues(scene)
+  const laneGuideValues = semanticLaneGuideValues(scene)
 
-  if (rowGuideValues.length < 2) {
+  if (rowGuideValues.length < 2 || laneGuideValues.length === 0) {
     return null
   }
 
   const observationPose = resolveObservationAislePoseX(position.x, rowGuideValues, currentPose?.x ?? null)
-  const targetY = clampToSceneBounds(
-    position.y,
-    scene.bounds.minY + 0.5,
-    scene.bounds.maxY - 0.5,
-  )
+  const targetY = laneGuideValues.reduce((bestY, candidateY) => {
+    const bestDistance = Math.abs(bestY - position.y)
+    const candidateDistance = Math.abs(candidateY - position.y)
+    return candidateDistance < bestDistance ? candidateY : bestY
+  })
 
   return {
     x: clampToSceneBounds(observationPose.x, scene.bounds.minX + 0.5, scene.bounds.maxX - 0.5),
-    y: targetY,
+    y: clampToSceneBounds(targetY, scene.bounds.minY + 0.5, scene.bounds.maxY - 0.5),
     z: 0,
     yaw: observationPose.yaw,
     frameId: 'map',
@@ -733,27 +766,24 @@ function buildPlantTargetPose(
   )
 }
 
-function buildDiagnoseLaneEntryPose(
+function buildDiagnoseStagingPose(
   targetPose: RobotTargetPose,
   currentPose: { x: number, y: number } | null,
   scene: SemanticScene,
 ): RobotTargetPose {
-  const candidateEntryYs = [
-    clampToSceneBounds(scene.bounds.maxY - DIAGNOSE_ENTRY_MARGIN, scene.bounds.minY + 0.5, scene.bounds.maxY - 0.5),
-    clampToSceneBounds(scene.bounds.minY + DIAGNOSE_ENTRY_MARGIN, scene.bounds.minY + 0.5, scene.bounds.maxY - 0.5),
-  ]
-  const referenceY = currentPose?.y ?? 0
-  const targetY = candidateEntryYs.reduce((bestY, candidateY) => {
-    const bestScore = Math.abs(referenceY - bestY) + Math.abs(bestY - targetPose.y)
-    const candidateScore = Math.abs(referenceY - candidateY) + Math.abs(candidateY - targetPose.y)
-    return candidateScore < bestScore ? candidateY : bestY
-  })
-
   return {
-    x: targetPose.x,
-    y: targetY,
+    x: clampToSceneBounds(
+      currentPose?.x ?? 0,
+      scene.bounds.minX + 0.5,
+      scene.bounds.maxX - 0.5,
+    ),
+    y: clampToSceneBounds(
+      targetPose.y,
+      scene.bounds.minY + 0.5,
+      scene.bounds.maxY - 0.5,
+    ),
     z: 0,
-    yaw: targetY >= targetPose.y ? -Math.PI / 2 : Math.PI / 2,
+    yaw: (currentPose?.y ?? 0) <= targetPose.y ? Math.PI / 2 : -Math.PI / 2,
     frameId: 'map',
   }
 }
@@ -763,27 +793,26 @@ function buildDiagnoseRoutePlan(
   currentPose: { x: number, y: number } | null,
   scene: SemanticScene,
 ) {
-  const needsLaneEntry =
+  const needsHorizontalTransition =
     currentPose === null
     || Math.abs(currentPose.x - targetPose.x) > DIAGNOSE_SAME_AISLE_X_TOLERANCE
+  const needsVerticalTransition =
+    currentPose === null
+    || Math.abs(currentPose.y - targetPose.y) > DIAGNOSE_SAME_LANE_Y_TOLERANCE
 
-  const steps = needsLaneEntry
-    ? [
-        {
-          phase: 'lane_entry' as const,
-          pose: buildDiagnoseLaneEntryPose(targetPose, currentPose, scene),
-        },
-        {
-          phase: 'inspection' as const,
-          pose: targetPose,
-        },
-      ]
-    : [
-        {
-          phase: 'inspection' as const,
-          pose: targetPose,
-        },
-      ]
+  const steps: DiagnoseRouteStep[] = []
+
+  if (needsHorizontalTransition && needsVerticalTransition) {
+    steps.push({
+      phase: 'staging',
+      pose: buildDiagnoseStagingPose(targetPose, currentPose, scene),
+    })
+  }
+
+  steps.push({
+    phase: 'inspection',
+    pose: targetPose,
+  })
 
   return {
     steps,
@@ -794,7 +823,7 @@ function buildDiagnoseRoutePlan(
 function describeDiagnosePhase(phase: DiagnosePhase) {
   switch (phase) {
     case 'staging':
-      return '기준 위치'
+      return '세로 통로'
     case 'lane_entry':
       return '진입 포인트'
     case 'inspection':
@@ -2153,19 +2182,22 @@ export function FarmCommandPage() {
         'accent',
       )
       if (shouldRunDemoDiagnosis) {
+        setActivityState('관측 정지중')
         setTriggeredDemoDiagnosisCommandIds((current) => ({
           ...current,
           [activeDiagnoseCommand.commandId]: true,
         }))
         setUiMessage(
-          `${activeDiagnoseCommand.plantName} 통로 관측 위치 도착 후 시연용 병해 이미지를 AI에 전달합니다.`,
+          `${activeDiagnoseCommand.plantName} 통로 관측 위치에 정지했습니다. 잠시 안정화한 뒤 시연용 병해 이미지를 AI에 전달합니다.`,
         )
-        demoDiagnosisMutation.mutate({
-          plantId: activeDiagnoseCommand.plantId,
-          fruitId: activeDiagnoseCommand.fruitId,
-          plantName: activeDiagnoseCommand.plantName,
-          targetPose: activeDiagnoseCommand.targetPose,
-        })
+        setTimeout(() => {
+          demoDiagnosisMutation.mutate({
+            plantId: activeDiagnoseCommand.plantId,
+            fruitId: activeDiagnoseCommand.fruitId,
+            plantName: activeDiagnoseCommand.plantName,
+            targetPose: activeDiagnoseCommand.targetPose,
+          })
+        }, DIAGNOSE_OBSERVATION_DWELL_MS)
         return
       }
 
@@ -2344,9 +2376,41 @@ export function FarmCommandPage() {
   const selectedTaskTitle = selectedAsset ? `${selectedSummary.title} 작업` : '작업 대상을 선택하세요'
   const selectedTaskDescription = selectedAsset?.kind === 'plant'
     ? selectedPlantHarvestRuntime?.detail ?? '식물 개별 작업은 맵 팝업에서 바로 실행합니다.'
-    : selectedAsset?.kind === 'sprinkler'
+      : selectedAsset?.kind === 'sprinkler'
       ? '급수 개별 작업도 맵 팝업에서 바로 실행합니다.'
       : '밭 전체 패트롤 또는 개별 객체 작업을 선택할 수 있습니다.'
+  const activeCommandTarget = useMemo<RobotTargetPose | null>(() => {
+    const commandTarget = latestCommandStatus.targetPose ?? null
+
+    if (activeDiagnoseCommand && latestCommandStatus.commandId === activeDiagnoseCommand.commandId) {
+      if (latestCommandStatus.status === 'pending' || latestCommandStatus.status === 'running') {
+        return activeDiagnoseCommand.currentTargetPose
+      }
+      return commandTarget
+    }
+
+    if (latestCommandStatus.status === 'pending' || latestCommandStatus.status === 'running') {
+      return commandTarget
+    }
+
+    return null
+  }, [activeDiagnoseCommand, latestCommandStatus])
+  const pendingCommandTarget = useMemo<RobotTargetPose | null>(() => {
+    if (!activeDiagnoseCommand) {
+      return null
+    }
+
+    if (latestCommandStatus.commandId !== activeDiagnoseCommand.commandId) {
+      return null
+    }
+
+    if (latestCommandStatus.status !== 'pending' && latestCommandStatus.status !== 'running') {
+      return null
+    }
+
+    const nextStep = activeDiagnoseCommand.routeSteps[activeDiagnoseCommand.currentStepIndex + 1]
+    return nextStep?.pose ?? null
+  }, [activeDiagnoseCommand, latestCommandStatus])
 
   return (
     <div className="farm-layout-page">
@@ -2404,6 +2468,8 @@ export function FarmCommandPage() {
           <RobotFacilityMap
             onSelectAsset={handleSelectAsset}
             onSelectGuide={handleGuideMove}
+            activeCommandTarget={activeCommandTarget}
+            pendingTarget={pendingCommandTarget}
             pose={robotPose}
             scene={mapScene}
             selectedAssetId={selectedAssetId}

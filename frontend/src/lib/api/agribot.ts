@@ -102,6 +102,7 @@ export type RobotCommandStatus = {
   requestedCommandType: string
   commandType: string
   preemptCurrentNavigation: boolean
+  targetPose: RobotTargetPose | null
   status: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
   message: string
   error: string
@@ -1001,6 +1002,9 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
     requestedCommandType: readString(record.requested_command_type),
     commandType: readString(record.command_type),
     preemptCurrentNavigation: readBoolean(record.preempt_current_navigation, false),
+    targetPose: record.target_pose
+      ? readRobotTargetPose(record.target_pose, robotFallbackPose)
+      : null,
     status: normalizedStatus,
     message: readString(record.message) || readString(record.note) || '명령 상태 정보가 준비되지 않았습니다.',
     error: readString(record.error),
@@ -1373,6 +1377,7 @@ const robotFallbackCommandStatus: RobotCommandStatus = {
   requestedCommandType: '',
   commandType: '',
   preemptCurrentNavigation: false,
+  targetPose: null,
   status: 'idle',
   message: '이동 명령 상태를 아직 받지 못했습니다.',
   error: '',

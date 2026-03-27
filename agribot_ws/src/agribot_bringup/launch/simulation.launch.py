@@ -14,6 +14,7 @@ Usage:
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    ExecuteProcess,
     IncludeLaunchDescription,
     SetEnvironmentVariable,
     TimerAction,
@@ -148,8 +149,56 @@ def generate_launch_description():
     )
 
     delayed_navigation = TimerAction(
-        period=5.0,
+        # GUI + IoT bringup can take longer to publish stable TF/odom than the
+        # headless baseline. Let Nav2 start after the simulation settles so the
+        # local costmap does not get stuck timing out immediately.
+        period=10.0,
         actions=[navigation],
+    )
+    unpause_world = TimerAction(
+        # Gazebo GUI sessions occasionally come up paused even with `gz sim -r`.
+        # Kick the world back into run mode before Nav2 activates so /clock,
+        # /odom and TF are already alive.
+        period=3.0,
+        actions=[
+            ExecuteProcess(
+                cmd=[
+                    'bash',
+                    '-lc',
+                    (
+                        "export GZ_PARTITION=agribot_sim; "
+                        "gz service -s /world/farm_world/control "
+                        "--reqtype gz.msgs.WorldControl "
+                        "--reptype gz.msgs.Boolean "
+                        "--timeout 3000 "
+                        "--req 'pause: false' >/dev/null 2>&1 || true"
+                    ),
+                ],
+                shell=False,
+            ),
+        ],
+    )
+    unpause_world_retry = TimerAction(
+        # Retry once more after the GUI has fully attached; this keeps manual
+        # operator restarts from getting stuck in a paused world state.
+        period=8.0,
+        actions=[
+            ExecuteProcess(
+                cmd=[
+                    'bash',
+                    '-lc',
+                    (
+                        "export GZ_PARTITION=agribot_sim; "
+                        "gz service -s /world/farm_world/control "
+                        "--reqtype gz.msgs.WorldControl "
+                        "--reptype gz.msgs.Boolean "
+                        "--timeout 3000 "
+                        "--req 'pause: false' >/dev/null 2>&1 || true"
+                    ),
+                ],
+                shell=False,
+            ),
+        ],
     )
 
     runtime_snapshot_exporter = Node(
@@ -196,6 +245,8 @@ def generate_launch_description():
         runtime_snapshot_exporter,
         robot_manual_command_executor,
         mission_bridge_executor,
+        unpause_world,
+        unpause_world_retry,
         delayed_navigation,
         iot_status_pipeline,
         perception,

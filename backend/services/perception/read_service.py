@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
 import json
 import mimetypes
 import os
@@ -14,6 +15,7 @@ from sqlalchemy.orm import joinedload
 
 from database import SessionLocal
 from models import Alert, CropObservation, Plant, Zone
+from robot_map_service import _load_crop_instances
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -93,6 +95,32 @@ def _zone_label(zone: Zone | None) -> str:
 def _display_label(finding_label: str) -> str:
     normalized = finding_label.strip().lower()
     return LABEL_DISPLAY_MAP.get(normalized, finding_label)
+
+
+@lru_cache(maxsize=1)
+def _canonical_plant_positions() -> dict[str, dict[str, float]]:
+    crop_instances = _load_crop_instances()
+    positions: dict[str, dict[str, float]] = {}
+
+    for plant in crop_instances.get("plants", []):
+        plant_id = str(plant.get("plant_id") or "").strip()
+        pose = plant.get("pose")
+        if not plant_id or not isinstance(pose, dict):
+            continue
+        positions[plant_id] = {
+            "x": float(pose.get("x", 0.0)),
+            "y": float(pose.get("y", 0.0)),
+            "z": float(pose.get("z", 0.0)),
+        }
+
+    return positions
+
+
+def _plant_position(plant_id: str, fallback: dict[str, Any] | None) -> dict[str, Any]:
+    canonical = _canonical_plant_positions().get(plant_id.strip())
+    if canonical is not None:
+        return canonical
+    return fallback or {"x": 0.0, "y": 0.0, "z": 0.0}
 
 
 def _health_percent(finding_label: str) -> int:
@@ -425,7 +453,7 @@ class ObservationReadService:
                     "fruit_id": "" if not plant.fruits else plant.fruits[0].id,
                     "zone_id": plant.zone_id,
                     "zone_label": _zone_label(plant.zone),
-                    "position": plant.position,
+                    "position": _plant_position(plant.id, plant.position),
                     "last_observed_at": _serialize_datetime(plant.last_observed_at),
                     "health_score": None,
                     "health": 92,
@@ -486,7 +514,7 @@ class ObservationReadService:
                         "fruit_id": record.fruit_id,
                         "zone_id": record.zone_id,
                         "zone_label": record.zone_id or "farm_01",
-                        "position": {"x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "frame_id": "map"},
+                        "position": _plant_position(plant_id, None),
                         "last_observed_at": record.reviewed_at,
                         "health_score": None,
                         "health": 92,
@@ -546,7 +574,7 @@ class ObservationReadService:
                     "name": _plant_display_name(plant_id),
                     "zone_id": observation_feed["zone_id"],
                     "zone_label": observation_feed["zone_label"],
-                    "position": {"x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "frame_id": "map"},
+                    "position": _plant_position(plant_id, None),
                     "latest_observation": latest,
                     "observation_count": len(observation_feed["items"]),
                     "target_fruit_id": None,
@@ -558,7 +586,7 @@ class ObservationReadService:
                 "name": _plant_display_name(plant.id),
                 "zone_id": plant.zone_id,
                 "zone_label": _zone_label(plant.zone),
-                "position": plant.position,
+                "position": _plant_position(plant.id, plant.position),
                 "latest_observation": latest,
                 "observation_count": len(observation_feed["items"]),
                 "target_fruit_id": "" if not plant.fruits else plant.fruits[0].id,

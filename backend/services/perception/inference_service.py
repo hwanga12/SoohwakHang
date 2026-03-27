@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import base64
@@ -10,7 +11,9 @@ import re
 from typing import Any
 import uuid
 
+from robot_map_service import _load_crop_instances
 from services.actuation.dispatcher import TreatmentCommandDispatcher
+from services.actuation.schemas import Point3D
 from services.actuation.rule_engine import DiseaseTreatmentRuleEngine
 from services.perception.persistence import ObservationPersistenceService
 from services.perception.schemas import (
@@ -54,6 +57,35 @@ _MODEL_DEVICE_ENV_VARS = (
     'AGRIBOT_TOMATO_DISEASE_DEVICE',
     'AGRIBOT_TOMATO_MODEL_DEVICE',
 )
+
+
+@lru_cache(maxsize=1)
+def _canonical_plant_positions() -> dict[str, Point3D]:
+    crop_instances = _load_crop_instances()
+    positions: dict[str, Point3D] = {}
+
+    for plant in crop_instances.get('plants', []):
+        plant_id = str(plant.get('plant_id') or '').strip()
+        pose = plant.get('pose')
+        if not plant_id or not isinstance(pose, dict):
+            continue
+        positions[plant_id] = Point3D(
+            x=float(pose.get('x', 0.0)),
+            y=float(pose.get('y', 0.0)),
+            z=float(pose.get('z', 0.0)),
+        )
+
+    return positions
+
+
+def _treatment_target_position(
+    plant_id: str,
+    fallback: Point3D | None,
+) -> Point3D | None:
+    canonical = _canonical_plant_positions().get(str(plant_id).strip())
+    if canonical is not None:
+        return canonical
+    return fallback
 
 
 class ModelDependencyError(RuntimeError):
@@ -168,10 +200,15 @@ class MainInferenceService:
                 y2=final_detection.bbox[3],
             )
 
+        treatment_target_position = _treatment_target_position(
+            request.plant_id,
+            request.target_position,
+        )
+
         treatment_plan = self._treatment_rule_engine.evaluate(
             disease_label=final_label,
             zone_id=request.zone_id,
-            target_position=request.target_position,
+            target_position=treatment_target_position,
         )
         dispatch_result = self._treatment_dispatcher.dispatch_plan(
             treatment_plan,
