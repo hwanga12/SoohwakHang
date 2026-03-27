@@ -219,9 +219,15 @@ class DiseaseTreatmentRuleEngine:
         if not candidates:
             candidates = self._sprinklers
 
+        # Prefer the sprinkler in the same crop column first so the selected
+        # head matches what the operator sees next to the diagnosed plant.
         nearest = min(
             candidates,
-            key=lambda sprinkler: _distance_between(sprinkler.position, target_position),
+            key=lambda sprinkler: (
+                abs(sprinkler.position.x - target_position.x),
+                abs(sprinkler.position.y - target_position.y),
+                _distance_between(sprinkler.position, target_position),
+            ),
         )
         return SprinklerSelection(
             device_id=nearest.device_id,

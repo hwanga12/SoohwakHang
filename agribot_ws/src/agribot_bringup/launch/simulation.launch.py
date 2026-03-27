@@ -63,10 +63,10 @@ def generate_launch_description():
         ),
         launch_arguments={
             'gz_args_prefix': gz_args_prefix,
-            # AMCL / startup_map_tf_broadcaster own map -> odom during
-            # static-map localization. Keeping the spawn-time identity TF here
-            # forces the saved map to stay aligned with raw odom.
-            'publish_map_to_odom_tf': 'false',
+            # In the hardcoded-map simulation flow, a static identity map -> odom
+            # transform is the most reliable base frame for Nav2. The temporary
+            # startup broadcaster is disabled below to avoid duplicated TF owners.
+            'publish_map_to_odom_tf': 'true',
         }.items(),
     )
 
@@ -82,6 +82,7 @@ def generate_launch_description():
             'use_sim_time': 'true',
             'use_rviz': use_rviz,
             'patrol_robot_pose_topic': '/odom',
+            'use_startup_map_tf_broadcaster': 'false',
         }.items()
     )
     gz_args_prefix_arg = DeclareLaunchArgument(

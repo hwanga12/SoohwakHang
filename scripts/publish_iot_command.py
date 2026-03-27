@@ -36,6 +36,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='Publish a single IoTCommand message to ROS.')
     parser.add_argument('--topic', required=True)
     parser.add_argument('--payload-file', required=True)
+    parser.add_argument('--min-subscribers', type=int, default=1)
+    parser.add_argument('--discovery-timeout-sec', type=float, default=3.0)
+    parser.add_argument('--post-publish-wait-sec', type=float, default=0.6)
     args = parser.parse_args()
 
     payload = _load_payload(Path(args.payload_file))
@@ -44,19 +47,29 @@ def main() -> int:
     node = Node('agribot_iot_command_once_publisher')
     publisher = node.create_publisher(IoTCommand, args.topic, 10)
     try:
-        deadline = time.monotonic() + 1.5
-        while time.monotonic() < deadline and publisher.get_subscription_count() == 0:
+        min_subscribers = max(1, int(args.min_subscribers))
+        deadline = time.monotonic() + max(0.5, float(args.discovery_timeout_sec))
+        while time.monotonic() < deadline and publisher.get_subscription_count() < min_subscribers:
             rclpy.spin_once(node, timeout_sec=0.1)
+
+        subscription_count = publisher.get_subscription_count()
+        if subscription_count < min_subscribers:
+            print(
+                f'Insufficient ROS subscribers on topic {args.topic}: '
+                f'expected>={min_subscribers}, discovered={subscription_count}.'
+            )
+            return 1
 
         message = _build_message(node, payload)
         publisher.publish(message)
         # Give DDS discovery and the outbound queue a brief chance to flush
         # before tearing the process down.
         rclpy.spin_once(node, timeout_sec=0.2)
-        time.sleep(0.1)
+        time.sleep(max(0.1, float(args.post_publish_wait_sec)))
         print(
             f'Published IoTCommand {message.command_id} '
-            f'to {args.topic} for {message.device_type}:{message.device_id}.'
+            f'to {args.topic} for {message.device_type}:{message.device_id} '
+            f'(subscribers={subscription_count}).'
         )
         return 0
     finally:

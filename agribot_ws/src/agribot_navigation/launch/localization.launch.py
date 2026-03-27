@@ -76,7 +76,6 @@ def generate_launch_description():
         default_value='true',
         description='Automatically configure and activate map_server and amcl.',
     )
-
     map_server = Node(
         package='nav2_map_server',
         executable='map_server',
