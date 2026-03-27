@@ -30,6 +30,8 @@ import sys
 def generate_launch_description():
     gz_partition = 'agribot_sim'
     runtime_dir = LaunchConfiguration('runtime_dir')
+    gz_args_prefix = LaunchConfiguration('gz_args_prefix')
+    use_rviz = LaunchConfiguration('use_rviz')
     agribot_interfaces_site_packages = os.path.join(
         get_package_prefix('agribot_interfaces'),
         'lib',
@@ -59,6 +61,7 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
+            'gz_args_prefix': gz_args_prefix,
             # AMCL / startup_map_tf_broadcaster own map -> odom during
             # static-map localization. Keeping the spawn-time identity TF here
             # forces the saved map to stay aligned with raw odom.
@@ -76,14 +79,24 @@ def generate_launch_description():
         ),
         launch_arguments={
             'use_sim_time': 'true',
-            'use_rviz': 'true',
+            'use_rviz': use_rviz,
             'patrol_robot_pose_topic': '/odom',
         }.items()
+    )
+    gz_args_prefix_arg = DeclareLaunchArgument(
+        'gz_args_prefix',
+        default_value='-r',
+        description='Arguments passed to gz sim before the world path.',
     )
     use_iot_arg = DeclareLaunchArgument(
         'use_iot',
         default_value='true',
         description='Launch the IoT status/result publishing stack.',
+    )
+    use_rviz_arg = DeclareLaunchArgument(
+        'use_rviz',
+        default_value='true',
+        description='Launch RViz alongside Nav2.',
     )
     runtime_dir_arg = DeclareLaunchArgument(
         'runtime_dir',
@@ -171,7 +184,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        gz_args_prefix_arg,
         use_iot_arg,
+        use_rviz_arg,
         runtime_dir_arg,
         use_perception_arg,
         backend_confirm_url_arg,

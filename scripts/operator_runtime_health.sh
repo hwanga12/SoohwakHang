@@ -247,6 +247,9 @@ check_ros_nodes() {
     local ros2_output
     local ros2_error
     local rc=0
+    local attempt=1
+    local max_attempts=3
+    local all_required_present=0
     local -a required_nodes=(
         "robot_manual_command_executor"
         "mission_bridge_executor"
@@ -257,20 +260,57 @@ check_ros_nodes() {
     ros2_output="$(mktemp)"
     ros2_error="$(mktemp)"
 
-    if command -v timeout >/dev/null 2>&1; then
-        timeout 5 ros2 node list >"${ros2_output}" 2>"${ros2_error}" || rc=$?
-    else
-        ros2 node list >"${ros2_output}" 2>"${ros2_error}" || rc=$?
-    fi
-
-    if [[ ${rc} -ne 0 ]]; then
-        fail "ros2 node list failed. Source /opt/ros/${ROS_DISTRO_VALUE}/setup.bash and ${AGRIBOT_WS_DEFAULT}/install/setup.bash first."
+    if ! source_ros_setup_files >"${ros2_error}" 2>&1; then
+        fail "failed to source ROS setup files before ros2 node list."
         if [[ -s "${ros2_error}" ]]; then
             note "ros2 error: $(tr '\n' ' ' <"${ros2_error}" | sed 's/  */ /g')"
         fi
         rm -f "${ros2_output}" "${ros2_error}"
         return
     fi
+
+    while (( attempt <= max_attempts )); do
+        : >"${ros2_output}"
+        : >"${ros2_error}"
+        rc=0
+
+        if command -v timeout >/dev/null 2>&1; then
+            timeout 5 ros2 node list >"${ros2_output}" 2>"${ros2_error}" || rc=$?
+        else
+            ros2 node list >"${ros2_output}" 2>"${ros2_error}" || rc=$?
+        fi
+
+        if [[ ${rc} -ne 0 ]]; then
+            if (( attempt == max_attempts )); then
+                fail "ros2 node list failed. Source /opt/ros/${ROS_DISTRO_VALUE}/setup.bash and ${AGRIBOT_WS_DEFAULT}/install/setup.bash first."
+                if [[ -s "${ros2_error}" ]]; then
+                    note "ros2 error: $(tr '\n' ' ' <"${ros2_error}" | sed 's/  */ /g')"
+                fi
+                rm -f "${ros2_output}" "${ros2_error}"
+                return
+            fi
+            sleep 1
+            attempt=$((attempt + 1))
+            continue
+        fi
+
+        all_required_present=1
+        for node_name in "${required_nodes[@]}"; do
+            if ! grep -Eq "(^|/)${node_name}$" "${ros2_output}"; then
+                all_required_present=0
+                break
+            fi
+        done
+
+        if (( all_required_present )); then
+            break
+        fi
+
+        if (( attempt < max_attempts )); then
+            sleep 1
+        fi
+        attempt=$((attempt + 1))
+    done
 
     if [[ ! -s "${ros2_output}" ]]; then
         fail "ros2 node list is empty."

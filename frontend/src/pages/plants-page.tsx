@@ -9,6 +9,7 @@ import {
   emptyPlantObservationFeed,
   getPlantObservations,
   getPlantsPageData,
+  plantNeedsDiagnosis,
   plantsFallback,
   requestHarvestMission,
 } from '@/lib/api/agribot'
@@ -25,12 +26,20 @@ function getAlertPreview(imageUrl: string, alertId: string) {
   return '/mock-images/harvest-closeup.png'
 }
 
-function getPlantPreview(imageUrl: string, statusHint: string) {
+function getPlantPreview(
+  imageUrl: string,
+  plant: {
+    status?: string
+    recommendedAction?: string
+    latestLabel?: string
+    latestDisplayLabel?: string
+  },
+) {
   if (imageUrl) {
     return imageUrl
   }
 
-  return statusHint.includes('병') || statusHint.includes('재확인')
+  return plantNeedsDiagnosis(plant)
     ? '/mock-images/disease-closeup.png'
     : '/mock-images/harvest-closeup.png'
 }
@@ -338,7 +347,15 @@ export function PlantsPage() {
                 label={selectedObservation?.displayLabel || selectedPlant.latestDisplayLabel || '발표용 이미지'}
                 src={getPlantPreview(
                   selectedObservation?.imageUrl || selectedPlant.latestImageUrl,
-                  selectedObservation?.displayLabel || selectedPlant.latestDisplayLabel || selectedPlant.status,
+                  {
+                    status: selectedPlant.status,
+                    recommendedAction: selectedPlant.recommendedAction,
+                    latestLabel: selectedObservation?.label || selectedPlant.latestLabel,
+                    latestDisplayLabel:
+                      selectedObservation?.displayLabel
+                      || selectedPlant.latestDisplayLabel
+                      || selectedPlant.status,
+                  },
                 )}
               />
 

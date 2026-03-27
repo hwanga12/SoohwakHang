@@ -181,6 +181,12 @@ def _runtime_detail(payload: dict[str, Any]) -> str:
 
 
 def _runtime_recommended_action(payload: dict[str, Any], finding_label: str) -> str:
+    treatment_plan = payload.get("treatment_plan")
+    if isinstance(treatment_plan, dict) and bool(treatment_plan.get("action_required")):
+        treatment_label = str(treatment_plan.get("treatment_label") or "").strip()
+        if treatment_label:
+            return treatment_label
+
     detail = _runtime_detail(payload)
     if detail:
         return detail

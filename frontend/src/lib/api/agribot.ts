@@ -124,6 +124,15 @@ export type RobotCommandDispatch = {
   targetZoneId: string | null
 }
 
+export type DemoDiagnosisResult = {
+  observationId: string
+  finalLabel: string
+  finalConfidence: number
+  imagePath: string
+  reviewedAt: string
+  decisionSource: string
+}
+
 export type MissionDispatch = {
   missionId: string
   commandId: string
@@ -519,6 +528,59 @@ function includesAnyKeyword(source: string, keywords: string[]) {
   return keywords.some((keyword) => source.includes(keyword))
 }
 
+const PLANT_DIAGNOSIS_KEYWORDS = [
+  '진단 필요',
+  'disease',
+  'mildew',
+  'powdery',
+  'gray_mold',
+  'gray mold',
+  'blossom_end_rot',
+  'blossom end rot',
+  'rot',
+  'blight',
+  'wilt',
+  'spot',
+  'deficiency',
+  '결핍',
+  '병',
+  '이상',
+]
+
+function extractPlantId(value: unknown) {
+  const normalized = readString(value)
+  if (!normalized) {
+    return ''
+  }
+
+  const match = normalized.match(/farm\d+_plant_\d{2}/)
+  return match?.[0] ?? ''
+}
+
+export function plantNeedsDiagnosis(plant?: {
+  status?: string
+  recommendedAction?: string
+  latestLabel?: string
+  latestDisplayLabel?: string
+} | null) {
+  if (!plant) {
+    return false
+  }
+
+  const normalized = normalizeSearchText(
+    plant.latestLabel,
+    plant.latestDisplayLabel,
+    plant.status,
+    plant.recommendedAction,
+  )
+
+  if (!normalized) {
+    return false
+  }
+
+  return includesAnyKeyword(normalized, PLANT_DIAGNOSIS_KEYWORDS)
+}
+
 function isFieldRelevantText(...values: unknown[]) {
   const normalized = normalizeSearchText(...values)
 
@@ -563,6 +625,10 @@ function resolveApiMediaUrl(value: string) {
   }
 
   if (/^(?:https?:)?\/\//i.test(value) || value.startsWith('data:')) {
+    return value
+  }
+
+  if (value.startsWith('/mock-images/')) {
     return value
   }
 
@@ -1809,15 +1875,32 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
   const live = Object.values(querySources).some((source) => source === 'live')
   const alerts = asArray(alertsPayload)
   const plants = asArray(plantsPayload)
+  const alertRecords = alerts.filter((item): item is UnknownRecord => isRecord(item))
+  const alertSeverityByPlantId = new Map<string, string>()
+
+  for (const item of alertRecords) {
+    const plantId =
+      extractPlantId(item.plant_id)
+      || extractPlantId(item.target_crop_id)
+      || extractPlantId(item.location)
+      || extractPlantId(item.detail)
+
+    if (!plantId) {
+      continue
+    }
+
+    alertSeverityByPlantId.set(
+      plantId,
+      readString(item.severity)
+      || readString(item.level)
+      || readString(item.priority),
+    )
+  }
 
   const parsedAlerts =
-    alerts
+    alertRecords
       .slice(0, 3)
       .map((item, index): PlantAlertCard | null => {
-        if (!isRecord(item)) {
-          return null
-        }
-
         const tone = normalizeToneFromSeverity(readString(item.severity) || readString(item.level))
 
         return {
@@ -1855,28 +1938,64 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
 
   const parsedPlants =
     plants
-      .slice(0, 6)
       .map((item, index): PlantRow | null => {
         if (!isRecord(item)) {
           return null
         }
 
+        const id = readString(item.id) || readString(item.plant_id) || `plant-${index + 1}`
+        const latestLabel =
+          readString(item.latest_label)
+          || readString(item.label)
+          || ''
+        const latestDisplayLabel =
+          readString(item.latest_display_label)
+          || readString(item.display_label)
+          || readString(item.status)
+          || ''
+        const baseStatus =
+          readString(item.status)
+          || readString(item.stage)
+          || readString(item.growth_stage)
+          || (readBoolean(item.ready_to_harvest) ? '수확 후보' : '관측 중')
+        const baseRecommendedAction =
+          readString(item.recommended_action)
+          || readString(item.action)
+          || latestDisplayLabel
+          || latestLabel
+          || plantsFallback.plants[Math.min(index, plantsFallback.plants.length - 1)]?.recommendedAction
+          || '추가 관찰 유지'
+        const diagnosisNeeded =
+          alertSeverityByPlantId.has(id)
+          || plantNeedsDiagnosis({
+            status: baseStatus,
+            recommendedAction: baseRecommendedAction,
+            latestLabel,
+            latestDisplayLabel,
+          })
         const health = readNumber(item.health_score, 0) || readNumber(item.health, 0) || 70
-        const tone: HealthTone =
+        const baseTone: HealthTone =
           health < 35
             ? 'critical'
             : health < 75 || readBoolean(item.needs_water)
               ? 'warning'
               : 'healthy'
+        const alertTone = normalizeToneFromSeverity(alertSeverityByPlantId.get(id) || 'warning')
+        const tone: HealthTone =
+          diagnosisNeeded
+            ? baseTone === 'critical' || alertTone === 'critical'
+              ? 'critical'
+              : 'warning'
+            : baseTone
 
         return {
           name: readString(item.name) || readString(item.crop_name) || `작물 ${index + 1}`,
-          id: readString(item.id) || readString(item.plant_id) || `plant-${index + 1}`,
+          id,
           targetId:
             readString(item.target_fruit_id)
             || readString(item.fruit_id)
             || readString(item.tomato_id)
-            || readString(item.id)
+            || id
             || `target-${index + 1}`,
           zoneLabel:
             readString(item.zone_label)
@@ -1895,32 +2014,18 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
             || plantsFallback.plants[Math.min(index, plantsFallback.plants.length - 1)]?.lastObserved
             || '-',
           recommendedAction:
-            readBoolean(item.ready_to_harvest)
+            diagnosisNeeded
+              ? baseRecommendedAction
+              : readBoolean(item.ready_to_harvest)
               ? '수확 요청 가능'
               : readBoolean(item.needs_water)
                 ? '급수 우선 확인'
-                : readString(item.recommended_action)
-                  || readString(item.action)
-                  || readString(item.latest_display_label)
-                  || readString(item.latest_label)
-                  || plantsFallback.plants[Math.min(index, plantsFallback.plants.length - 1)]?.recommendedAction
-                  || '추가 관찰 유지',
+                : baseRecommendedAction,
           health,
           tone,
-          status:
-            readString(item.status)
-            || readString(item.stage)
-            || readString(item.growth_stage)
-            || (readBoolean(item.ready_to_harvest) ? '수확 후보' : '관측 중'),
-          latestLabel:
-            readString(item.latest_label)
-            || readString(item.label)
-            || '',
-          latestDisplayLabel:
-            readString(item.latest_display_label)
-            || readString(item.display_label)
-            || readString(item.status)
-            || '',
+          status: diagnosisNeeded ? '진단 필요' : baseStatus,
+          latestLabel,
+          latestDisplayLabel,
           latestImageUrl: resolveApiMediaUrl(
             readString(item.latest_image_url)
             || readString(item.image_url)
@@ -1929,6 +2034,11 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
         }
       })
       .filter((item): item is PlantRow => item !== null)
+  const diagnosisNeededCount = parsedPlants.filter((plant) => plantNeedsDiagnosis(plant)).length
+  const averageHealth =
+    parsedPlants.length > 0
+      ? Math.round(parsedPlants.reduce((total, plant) => total + plant.health, 0) / parsedPlants.length)
+      : null
 
   return {
     ...plantsFallback,
@@ -1936,9 +2046,10 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
     debug: {
       querySources,
     },
+    healthSummary: averageHealth !== null ? `${averageHealth}%` : plantsFallback.healthSummary,
     criticalCount:
-      parsedAlerts.length > 0
-        ? String(parsedAlerts.length).padStart(2, '0')
+      diagnosisNeededCount > 0
+        ? String(diagnosisNeededCount).padStart(2, '0')
         : plantsFallback.criticalCount,
     alerts: parsedAlerts.length > 0 ? parsedAlerts : plantsFallback.alerts,
     plants: parsedPlants.length > 0 ? parsedPlants : plantsFallback.plants,
@@ -2585,6 +2696,49 @@ export async function sendRobotNavigateCommand(targetPose: RobotTargetPose) {
   }
 }
 
+export async function runDemoDiagnosis({
+  plantId,
+  fruitId,
+  targetPose,
+}: {
+  plantId: string
+  fruitId: string
+  targetPose: RobotTargetPose
+}) {
+  try {
+    const response = await apiClient.post('/inference/demo/confirm', {
+      plant_id: plantId,
+      fruit_id: fruitId,
+      robot_id: 'AGR-02',
+      zone_id: 'farm_01',
+      requested_by: 'frontend-demo',
+      auto_execute_treatment: true,
+      target_position: {
+        x: targetPose.x,
+        y: targetPose.y,
+        z: targetPose.z,
+      },
+    })
+    const payload = readRecord(response.data)
+    if (!payload) {
+      throw new Error('시연용 진단 응답이 비어 있습니다.')
+    }
+
+    markRouteVerified('POST', '/inference/demo/confirm')
+    return {
+      observationId: readString(payload.observation_id),
+      finalLabel: readString(payload.final_label),
+      finalConfidence: readNumber(payload.final_confidence),
+      imagePath: readString(payload.image_path),
+      reviewedAt: readString(payload.reviewed_at),
+      decisionSource: readString(payload.decision_source),
+    } satisfies DemoDiagnosisResult
+  } catch (error) {
+    markRouteFailed('POST', '/inference/demo/confirm')
+    throw new Error(readApiErrorMessage(error, '시연용 병해 진단을 처리하지 못했습니다.'))
+  }
+}
+
 export async function sendRobotZoneMove(zoneId: string) {
   try {
     const response = await apiClient.post('/robot/commands', {
@@ -2708,5 +2862,56 @@ export async function triggerNutrientInjection() {
       },
     ],
     '영양제 투입 요청을 보냈습니다.',
+  )
+}
+
+export async function triggerSprinklerWatering({
+  deviceId,
+  zoneId,
+}: {
+  deviceId: string
+  zoneId: string
+}) {
+  return postWithFallback(
+    [
+      {
+        path: '/actuations/watering',
+        body: {
+          zone_id: zoneId,
+          device_id: deviceId,
+          target_value: 3.0,
+          value_unit: 'sec',
+          requested_by: 'frontend-operator',
+          request_source: 'farm_command_sprinkler_modal',
+        },
+      },
+    ],
+    `${deviceId} 스프링클러 물주기 요청을 보냈습니다.`,
+  )
+}
+
+export async function triggerSprinklerNutrient({
+  deviceId,
+  zoneId,
+}: {
+  deviceId: string
+  zoneId: string
+}) {
+  return postWithFallback(
+    [
+      {
+        path: '/actuations/nutrients',
+        body: {
+          zone_id: zoneId,
+          device_id: deviceId,
+          target_value: 2.5,
+          value_unit: 'sec',
+          requested_by: 'frontend-operator',
+          request_source: 'farm_command_sprinkler_modal',
+          recommendation_id: 'manual-sprinkler-nutrient-001',
+        },
+      },
+    ],
+    `${deviceId} 스프링클러 영양제 주기 요청을 보냈습니다.`,
   )
 }

@@ -118,6 +118,40 @@ class TreatmentCommandDispatcher:
         )
         return self._publish_command(command)
 
+    def dispatch_manual_command(
+        self,
+        *,
+        command_id: str,
+        zone_id: str,
+        device_id: str,
+        device_type: str,
+        command_type: str,
+        target_value: float,
+        unit: str,
+        requested_by: str,
+        reason: str = '',
+        auto_execute: bool = True,
+        requires_approval: bool = False,
+    ) -> ActuationDispatchResult:
+        validation_error = self._validate_runtime()
+        if validation_error is not None:
+            return validation_error
+
+        command = _IoTCommandPayload(
+            command_id=command_id.strip() or str(uuid.uuid4()),
+            zone_id=zone_id.strip(),
+            device_id=device_id.strip(),
+            device_type=device_type.strip(),
+            command_type=command_type.strip(),
+            target_value=float(target_value),
+            unit=unit.strip(),
+            requires_approval=bool(requires_approval),
+            auto_execute=bool(auto_execute),
+            requested_by=requested_by.strip() or self._default_requested_by,
+            reason=reason.strip(),
+        )
+        return self._publish_command(command)
+
     def _validate_runtime(self) -> ActuationDispatchResult | None:
         if not self._ros_setup_script.exists():
             return ActuationDispatchResult(
