@@ -637,12 +637,93 @@ function latestCommandToken(status: RobotCommandStatus) {
 
 const DIAGNOSE_OBSERVATION_DWELL_MS = 1200
 
-function buildDiagnoseRoutePlan(
+function poseDistanceXY(
+  left: { x: number, y: number } | null | undefined,
+  right: { x: number, y: number } | null | undefined,
+) {
+  if (!left || !right) {
+    return Number.POSITIVE_INFINITY
+  }
+
+  return Math.hypot(left.x - right.x, left.y - right.y)
+}
+
+function buildDiagnoseLaneStepPose(
+  plantId: string,
   targetPose: RobotTargetPose,
-  _currentPose: { x: number, y: number } | null,
-  _scene: SemanticScene,
+  currentPose: { x: number, y: number } | null,
+  scene: SemanticScene,
+) {
+  const targetAsset =
+    scene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
+    ?? null
+  const laneX = targetAsset?.navigationPose?.x ?? targetPose.x
+
+  const lanePoses = Array.from(
+    new Map(
+      scene.assets
+        .filter((asset) => (
+          asset.kind === 'plant'
+          && asset.navigationPose
+          && Math.abs(asset.navigationPose.x - laneX) <= 0.05
+        ))
+        .map((asset) => [
+          `${asset.navigationPose?.x.toFixed(2)}:${asset.navigationPose?.y.toFixed(2)}`,
+          asset.navigationPose!,
+        ]),
+    ).values(),
+  ).sort((left, right) => left.y - right.y)
+
+  if (lanePoses.length <= 1) {
+    return null
+  }
+
+  const nextLanePose =
+    targetPose.y >= 0
+      ? lanePoses.find((pose) => pose.y > targetPose.y + 0.05) ?? null
+      : [...lanePoses].reverse().find((pose) => pose.y < targetPose.y - 0.05) ?? null
+
+  if (!nextLanePose) {
+    return null
+  }
+
+  if (poseDistanceXY(currentPose, nextLanePose) <= 0.85) {
+    return null
+  }
+
+  if (poseDistanceXY(currentPose, targetPose) <= 1.35) {
+    return null
+  }
+
+  return {
+    x: nextLanePose.x,
+    y: nextLanePose.y,
+    z: nextLanePose.z,
+    yaw: nextLanePose.yaw,
+    frameId: nextLanePose.frameId,
+  } satisfies RobotTargetPose
+}
+
+function buildDiagnoseRoutePlan(
+  plantId: string,
+  targetPose: RobotTargetPose,
+  currentPose: { x: number, y: number } | null,
+  scene: SemanticScene,
 ) {
   const steps: DiagnoseRouteStep[] = []
+  const laneStepPose = buildDiagnoseLaneStepPose(
+    plantId,
+    targetPose,
+    currentPose,
+    scene,
+  )
+
+  if (laneStepPose) {
+    steps.push({
+      phase: 'lane_entry',
+      pose: laneStepPose,
+    })
+  }
 
   steps.push({
     phase: 'inspection',
@@ -1658,6 +1739,7 @@ export function FarmCommandPage() {
 
   const dispatchDiagnoseStart = (input: QueuedDiagnoseStart) => {
     const diagnoseRoute = buildDiagnoseRoutePlan(
+      input.plantId,
       input.targetPose,
       robotPose
         ? {

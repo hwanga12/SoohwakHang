@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,7 @@ from .runtime_snapshot_service import (
     control_state_path,
     manual_command_path,
     manual_command_status_path,
+    pose_snapshot_path,
     read_json_object,
     runtime_dir_from_env,
     write_json_atomic,
@@ -527,6 +529,68 @@ def _navigation_failure_message(nav_result: Any) -> str:
     return message
 
 
+def is_pose_within_xy_tolerance(
+    current_pose: Pose2D | None,
+    target_pose: CommandPose | Pose2D | None,
+    *,
+    xy_tolerance_m: float,
+) -> bool:
+    if current_pose is None or target_pose is None or xy_tolerance_m <= 0.0:
+        return False
+
+    return math.hypot(
+        float(target_pose.x) - current_pose.x,
+        float(target_pose.y) - current_pose.y,
+    ) <= xy_tolerance_m
+
+
+def read_runtime_pose_snapshot(
+    runtime_dir: Path,
+    *,
+    expected_frame: str,
+) -> Pose2D | None:
+    try:
+        payload = read_json_object(pose_snapshot_path(runtime_dir))
+    except (OSError, ValueError):
+        return None
+
+    pose = payload.get('pose')
+    if not isinstance(pose, dict):
+        return None
+
+    frame_id = str(pose.get('frame_id', expected_frame)).strip() or expected_frame
+    if frame_id != expected_frame:
+        return None
+
+    try:
+        return Pose2D(
+            x=float(pose['x']),
+            y=float(pose['y']),
+            z=float(pose.get('z', 0.0)),
+            yaw=float(pose.get('yaw', 0.0)),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def should_treat_failed_navigation_as_success(
+    runtime_dir: Path,
+    *,
+    expected_frame: str,
+    target_pose: CommandPose | None,
+    xy_tolerance_m: float,
+) -> bool:
+    if target_pose is None or xy_tolerance_m <= 0.0:
+        return False
+
+    current_pose = read_runtime_pose_snapshot(runtime_dir, expected_frame=expected_frame)
+    return is_pose_within_xy_tolerance(
+        current_pose,
+        target_pose,
+        xy_tolerance_m=xy_tolerance_m,
+    )
+
+
 class RobotManualCommandExecutor(Node):
     def __init__(self) -> None:
         super().__init__('robot_manual_command_executor')
@@ -553,6 +617,7 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('start_occupied_recovery_speed_mps', 0.08)
         self.declare_parameter('start_occupied_recovery_time_allowance_sec', 4.0)
         self.declare_parameter('start_occupied_recovery_limit', 1)
+        self.declare_parameter('goal_soft_complete_xy_tolerance_m', 0.55)
         self.declare_parameter(
             'patrol_waypoints_file',
             str(get_default_patrol_waypoints_path()),
@@ -602,6 +667,10 @@ class RobotManualCommandExecutor(Node):
         self._start_occupied_recovery_limit = max(
             0,
             int(self.get_parameter('start_occupied_recovery_limit').value),
+        )
+        self._goal_soft_complete_xy_tolerance_m = max(
+            0.0,
+            float(self.get_parameter('goal_soft_complete_xy_tolerance_m').value),
         )
         history_size = max(8, int(self.get_parameter('processed_command_history_size').value))
 
@@ -1723,6 +1792,19 @@ class RobotManualCommandExecutor(Node):
                 )
                 return
             self._finish_active_command('canceled', '이동 명령이 취소되었습니다.', error='goal_canceled')
+            return
+
+        if should_treat_failed_navigation_as_success(
+            self._runtime_dir,
+            expected_frame=self._map_frame,
+            target_pose=self._active_context.target_pose if self._active_context is not None else None,
+            xy_tolerance_m=self._goal_soft_complete_xy_tolerance_m,
+        ):
+            self._start_occupied_recovery_count = 0
+            self._finish_active_command(
+                'succeeded',
+                '목표 좌표 근처의 안전 허용 오차 안으로 들어와 이동을 완료한 것으로 처리했습니다.',
+            )
             return
 
         if _navigation_result_indicates_start_occupied(nav_result) and self._schedule_start_occupied_recovery():

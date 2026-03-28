@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 from agribot_bringup.control_state import ControlMode
@@ -16,7 +18,9 @@ from agribot_bringup.robot_manual_command_executor import (
     is_pause_command_type,
     is_resume_command_type,
     parse_manual_command_payload,
+    read_runtime_pose_snapshot,
     should_restore_paused_manual_navigation_after_failed_resume,
+    should_treat_failed_navigation_as_success,
     should_run_resume_release_recovery,
     should_retry_start_occupied_recovery,
     resolve_preempt_current_navigation,
@@ -208,6 +212,93 @@ def test_navigation_failure_message_keeps_generic_errors_when_not_start_occupied
 
     assert _navigation_result_indicates_start_occupied(nav_result) is False
     assert _navigation_failure_message(nav_result) == 'Goal failed (error_code=17)'
+
+
+def test_read_runtime_pose_snapshot_reads_map_pose(tmp_path: Path) -> None:
+    (tmp_path / 'robot_pose_snapshot.json').write_text(
+        json.dumps(
+            {
+                'pose': {
+                    'x': -3.92,
+                    'y': 2.18,
+                    'z': 0.0,
+                    'yaw': -1.57,
+                    'frame_id': 'map',
+                }
+            }
+        ),
+        encoding='utf-8',
+    )
+
+    pose = read_runtime_pose_snapshot(tmp_path, expected_frame='map')
+
+    assert pose is not None
+    assert pose.x == -3.92
+    assert pose.y == 2.18
+
+
+def test_should_treat_failed_navigation_as_success_when_runtime_pose_is_near_target(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / 'robot_pose_snapshot.json').write_text(
+        json.dumps(
+            {
+                'pose': {
+                    'x': -3.78,
+                    'y': 2.12,
+                    'z': 0.0,
+                    'yaw': -1.57,
+                    'frame_id': 'map',
+                }
+            }
+        ),
+        encoding='utf-8',
+    )
+
+    assert should_treat_failed_navigation_as_success(
+        tmp_path,
+        expected_frame='map',
+        target_pose=CommandPose(
+            x=-4.0,
+            y=2.0,
+            z=0.0,
+            yaw=-1.5708,
+            frame_id='map',
+        ),
+        xy_tolerance_m=0.55,
+    ) is True
+
+
+def test_should_not_treat_failed_navigation_as_success_when_runtime_pose_is_far(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / 'robot_pose_snapshot.json').write_text(
+        json.dumps(
+            {
+                'pose': {
+                    'x': -1.71,
+                    'y': 5.38,
+                    'z': 0.0,
+                    'yaw': -1.57,
+                    'frame_id': 'map',
+                }
+            }
+        ),
+        encoding='utf-8',
+    )
+
+    assert should_treat_failed_navigation_as_success(
+        tmp_path,
+        expected_frame='map',
+        target_pose=CommandPose(
+            x=-4.0,
+            y=2.0,
+            z=0.0,
+            yaw=-1.5708,
+            frame_id='map',
+        ),
+        xy_tolerance_m=0.55,
+    ) is False
 
 
 def test_is_navigation_command_type_matches_manual_navigation_commands() -> None:
