@@ -68,6 +68,14 @@ def test_harvest_arm_pose_and_basket_collision_surfaces_match() -> None:
     agribot_urdf_root = _parse_xml(AGRIBOT_URDF_PATH)
 
     assert (
+        agribot_root.findtext("./model/link[@name='base_link']/visual[@name='visual']/geometry/mesh/uri")
+        == 'meshes/agribot_gazebo.obj'
+    )
+    assert (
+        agribot_root.findtext("./model/link[@name='base_link']/visual[@name='visual']/geometry/mesh/scale")
+        == '0.14 0.14 0.14'
+    )
+    assert (
         agribot_root.find("./model/link[@name='harvest_arm_link']").findtext('pose')
         == '0.04 0 0.29 0 0.15 0'
     )

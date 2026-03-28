@@ -41,7 +41,7 @@
         <pose>0 0 0.25 1.5708 0 1.5708</pose>
         <geometry>
           <mesh>
-            <uri>meshes/cute_robot_-_hand-paint_fixed.glb</uri>
+            <uri>meshes/agribot_gazebo.obj</uri>
             <scale>0.14 0.14 0.14</scale>
           </mesh>
         </geometry>
