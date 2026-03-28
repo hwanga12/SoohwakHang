@@ -113,7 +113,8 @@ export function buildPlantTargetPose(
 
   if (targetAsset) {
     return (
-      targetAsset.approachPose
+      targetAsset.navigationPose
+      ?? targetAsset.approachPose
       ?? buildInspectionPoseFromScene(targetAsset.position, preferredScene, currentPose)
       ?? buildInspectionPoseFromScene(targetAsset.position, fallbackScene, currentPose)
     )

@@ -230,6 +230,8 @@ def test_read_layers_payload_exposes_safe_approach_pose_for_plants() -> None:
 
     assert plant_asset["position"]["x"] == pytest.approx(-6.0)
     assert plant_asset["position"]["y"] == pytest.approx(-6.0)
+    assert plant_asset["navigation_pose"]["x"] == pytest.approx(-8.0)
+    assert plant_asset["navigation_pose"]["y"] == pytest.approx(-6.0)
     assert plant_asset["approach_pose"]["x"] == pytest.approx(-6.75)
     assert plant_asset["approach_pose"]["y"] == pytest.approx(-6.0)
     assert plant_asset["inspect_waypoint_id"] == "farm_01_lane_01_inspect_01"

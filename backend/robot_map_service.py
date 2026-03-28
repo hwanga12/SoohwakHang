@@ -326,6 +326,18 @@ def _compute_approach_pose(
     }
 
 
+def _build_navigation_pose(inspect_waypoint: dict[str, Any]) -> dict[str, float]:
+    inspect_pose = inspect_waypoint["pose"]
+    return {
+        # 일반 수동 이동은 작물 옆 접근점이 아니라, 통로 중앙의 관측 지점을 우선 사용한다.
+        "x": float(inspect_pose["x"]),
+        "y": float(inspect_pose["y"]),
+        "z": float(inspect_pose["z"]),
+        "yaw": float(inspect_pose["yaw"]),
+        "frame_id": "map",
+    }
+
+
 def _build_plant_approach_lookup() -> dict[str, dict[str, Any]]:
     crop_instances = _read_yaml_mapping(CROP_INSTANCES_PATH)
     waypoint_lookup = _build_waypoint_lookup()
@@ -365,6 +377,7 @@ def _build_plant_approach_lookup() -> dict[str, dict[str, Any]]:
         approach_lookup[plant_id] = {
             "inspect_waypoint_id": inspect_waypoint["waypoint_id"],
             "inspect_waypoint_name": inspect_waypoint["display_name"],
+            "navigation_pose": _build_navigation_pose(inspect_waypoint),
             "approach_pose": _compute_approach_pose(
                 route=route,
                 inspect_waypoint=inspect_waypoint,
@@ -1036,6 +1049,7 @@ def read_layers_payload(map_id: str | None = None) -> dict[str, Any]:
                     "y": y_value,
                     "z": float(pose.get("z", 0.0)),
                 },
+                "navigation_pose": approach_metadata.get("navigation_pose"),
                 "approach_pose": approach_metadata.get("approach_pose"),
                 "inspect_waypoint_id": approach_metadata.get("inspect_waypoint_id"),
                 "inspect_waypoint_name": approach_metadata.get("inspect_waypoint_name"),

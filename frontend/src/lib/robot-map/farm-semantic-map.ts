@@ -13,6 +13,13 @@ export type SemanticAsset = {
     x: number
     y: number
   }
+  navigationPose?: {
+    x: number
+    y: number
+    z: number
+    yaw: number
+    frameId: string
+  }
   approachPose?: {
     x: number
     y: number
