@@ -20,7 +20,13 @@ import {
   type RobotTargetPose,
   type RobotZonePreset,
 } from '@/lib/api/agribot'
-import { resolveSemanticTargetId } from '@/lib/robot-map/farm-semantic-map'
+import { buildPlantTargetPose } from '@/lib/robot-map/approach-pose'
+import {
+  farmSemanticScene,
+  resolveSemanticTargetId,
+  type SemanticAsset,
+  type SemanticScene,
+} from '@/lib/robot-map/farm-semantic-map'
 
 type ControlActionId = 'pause' | 'resume' | 'home' | 'emergency';
 type PendingControlRequest = {
@@ -36,7 +42,16 @@ type NavigationTransitionFeedback = {
 
 type PendingTargetData =
   | { type: 'pose'; pose: RobotTargetPose }
+  | {
+      type: 'asset'
+      assetId: string
+      assetLabel: string
+      inspectWaypointName: string | null
+      pose: RobotTargetPose
+    }
   | { type: 'preset'; preset: RobotZonePreset; pose: RobotTargetPose }
+
+type AssetPendingTarget = Extract<PendingTargetData, { type: 'asset' }>
 
 type ControlCurrentState = 'idle' | 'paused' | 'emergency_stopped' | 'resumed'
 
@@ -90,6 +105,40 @@ const activityLabels = {
 
 function formatPose(pose: RobotTargetPose) {
   return `x ${pose.x.toFixed(2)} / y ${pose.y.toFixed(2)}`
+}
+
+function fallbackPositionLabel(asset: SemanticAsset) {
+  return `x ${asset.position.x.toFixed(2)} / y ${asset.position.y.toFixed(2)}`
+}
+
+function buildPlantApproachPendingTarget(
+  asset: SemanticAsset | null,
+  scene: SemanticScene,
+  currentPose: { x: number, y: number } | null,
+): AssetPendingTarget | null {
+  if (asset?.kind !== 'plant') {
+    return null
+  }
+
+  const pose = buildPlantTargetPose(
+    asset.id,
+    scene,
+    farmSemanticScene,
+    fallbackPositionLabel(asset),
+    currentPose,
+  )
+
+  if (!pose) {
+    return null
+  }
+
+  return {
+    type: 'asset',
+    assetId: asset.id,
+    assetLabel: asset.label,
+    inspectWaypointName: asset.inspectWaypointName ?? null,
+    pose,
+  }
 }
 
 function isNavigationCommandInProgress(status: RobotCommandStatus) {
@@ -736,6 +785,14 @@ export function MapControlPage() {
     [page.scene.assets, selectedAssetId],
   )
   const selectedSummary = summarizeSelectedAsset(selectedAsset)
+  const selectedAssetPendingTarget = useMemo(
+    () => buildPlantApproachPendingTarget(
+      selectedAsset ?? null,
+      page.scene,
+      { x: page.robotPose.x, y: page.robotPose.y },
+    ),
+    [page.robotPose.x, page.robotPose.y, page.scene, selectedAsset],
+  )
   const controlRequestObserved = hasObservedPendingControlRequest(latestCommandStatus, pendingControlRequest)
   const pendingControlAgeMs =
     pendingControlRequest === null
@@ -767,6 +824,32 @@ export function MapControlPage() {
     setPendingTarget({ type: 'pose', pose: target })
     setNotice(`선택 좌표 ${formatPose(target)}. 아래 확인 버튼으로 이동 명령을 보낼 수 있습니다.`)
   }, [movementCommandBlockMessage, movementCommandBlocked])
+  const handleAssetSelect = useCallback((assetId: string) => {
+    setSelectedAssetId(assetId)
+    const asset = page.scene.assets.find((item) => item.id === assetId) ?? null
+    if (!asset) {
+      return
+    }
+
+    const nextPendingTarget = buildPlantApproachPendingTarget(
+      asset,
+      page.scene,
+      { x: page.robotPose.x, y: page.robotPose.y },
+    )
+    if (nextPendingTarget === null) {
+      setNotice(`${asset.label}을 선택했습니다.`)
+      return
+    }
+    if (movementCommandBlocked) {
+      setNotice(`${asset.label} 접근 좌표는 계산했지만, ${movementCommandBlockMessage}`)
+      return
+    }
+
+    setPendingTarget(nextPendingTarget)
+    setNotice(
+      `${asset.label} 선택. 작물 중심 대신 ${formatPose(nextPendingTarget.pose)} 접근 좌표로 이동을 준비했습니다.`,
+    )
+  }, [movementCommandBlockMessage, movementCommandBlocked, page.robotPose.x, page.robotPose.y, page.scene])
   const missionStateBadgeLabel =
     controlSummary.currentState === 'emergency_stopped'
       ? '비상 정지'
@@ -975,7 +1058,7 @@ export function MapControlPage() {
             activeCommandTarget={activeCommandTarget}
             map={page.map}
             onMapClickFeedback={setNotice}
-            onSelectAsset={setSelectedAssetId}
+            onSelectAsset={handleAssetSelect}
             onSelectMapTarget={handleMapTargetSelect}
             pendingTarget={pendingTarget?.pose ?? null}
             pose={page.robotPose}
@@ -1023,13 +1106,19 @@ export function MapControlPage() {
             <div className="map-target-sheet">
               <div>
                 <span className="panel-kicker">
-                  {pendingTarget.type === 'preset' ? pendingTarget.preset.name : '좌표 지정'}
+                  {pendingTarget.type === 'preset'
+                    ? pendingTarget.preset.name
+                    : pendingTarget.type === 'asset'
+                      ? `${pendingTarget.assetLabel} 접근`
+                      : '좌표 지정'}
                 </span>
                 <strong>{formatPose(pendingTarget.pose)}</strong>
                 <p>
                   {pendingTarget.type === 'preset'
                     ? '선택하신 구역으로의 주행을 시작하시겠습니까?'
-                    : '빈 지도 영역을 눌러 잡은 목표입니다. 확인을 누르면 지정한 좌표로 주행합니다.'}
+                    : pendingTarget.type === 'asset'
+                      ? `${pendingTarget.inspectWaypointName ?? '순찰 메타데이터'} 기준 안전 접근 좌표입니다. 확인을 누르면 작물 중심 대신 이 위치로 주행합니다.`
+                      : '빈 지도 영역을 눌러 잡은 목표입니다. 확인을 누르면 지정한 좌표로 주행합니다.'}
                 </p>
               </div>
               <div className="map-target-sheet__actions">
@@ -1050,7 +1139,11 @@ export function MapControlPage() {
                   }}
                   type="button"
                 >
-                  {pendingTarget.type === 'preset' ? '이 구역으로 이동' : '이 좌표로 이동'}
+                  {pendingTarget.type === 'preset'
+                    ? '이 구역으로 이동'
+                    : pendingTarget.type === 'asset'
+                      ? '이 접근 위치로 이동'
+                      : '이 좌표로 이동'}
                 </button>
                 <button
                   className="action-button action-button--ghost"
@@ -1199,6 +1292,33 @@ export function MapControlPage() {
                 </span>
               ))}
             </div>
+            {selectedAssetPendingTarget ? (
+              <div className="command-transition-note">
+                <span className="panel-kicker">작물 접근 좌표</span>
+                <strong>{formatPose(selectedAssetPendingTarget.pose)}</strong>
+                <p>
+                  작물 중심 좌표가 아니라 통로에서 멈출 수 있는 위치입니다.
+                  {selectedAssetPendingTarget.inspectWaypointName
+                    ? ` ${selectedAssetPendingTarget.inspectWaypointName} 기준으로 계산했습니다.`
+                    : ''}
+                </p>
+                <button
+                  className="action-button"
+                  disabled={movementButtonsDisabled}
+                  onClick={() => {
+                    if (movementCommandBlocked) {
+                      setNotice(movementCommandBlockMessage)
+                      return
+                    }
+                    setPendingTarget(selectedAssetPendingTarget)
+                    setNotice(`${selectedAssetPendingTarget.assetLabel} 접근 좌표를 다시 선택했습니다.`)
+                  }}
+                  type="button"
+                >
+                  접근 위치로 이동 준비
+                </button>
+              </div>
+            ) : null}
             <div className="detail-grid">
               <article className="detail-card">
                 <span className="detail-label">식물 레이어</span>

@@ -16,7 +16,7 @@ from robot_command_bridge_service import (  # noqa: E402
     command_file_path,
     publish_robot_command,
 )
-from robot_map_service import read_status_payload  # noqa: E402
+from robot_map_service import read_layers_payload, read_status_payload  # noqa: E402
 from robot_runtime_state_service import (  # noqa: E402
     command_status_file_path,
     control_state_file_path,
@@ -218,6 +218,21 @@ def test_robot_control_pause_endpoint_publishes_pause_motion() -> None:
 
     payload = response["data"]
     assert payload["requested_command_type"] == "pause"
+
+
+def test_read_layers_payload_exposes_safe_approach_pose_for_plants() -> None:
+    payload = read_layers_payload()
+
+    plant_asset = next(
+        asset for asset in payload["assets"]
+        if asset["kind"] == "plant" and asset["id"] == "farm01_plant_01"
+    )
+
+    assert plant_asset["position"]["x"] == pytest.approx(-6.0)
+    assert plant_asset["position"]["y"] == pytest.approx(-6.0)
+    assert plant_asset["approach_pose"]["x"] == pytest.approx(-6.75)
+    assert plant_asset["approach_pose"]["y"] == pytest.approx(-6.0)
+    assert plant_asset["inspect_waypoint_id"] == "farm_01_lane_01_inspect_01"
     assert payload["command_type"] == "pause_motion"
     assert payload["request"]["accepted"] is True
 

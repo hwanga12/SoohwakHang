@@ -341,6 +341,9 @@ function sameScene(left: SemanticScene, right: SemanticScene) {
       || prevAsset.linkedId !== nextAsset.linkedId
       || prevAsset.position.x !== nextAsset.position.x
       || prevAsset.position.y !== nextAsset.position.y
+      || prevAsset.approachPose?.x !== nextAsset.approachPose?.x
+      || prevAsset.approachPose?.y !== nextAsset.approachPose?.y
+      || prevAsset.approachPose?.yaw !== nextAsset.approachPose?.yaw
     ) {
       return false
     }
@@ -650,7 +653,7 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
           {map && onSelectMapTarget ? (
             <div className="robot-facility-map__hint">
               <strong>이동 목표 지정</strong>
-              <p>빈 지도 영역을 클릭하면 시연용 목표 좌표가 잡힙니다. 식물과 급수 포인트는 클릭해도 선택만 됩니다.</p>
+              <p>빈 지도는 좌표 직접 지정, 식물 아이콘은 작물 중심 대신 안전 접근 좌표를 선택합니다.</p>
             </div>
           ) : null}
 
@@ -720,6 +723,14 @@ export function summarizeSelectedAsset(asset: SemanticAsset | null) {
     `zone ${asset.zoneId}`,
     `x ${asset.position.x.toFixed(1)} / y ${asset.position.y.toFixed(1)}`,
   ]
+
+  if (asset.approachPose) {
+    chips.push(`접근 x ${asset.approachPose.x.toFixed(2)} / y ${asset.approachPose.y.toFixed(2)}`)
+  }
+
+  if (asset.inspectWaypointName) {
+    chips.push(asset.inspectWaypointName)
+  }
 
   if (asset.status === 'attention') {
     chips.unshift('조치 필요')

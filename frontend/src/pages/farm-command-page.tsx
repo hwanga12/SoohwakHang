@@ -48,11 +48,11 @@ import {
 } from '@/lib/api/agribot'
 import {
   farmSemanticScene,
-  parsePoseLabel,
   resolveSemanticTargetId,
   type SemanticAssetStatus,
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
+import { buildPlantTargetPose } from '@/lib/robot-map/approach-pose'
 
 const robotControlActions = [
   { id: 'pause', title: '일시정지', icon: 'pause_circle', nextState: '일시정지' },
@@ -633,131 +633,7 @@ function latestCommandToken(status: RobotCommandStatus) {
   return `${status.commandId ?? 'none'}:${status.status}:${status.updatedAt}`
 }
 
-function sortedUniqueValues(values: number[]) {
-  return [...new Set(values.map((value) => Number(value.toFixed(3))))].sort((left, right) => left - right)
-}
-
-function clampToSceneBounds(value: number, minValue: number, maxValue: number) {
-  return Math.min(Math.max(value, minValue), maxValue)
-}
-
 const DIAGNOSE_OBSERVATION_DWELL_MS = 1200
-
-function semanticRowGuideValues(scene: SemanticScene) {
-  const rowGuideValues = sortedUniqueValues(
-    scene.rowGuides
-      .filter((guide) => guide.axis === 'x')
-      .map((guide) => guide.value),
-  )
-
-  if (rowGuideValues.length > 0) {
-    return rowGuideValues
-  }
-
-  return sortedUniqueValues(
-    scene.assets
-      .filter((asset) => asset.kind === 'plant')
-      .map((asset) => asset.position.x),
-  )
-}
-
-function resolveObservationAislePoseX(
-  positionX: number,
-  rowGuideValues: number[],
-  referenceX: number | null,
-) {
-  const nearestRowIndex = rowGuideValues.reduce((bestIndex, currentValue, currentIndex) => {
-    const bestDistance = Math.abs(rowGuideValues[bestIndex] - positionX)
-    const currentDistance = Math.abs(currentValue - positionX)
-    return currentDistance < bestDistance ? currentIndex : bestIndex
-  }, 0)
-
-  const rowCount = rowGuideValues.length
-  const rowValue = rowGuideValues[nearestRowIndex]
-
-  if (rowCount < 2) {
-    return {
-      x: rowValue,
-      yaw: rowValue < positionX ? 0 : Math.PI,
-    }
-  }
-
-  const aisleCandidates: number[] = []
-
-  if (nearestRowIndex > 0) {
-    aisleCandidates.push((rowGuideValues[nearestRowIndex - 1] + rowValue) / 2)
-  } else {
-    aisleCandidates.push(rowValue - ((rowGuideValues[1] - rowValue) / 2))
-  }
-
-  if (nearestRowIndex < rowCount - 1) {
-    aisleCandidates.push((rowValue + rowGuideValues[nearestRowIndex + 1]) / 2)
-  } else {
-    aisleCandidates.push(rowValue + ((rowValue - rowGuideValues[rowCount - 2]) / 2))
-  }
-
-  const targetX = aisleCandidates.reduce((bestValue, candidateValue) => {
-    const reference = referenceX ?? 0
-    const bestDistance = Math.abs(bestValue - reference)
-    const candidateDistance = Math.abs(candidateValue - reference)
-    return candidateDistance < bestDistance ? candidateValue : bestValue
-  })
-
-  return {
-    x: targetX,
-    yaw: targetX < positionX ? 0 : Math.PI,
-  }
-}
-
-function buildInspectionPoseFromScene(
-  position: { x: number, y: number },
-  scene: SemanticScene,
-  currentPose: { x: number, y: number } | null,
-): RobotTargetPose | null {
-  const rowGuideValues = semanticRowGuideValues(scene)
-  if (rowGuideValues.length < 2) {
-    return null
-  }
-
-  const observationPose = resolveObservationAislePoseX(position.x, rowGuideValues, currentPose?.x ?? null)
-
-  return {
-    x: clampToSceneBounds(observationPose.x, scene.bounds.minX + 0.5, scene.bounds.maxX - 0.5),
-    y: clampToSceneBounds(position.y, scene.bounds.minY + 0.5, scene.bounds.maxY - 0.5),
-    z: 0,
-    yaw: observationPose.yaw,
-    frameId: 'map',
-  }
-}
-
-function buildPlantTargetPose(
-  plantId: string,
-  preferredScene: SemanticScene,
-  fallbackScene: SemanticScene,
-  fallbackPositionLabel: string,
-  currentPose: { x: number, y: number } | null,
-): RobotTargetPose | null {
-  const preferredAsset = preferredScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
-  const fallbackAsset = fallbackScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
-  const targetAsset = preferredAsset ?? fallbackAsset
-
-  if (targetAsset) {
-    return (
-      buildInspectionPoseFromScene(targetAsset.position, preferredScene, currentPose)
-      ?? buildInspectionPoseFromScene(targetAsset.position, fallbackScene, currentPose)
-    )
-  }
-
-  const parsedPose = parsePoseLabel(fallbackPositionLabel)
-  if (!parsedPose) {
-    return null
-  }
-
-  return (
-    buildInspectionPoseFromScene(parsedPose, preferredScene, currentPose)
-    ?? buildInspectionPoseFromScene(parsedPose, fallbackScene, currentPose)
-  )
-}
 
 function buildDiagnoseRoutePlan(
   targetPose: RobotTargetPose,

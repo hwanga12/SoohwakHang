@@ -13,6 +13,15 @@ export type SemanticAsset = {
     x: number
     y: number
   }
+  approachPose?: {
+    x: number
+    y: number
+    z: number
+    yaw: number
+    frameId: string
+  }
+  inspectWaypointId?: string
+  inspectWaypointName?: string
   status: SemanticAssetStatus
 }
 

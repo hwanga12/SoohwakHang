@@ -866,6 +866,17 @@ function readSemanticAsset(payload: unknown): SemanticAsset | null {
       x: readNumber(position.x),
       y: readNumber(position.y),
     },
+    approachPose: payload.approach_pose
+      ? readRobotTargetPose(payload.approach_pose, {
+          x: readNumber(position.x),
+          y: readNumber(position.y),
+          z: 0,
+          yaw: 0,
+          frameId: 'map',
+        })
+      : undefined,
+    inspectWaypointId: readString(payload.inspect_waypoint_id),
+    inspectWaypointName: readString(payload.inspect_waypoint_name),
     status:
       status === 'attention' || status === 'target' || status === 'handled'
         ? status

@@ -386,6 +386,9 @@ class RobotAssetOut(BaseModel):
     zone_id: str
     description: str
     position: Point3DOut
+    approach_pose: PoseOut | None = None
+    inspect_waypoint_id: str | None = None
+    inspect_waypoint_name: str | None = None
     status: str
 
 
