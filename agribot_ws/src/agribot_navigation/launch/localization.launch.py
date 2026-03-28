@@ -84,6 +84,11 @@ def generate_launch_description():
         default_value='true',
         description='Automatically configure and activate map_server and amcl.',
     )
+    use_startup_map_tf_broadcaster_arg = DeclareLaunchArgument(
+        'use_startup_map_tf_broadcaster',
+        default_value='true',
+        description='Launch the temporary startup map -> odom broadcaster before localization stabilizes.',
+    )
 
     map_server = Node(
         package='nav2_map_server',
@@ -141,6 +146,7 @@ def generate_launch_description():
         name='startup_map_tf_broadcaster',
         output='screen',
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
+        condition=IfCondition(LaunchConfiguration('use_startup_map_tf_broadcaster')),
     )
 
     rviz = Node(
@@ -164,6 +170,7 @@ def generate_launch_description():
         use_rviz_arg,
         rviz_config_arg,
         autostart_arg,
+        use_startup_map_tf_broadcaster_arg,
         startup_map_tf_broadcaster,
         map_server,
         amcl,

@@ -160,6 +160,11 @@ def generate_launch_description():
         default_value='true',
         description='Launch the harvest approach/return coordinator node.',
     )
+    use_startup_map_tf_broadcaster_arg = DeclareLaunchArgument(
+        'use_startup_map_tf_broadcaster',
+        default_value='true',
+        description='Launch the temporary startup map -> odom broadcaster during localization.',
+    )
     crop_instances_arg = DeclareLaunchArgument(
         'crop_instances_file',
         default_value=default_crop_instances,
@@ -196,6 +201,7 @@ def generate_launch_description():
             'rviz_config_file': LaunchConfiguration('rviz_config_file'),
             'autostart': LaunchConfiguration('autostart'),
             'gz_partition': LaunchConfiguration('gz_partition', default='agribot_sim'),
+            'use_startup_map_tf_broadcaster': LaunchConfiguration('use_startup_map_tf_broadcaster'),
         }.items(),
     )
 
@@ -350,6 +356,7 @@ def generate_launch_description():
         patrol_autostart_arg,
         patrol_robot_pose_topic_arg,
         use_harvest_route_arg,
+        use_startup_map_tf_broadcaster_arg,
         crop_instances_arg,
         harvest_return_mode_arg,
         shutdown_cleanup_handler,

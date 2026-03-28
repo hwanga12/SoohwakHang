@@ -101,10 +101,9 @@ def generate_launch_description():
             'cmd_vel_watchdog_publish_rate_hz': LaunchConfiguration(
                 'cmd_vel_watchdog_publish_rate_hz'
             ),
-            # AMCL / startup_map_tf_broadcaster own map -> odom during
-            # static-map localization. Keeping the spawn-time identity TF here
-            # forces the saved map to stay aligned with raw odom.
-            'publish_map_to_odom_tf': 'false',
+            # simulation 시연에서는 고정 identity map -> odom 이 더 안정적으로
+            # 유지되어 Nav2가 TF 시간 외삽 오류 없이 접근 주행을 시작한다.
+            'publish_map_to_odom_tf': 'true',
         }.items(),
     )
 
@@ -121,6 +120,7 @@ def generate_launch_description():
             'use_rviz': use_rviz,
             'patrol_robot_pose_topic': '/odom',
             'gz_partition': gz_partition,
+            'use_startup_map_tf_broadcaster': 'false',
         }.items()
     )
     gz_args_prefix_arg = DeclareLaunchArgument(
