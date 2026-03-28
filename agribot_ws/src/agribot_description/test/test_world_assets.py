@@ -101,7 +101,7 @@ def test_harvest_arm_pose_and_basket_collision_surfaces_match() -> None:
     assert (
         agribot_root.find("./model/link[@name='harvest_arm_link']/visual[@name='arm_mesh_visual']")
         .findtext('pose')
-        == '-0.025 0 0.081 3.1416 -1.5708 -1.5708'
+        == '-0.025 0 0.081 3.1416 -1.5708 1.5708'
     )
     assert agribot_root.find("./model/joint[@name='harvest_arm_joint']").attrib['type'] == 'revolute'
     assert agribot_urdf_root.find("./joint[@name='harvest_arm_joint']").attrib['type'] == 'revolute'

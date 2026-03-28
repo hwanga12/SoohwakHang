@@ -359,7 +359,7 @@
       </collision>
 
       <visual name="arm_mesh_visual">
-        <pose>-0.025 0 0.081 3.1416 -1.5708 -1.5708</pose>
+        <pose>-0.025 0 0.081 3.1416 -1.5708 1.5708</pose>
         <geometry>
           <mesh>
             <uri>meshes/robotic_arm.glb</uri>

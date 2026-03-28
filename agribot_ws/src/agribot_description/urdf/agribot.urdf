@@ -151,7 +151,7 @@
   <!-- ==================== HARVEST ARM (Mesh Visual + Primitive Collision) ==================== -->
   <link name="harvest_arm_link">
     <visual>
-      <origin xyz="-0.025 0 0.081" rpy="3.1416 -1.5708 -1.5708"/>
+      <origin xyz="-0.025 0 0.081" rpy="3.1416 -1.5708 1.5708"/>
       <geometry>
         <mesh filename="package://agribot_description/models/agribot/meshes/robotic_arm.glb" scale="5.236 6.007 2.536"/>
       </geometry>
