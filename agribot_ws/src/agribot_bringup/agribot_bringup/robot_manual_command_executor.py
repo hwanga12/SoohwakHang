@@ -472,6 +472,19 @@ def context_has_navigation_target(context: ActiveCommandContext | None) -> bool:
     return context is not None and context.target_pose is not None
 
 
+def should_restore_paused_manual_navigation_after_failed_resume(
+    context: ActiveCommandContext | None,
+    *,
+    status: str,
+) -> bool:
+    return (
+        status == 'failed'
+        and context is not None
+        and context.command.command_type in RESUME_COMMAND_TYPES
+        and context.target_pose is not None
+    )
+
+
 def _navigation_error_code(nav_result: Any) -> int:
     return int(getattr(nav_result, 'error_code', NAVIGATE_TO_POSE_NONE_ERROR_CODE) or 0)
 
@@ -1937,6 +1950,29 @@ class RobotManualCommandExecutor(Node):
     ) -> None:
         if self._active_context is None:
             return
+
+        if should_restore_paused_manual_navigation_after_failed_resume(
+            self._active_context,
+            status=status,
+        ):
+            resume_context = build_manual_resume_context(
+                self._active_context,
+                captured_at=self._active_context.started_at,
+            )
+            if resume_context is not None:
+                self._set_control_latch(
+                    mode=ControlMode.PAUSED,
+                    blocking_reason='resume_motion_failed',
+                    message=(
+                        '재개 이동이 실패해 저장된 목적지를 유지한 채 다시 일시정지했습니다. '
+                        '경로를 정리한 뒤 재개하세요.'
+                    ),
+                    resume_context=resume_context,
+                )
+                message = (
+                    '재개 이동이 실패해 저장된 목적지를 유지한 채 다시 일시정지했습니다. '
+                    f'{message}'
+                )
 
         self._cancel_goal_retry_timer()
         self._goal_reject_retry_count = 0

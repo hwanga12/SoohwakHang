@@ -16,6 +16,7 @@ from agribot_bringup.robot_manual_command_executor import (
     is_pause_command_type,
     is_resume_command_type,
     parse_manual_command_payload,
+    should_restore_paused_manual_navigation_after_failed_resume,
     should_retry_start_occupied_recovery,
     resolve_preempt_current_navigation,
     resolve_return_home_target,
@@ -268,6 +269,38 @@ def test_manual_navigation_emergency_stop_scenario_captures_resume_context() -> 
     assert resume_context.home_waypoint_id == 'farm_01_home'
     assert resume_context.target_pose is not None
     assert resume_context.target_pose['frame_id'] == 'map'
+
+
+def test_failed_resume_motion_restores_paused_manual_navigation_context() -> None:
+    context = ActiveCommandContext(
+        command=ManualCommand(
+            command_id='cmd-resume-02',
+            command_type='resume_motion',
+            robot_id='AGR-02',
+            requested_by='frontend-operator',
+            target_pose=None,
+            home_waypoint_id=None,
+            preempt_current_navigation=False,
+        ),
+        received_at='2026-03-29T00:00:00+00:00',
+        started_at='2026-03-29T00:00:01+00:00',
+        target_pose=CommandPose(
+            x=4.0,
+            y=6.0,
+            z=0.0,
+            yaw=1.5708,
+            frame_id='map',
+        ),
+    )
+
+    assert should_restore_paused_manual_navigation_after_failed_resume(
+        context,
+        status='failed',
+    ) is True
+    assert should_restore_paused_manual_navigation_after_failed_resume(
+        context,
+        status='succeeded',
+    ) is False
 
 
 def test_patrol_emergency_stop_scenario_captures_resume_context() -> None:
