@@ -40,6 +40,14 @@ type OverlayPercent = {
   top: string
 }
 
+type AssetRenderItem = {
+  asset: SemanticAsset
+  style: OverlayPercent
+  isSelected: boolean
+  isTarget: boolean
+  label: string
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
@@ -87,6 +95,47 @@ function toOverlayPercent(
   yValue: number,
 ): OverlayPercent {
   return map ? worldToPercent(map, xValue, yValue) : sceneToPercent(scene, xValue, yValue)
+}
+
+function parsePercentValue(value: string) {
+  const parsed = Number.parseFloat(value.replace('%', ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function findNearestAssetByPointer(
+  assetItems: AssetRenderItem[],
+  {
+    offsetX,
+    offsetY,
+    rectWidth,
+    rectHeight,
+  }: {
+    offsetX: number
+    offsetY: number
+    rectWidth: number
+    rectHeight: number
+  },
+): SemanticAsset | null {
+  if (assetItems.length === 0 || rectWidth <= 0 || rectHeight <= 0) {
+    return null
+  }
+
+  const selectionRadiusPx = clamp(Math.min(rectWidth, rectHeight) * 0.08, 28, 42)
+  let nearestAsset: SemanticAsset | null = null
+  let nearestDistance = Number.POSITIVE_INFINITY
+
+  for (const item of assetItems) {
+    const centerX = (parsePercentValue(item.style.left) / 100) * rectWidth
+    const centerY = (parsePercentValue(item.style.top) / 100) * rectHeight
+    const distance = Math.hypot(centerX - offsetX, centerY - offsetY)
+
+    if (distance <= selectionRadiusPx && distance < nearestDistance) {
+      nearestAsset = item.asset
+      nearestDistance = distance
+    }
+  }
+
+  return nearestAsset
 }
 
 function pixelToWorld(map: RobotMapData, pixelX: number, pixelY: number): RobotTargetPose {
@@ -524,13 +573,8 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
     context.putImageData(imageData, 0, 0)
   }, [parsedMap])
 
-  function handleMapClick(event: MouseEvent<HTMLDivElement>) {
-    if (!map || !onSelectMapTarget) {
-      return
-    }
-
-    if (!surfaceRef.current || !parsedMap) {
-      onMapClickFeedback?.('정적 지도를 불러오는 중입니다. 잠시 후 다시 눌러 주세요.')
+  function handleSurfaceClick(event: MouseEvent<HTMLDivElement>) {
+    if (!surfaceRef.current) {
       return
     }
 
@@ -539,6 +583,26 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
     const offsetY = event.clientY - rect.top
 
     if (offsetX < 0 || offsetY < 0 || offsetX > rect.width || offsetY > rect.height) {
+      return
+    }
+
+    const nearestAsset = findNearestAssetByPointer(assetItems, {
+      offsetX,
+      offsetY,
+      rectWidth: rect.width,
+      rectHeight: rect.height,
+    })
+    if (nearestAsset) {
+      onSelectAsset(nearestAsset.id)
+      return
+    }
+
+    if (!map || !onSelectMapTarget) {
+      return
+    }
+
+    if (!parsedMap) {
+      onMapClickFeedback?.('정적 지도를 불러오는 중입니다. 잠시 후 다시 눌러 주세요.')
       return
     }
 
@@ -562,7 +626,7 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
       <div className="robot-facility-map" style={{ transform: `scale(${zoom})` }}>
         <div
           className={`robot-facility-map__surface${mapLoadError ? ' is-fallback' : ''}`}
-          onClick={map && onSelectMapTarget ? handleMapClick : undefined}
+          onClick={handleSurfaceClick}
           ref={surfaceRef}
         >
           {map ? (
@@ -605,8 +669,7 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
                   asset.status === 'handled' ? ' is-handled' : ''
                 }`}
                 key={asset.id}
-                onClick={(event) => {
-                  event.stopPropagation()
+                onClick={() => {
                   onSelectAsset(asset.id)
                 }}
                 style={style}
