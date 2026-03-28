@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from action_msgs.msg import GoalStatus
-from nav2_msgs.action import NavigateToPose
+from geometry_msgs.msg import Point
+from nav2_msgs.action import BackUp, NavigateToPose
 import rclpy
 from rclpy.action import ActionClient
+from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from agribot_navigation.nav_goal_utils import build_latest_pose_stamped
@@ -231,6 +233,10 @@ def describe_manual_navigation_label(command_type: str, home_waypoint_id: str | 
 
 
 def should_retry_goal_rejection(retry_count: int, retry_limit: int) -> bool:
+    return retry_limit > 0 and retry_count < retry_limit
+
+
+def should_retry_start_occupied_recovery(retry_count: int, retry_limit: int) -> bool:
     return retry_limit > 0 and retry_count < retry_limit
 
 
@@ -465,6 +471,22 @@ def context_has_navigation_target(context: ActiveCommandContext | None) -> bool:
     return context is not None and context.target_pose is not None
 
 
+def _navigation_failure_message(nav_result: Any) -> str:
+    error_msg = str(getattr(nav_result, 'error_msg', '') or '').strip()
+    error_code = int(getattr(nav_result, 'error_code', NavigateToPose.Result.NONE) or 0)
+    if error_code == NavigateToPose.Result.START_OCCUPIED:
+        return (
+            '현재 시작 위치가 통로 밖 장애물로 판정되어 새 이동을 시작할 수 없습니다. '
+            f'{error_msg or "로봇을 통로 중앙으로 되돌린 뒤 다시 시도하세요."} '
+            f'(error_code={error_code})'
+        )
+
+    message = error_msg or '이동 명령이 실패했습니다.'
+    if error_code != NavigateToPose.Result.NONE:
+        message = f'{message} (error_code={error_code})'
+    return message
+
+
 class RobotManualCommandExecutor(Node):
     def __init__(self) -> None:
         super().__init__('robot_manual_command_executor')
@@ -481,8 +503,13 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('control_state_topic', '/robot/control_state')
         self.declare_parameter('nav_server_wait_sec', 5.0)
         self.declare_parameter('patrol_service_wait_sec', 1.0)
+        self.declare_parameter('backup_action', 'backup')
         self.declare_parameter('goal_reject_retry_sec', 0.75)
         self.declare_parameter('goal_reject_retry_limit', 4)
+        self.declare_parameter('start_occupied_recovery_distance_m', 0.28)
+        self.declare_parameter('start_occupied_recovery_speed_mps', 0.08)
+        self.declare_parameter('start_occupied_recovery_time_allowance_sec', 4.0)
+        self.declare_parameter('start_occupied_recovery_limit', 1)
         self.declare_parameter(
             'patrol_waypoints_file',
             str(get_default_patrol_waypoints_path()),
@@ -498,16 +525,34 @@ class RobotManualCommandExecutor(Node):
         self._default_robot_id = str(self.get_parameter('robot_id').value)
         self._map_frame = str(self.get_parameter('map_frame').value)
         self._action_name = str(self.get_parameter('navigate_to_pose_action').value)
+        self._backup_action_name = str(self.get_parameter('backup_action').value)
         self._patrol_status_topic = str(self.get_parameter('patrol_status_topic').value)
         self._control_state_topic = str(self.get_parameter('control_state_topic').value)
         self._nav_server_wait_sec = float(self.get_parameter('nav_server_wait_sec').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
         self._goal_reject_retry_sec = max(0.0, float(self.get_parameter('goal_reject_retry_sec').value))
         self._goal_reject_retry_limit = max(0, int(self.get_parameter('goal_reject_retry_limit').value))
+        self._start_occupied_recovery_distance_m = max(
+            0.0,
+            float(self.get_parameter('start_occupied_recovery_distance_m').value),
+        )
+        self._start_occupied_recovery_speed_mps = max(
+            0.01,
+            float(self.get_parameter('start_occupied_recovery_speed_mps').value),
+        )
+        self._start_occupied_recovery_time_allowance_sec = max(
+            0.5,
+            float(self.get_parameter('start_occupied_recovery_time_allowance_sec').value),
+        )
+        self._start_occupied_recovery_limit = max(
+            0,
+            int(self.get_parameter('start_occupied_recovery_limit').value),
+        )
         history_size = max(8, int(self.get_parameter('processed_command_history_size').value))
 
         self._plan = self._load_patrol_plan()
         self._navigate_client = ActionClient(self, NavigateToPose, self._action_name)
+        self._backup_client = ActionClient(self, BackUp, self._backup_action_name)
         self._patrol_stop_client = self.create_client(
             Trigger,
             str(self.get_parameter('patrol_stop_service').value),
@@ -537,6 +582,11 @@ class RobotManualCommandExecutor(Node):
         self._goal_cancel_future = None
         self._goal_retry_timer = None
         self._goal_reject_retry_count = 0
+        self._recovery_send_future = None
+        self._recovery_result_future = None
+        self._recovery_cancel_future = None
+        self._active_recovery_handle = None
+        self._start_occupied_recovery_count = 0
         self._service_future = None
         self._pending_context: ActiveCommandContext | None = None
         self._last_status_payload: dict[str, Any] | None = None
@@ -1005,6 +1055,16 @@ class RobotManualCommandExecutor(Node):
             self._request_active_goal_cancel_for_preemption()
             return
 
+        if self._active_recovery_handle is not None:
+            self._request_active_recovery_cancel_for_preemption()
+            return
+
+        if self._recovery_send_future is not None or self._recovery_result_future is not None:
+            self.get_logger().info(
+                '새 이동 명령을 대기열에 올렸습니다. 현재 시작 위치 recovery가 끝나는 즉시 선점 전환합니다.'
+            )
+            return
+
         if self._goal_send_future is not None or self._service_future is not None:
             self.get_logger().info(
                 '새 이동 명령을 대기열에 올렸습니다. 현재 비동기 작업이 끝나는 즉시 선점 전환합니다.'
@@ -1097,6 +1157,16 @@ class RobotManualCommandExecutor(Node):
         self._navigation_cancel_reason = cancel_error
         if self._active_goal_handle is not None:
             self._request_active_goal_cancel_for_preemption()
+            return
+
+        if self._active_recovery_handle is not None:
+            self._request_active_recovery_cancel_for_preemption()
+            return
+
+        if self._recovery_send_future is not None or self._recovery_result_future is not None:
+            self.get_logger().info(
+                '제어 상태 전환 명령을 대기열에 올렸습니다. 시작 위치 recovery가 끝나는 즉시 적용합니다.'
+            )
             return
 
         if self._goal_send_future is not None or self._service_future is not None:
@@ -1376,6 +1446,7 @@ class RobotManualCommandExecutor(Node):
 
         self._goal_reject_retry_count = 0
         self._cancel_goal_retry_timer()
+        self._start_occupied_recovery_count = 0
         context.target_pose = target_pose
         self._update_control_state()
         if context.command.preempt_current_navigation:
@@ -1581,6 +1652,7 @@ class RobotManualCommandExecutor(Node):
         nav_result = result.result
 
         if status == GoalStatus.STATUS_SUCCEEDED:
+            self._start_occupied_recovery_count = 0
             self._finish_active_command('succeeded', '이동 명령이 완료되었습니다.')
             return
 
@@ -1596,10 +1668,131 @@ class RobotManualCommandExecutor(Node):
             self._finish_active_command('canceled', '이동 명령이 취소되었습니다.', error='goal_canceled')
             return
 
-        message = nav_result.error_msg or '이동 명령이 실패했습니다.'
-        if nav_result.error_code != NavigateToPose.Result.NONE:
-            message = f'{message} (error_code={nav_result.error_code})'
+        if (
+            nav_result.error_code == NavigateToPose.Result.START_OCCUPIED
+            and self._schedule_start_occupied_recovery()
+        ):
+            return
+
+        message = _navigation_failure_message(nav_result)
         self._finish_active_command('failed', message, error='navigate_failed')
+
+    def _schedule_start_occupied_recovery(self) -> bool:
+        context = self._active_context
+        if context is None or context.target_pose is None:
+            return False
+        if self._start_occupied_recovery_distance_m <= 0.0:
+            return False
+        if not should_retry_start_occupied_recovery(
+            self._start_occupied_recovery_count,
+            self._start_occupied_recovery_limit,
+        ):
+            return False
+        if not self._backup_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
+            self.get_logger().warning(
+                f'시작 위치 recovery용 {self._backup_action_name} action server를 찾지 못했습니다.'
+            )
+            return False
+
+        self._start_occupied_recovery_count += 1
+        recovery_label = (
+            '현재 위치가 통로 가장자리에 걸려 있어 잠시 후진한 뒤 목표를 다시 시도합니다. '
+            f'({self._start_occupied_recovery_count}/{self._start_occupied_recovery_limit})'
+        )
+        self.get_logger().warning(recovery_label)
+        self._write_status(self._build_status_payload(context, 'running', recovery_label))
+
+        goal = BackUp.Goal()
+        goal.target = Point(x=float(self._start_occupied_recovery_distance_m))
+        goal.speed = float(self._start_occupied_recovery_speed_mps)
+        goal.time_allowance = Duration(
+            seconds=float(self._start_occupied_recovery_time_allowance_sec)
+        ).to_msg()
+        self._recovery_send_future = self._backup_client.send_goal_async(goal)
+        self._recovery_send_future.add_done_callback(self._handle_start_occupied_recovery_goal_response)
+        return True
+
+    def _handle_start_occupied_recovery_goal_response(self, future: Any) -> None:
+        self._recovery_send_future = None
+        try:
+            goal_handle = future.result()
+        except Exception as exc:
+            self._finish_active_command(
+                'failed',
+                f'시작 위치 recovery goal 전송에 실패했습니다: {exc}',
+                error='start_occupied_recovery_send_failed',
+            )
+            return
+
+        if not goal_handle.accepted:
+            if self._pending_context is not None:
+                cancel_message, cancel_error = self._cancel_outcome_for_pending_transition()
+                self._finish_active_command(
+                    'canceled',
+                    cancel_message,
+                    error=cancel_error,
+                )
+                return
+            self._finish_active_command(
+                'failed',
+                '시작 위치 recovery가 거부되어 새 이동을 계속할 수 없습니다.',
+                error='start_occupied_recovery_rejected',
+            )
+            return
+
+        self._active_recovery_handle = goal_handle
+        self._recovery_result_future = goal_handle.get_result_async()
+        self._recovery_result_future.add_done_callback(self._handle_start_occupied_recovery_result)
+
+    def _handle_start_occupied_recovery_result(self, future: Any) -> None:
+        self._active_recovery_handle = None
+        self._recovery_result_future = None
+
+        if self._pending_context is not None:
+            cancel_message, cancel_error = self._cancel_outcome_for_pending_transition()
+            self._finish_active_command(
+                'canceled',
+                cancel_message,
+                error=cancel_error,
+            )
+            return
+
+        context = self._active_context
+        if context is None or context.target_pose is None:
+            return
+
+        try:
+            result = future.result()
+        except Exception as exc:
+            self._finish_active_command(
+                'failed',
+                f'시작 위치 recovery 결과 수신에 실패했습니다: {exc}',
+                error='start_occupied_recovery_result_failed',
+            )
+            return
+
+        if result.status != GoalStatus.STATUS_SUCCEEDED:
+            recovery_result = result.result
+            error_msg = str(getattr(recovery_result, 'error_msg', '') or '').strip()
+            error_code = int(getattr(recovery_result, 'error_code', BackUp.Result.UNKNOWN) or 0)
+            detail = error_msg or '후진 recovery로도 통로를 확보하지 못했습니다.'
+            self._finish_active_command(
+                'failed',
+                f'시작 위치 recovery가 실패했습니다: {detail} (error_code={error_code})',
+                error='start_occupied_recovery_failed',
+            )
+            return
+
+        retry_label = describe_manual_navigation_label(
+            context.command.command_type,
+            context.home_waypoint_id,
+        )
+        self._dispatch_navigation_goal(
+            context,
+            target_pose=context.target_pose,
+            label=retry_label,
+            is_retry=True,
+        )
 
     def _handle_patrol_service_response(
         self,
@@ -1686,6 +1879,43 @@ class RobotManualCommandExecutor(Node):
                 error=cancel_error,
             )
 
+    def _request_active_recovery_cancel_for_preemption(self) -> None:
+        if self._active_recovery_handle is None or self._recovery_cancel_future is not None:
+            return
+        self._recovery_cancel_future = self._active_recovery_handle.cancel_goal_async()
+        self._recovery_cancel_future.add_done_callback(self._handle_active_recovery_cancel_response)
+
+    def _handle_active_recovery_cancel_response(self, future: Any) -> None:
+        self._recovery_cancel_future = None
+        try:
+            cancel_response = future.result()
+        except Exception as exc:
+            self.get_logger().warning(
+                f'시작 위치 recovery cancel 응답을 받지 못했습니다. 새 목표 전환을 계속 시도합니다: {exc}'
+            )
+            if self._pending_context is not None:
+                cancel_message, cancel_error = self._cancel_outcome_for_pending_transition()
+                self._finish_active_command(
+                    'canceled',
+                    cancel_message,
+                    error=cancel_error,
+                )
+            return
+
+        if cancel_response.goals_canceling:
+            return
+
+        self.get_logger().warning(
+            '시작 위치 recovery cancel 요청이 거부되었습니다. 새 목표 전환을 계속 시도합니다.'
+        )
+        if self._pending_context is not None:
+            cancel_message, cancel_error = self._cancel_outcome_for_pending_transition()
+            self._finish_active_command(
+                'canceled',
+                cancel_message,
+                error=cancel_error,
+            )
+
     def _finish_active_command(
         self,
         status: str,
@@ -1712,6 +1942,11 @@ class RobotManualCommandExecutor(Node):
         self._active_context = None
         self._goal_cancel_future = None
         self._service_future = None
+        self._recovery_send_future = None
+        self._recovery_result_future = None
+        self._recovery_cancel_future = None
+        self._active_recovery_handle = None
+        self._start_occupied_recovery_count = 0
         self._patrol_state_wait = None
         self._navigation_cancel_reason = ''
         self._resume_release_pending = False
@@ -1819,6 +2054,7 @@ class RobotManualCommandExecutor(Node):
         self._cancel_goal_retry_timer()
         self._pending_context = None
         self._navigate_client.destroy()
+        self._backup_client.destroy()
         return super().destroy_node()
 
 

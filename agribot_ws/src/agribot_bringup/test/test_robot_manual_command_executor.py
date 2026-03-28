@@ -12,6 +12,7 @@ from agribot_bringup.robot_manual_command_executor import (
     is_pause_command_type,
     is_resume_command_type,
     parse_manual_command_payload,
+    should_retry_start_occupied_recovery,
     resolve_preempt_current_navigation,
     resolve_return_home_target,
     should_block_command_for_control_mode,
@@ -179,6 +180,13 @@ def test_should_retry_goal_rejection_respects_retry_limit() -> None:
     assert should_retry_goal_rejection(3, 4) is True
     assert should_retry_goal_rejection(4, 4) is False
     assert should_retry_goal_rejection(0, 0) is False
+
+
+def test_should_retry_start_occupied_recovery_respects_retry_limit() -> None:
+    assert should_retry_start_occupied_recovery(0, 1) is True
+    assert should_retry_start_occupied_recovery(0, 2) is True
+    assert should_retry_start_occupied_recovery(1, 1) is False
+    assert should_retry_start_occupied_recovery(0, 0) is False
 
 
 def test_is_navigation_command_type_matches_manual_navigation_commands() -> None:
