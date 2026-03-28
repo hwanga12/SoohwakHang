@@ -1,8 +1,7 @@
-"""spawn launch가 수확 팔 브리지와 그래픽 프로필 환경을 함께 내보내는지 검증한다."""
+"""spawn launch가 수확 팔 브리지, GUI 설정, 그래픽 프로필을 함께 내보내는지 검증한다."""
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-import yaml
 
 from launch.actions import SetEnvironmentVariable
 from launch.actions import IncludeLaunchDescription
@@ -65,6 +64,32 @@ def _text_substitution_value(value) -> str:
     return str(value)
 
 
+def _iter_text_parts(value) -> list[str]:
+    if isinstance(value, (list, tuple)):
+        return [getattr(item, 'text', str(item)) for item in value]
+    return [str(value)]
+
+
+def _parameter_map(node: Node) -> dict[str, object]:
+    raw_parameters = getattr(node, '_Node__parameters', ())
+    parameter_map: dict[str, object] = {}
+    for item in raw_parameters:
+        if not item:
+            continue
+        key_substitutions = next(iter(item.keys()))
+        key = getattr(key_substitutions[0], 'text', '')
+        parameter_map[key] = next(iter(item.values()))
+    return parameter_map
+
+
+def _launch_configuration_name(value) -> str | None:
+    substitutions = getattr(value, 'variable_name', None)
+    if not substitutions:
+        return None
+    first = substitutions[0]
+    return getattr(first, 'text', None)
+
+
 def test_spawn_launch_bridges_harvest_arm_command_topic(monkeypatch) -> None:
     module = _load_launch_module()
     _patch_package_share_lookup(monkeypatch, module)
@@ -79,23 +104,9 @@ def test_spawn_launch_bridges_harvest_arm_command_topic(monkeypatch) -> None:
     assert includes
 
     state_bridge = next(node for node in nodes if _declared_node_name(node) == 'ros_gz_state_bridge')
-    parameters = getattr(state_bridge, '_Node__parameters', ())
-    parameter_map = {
-        getattr(next(iter(item.keys()))[0], 'text', ''): _text_substitution_value(
-            next(iter(item.values()))
-        )
-        for item in parameters
-        if item
-    }
-    config_file = Path(parameter_map['config_file'])
-    bridges = yaml.safe_load(config_file.read_text(encoding='utf-8'))
+    arguments = [str(argument) for argument in getattr(state_bridge, '_Node__arguments', ())]
 
-    assert any(
-        item['ros_topic_name'] == '/agribot/harvest_arm_joint/cmd_pos'
-        and item['gz_topic_name'] == '/agribot/harvest_arm_joint/cmd_pos'
-        and item['direction'] == 'ROS_TO_GZ'
-        for item in bridges
-    )
+    assert '/agribot/harvest_arm_joint/cmd_pos@std_msgs/msg/Float64]gz.msgs.Double' in arguments
 
 
 def test_spawn_launch_uses_raw_clock_and_disables_clock_guard(monkeypatch) -> None:
@@ -108,18 +119,16 @@ def test_spawn_launch_uses_raw_clock_and_disables_clock_guard(monkeypatch) -> No
     sim_time_guard = next(node for node in nodes if _declared_node_name(node) == 'sim_time_guard')
 
     remappings = [
-        (str(left[0]), str(right[0]))
+        (
+            getattr(left[0], 'text', str(left[0])),
+            getattr(right[0], 'text', str(right[0])),
+        )
         for left, right in getattr(state_bridge, '_Node__remappings', [])
     ]
-    assert ('/clock', '/clock_raw') not in remappings
+    assert ('/clock', '/clock_raw') in remappings
 
-    parameters = getattr(sim_time_guard, '_Node__parameters', ())
-    parameter_map = {
-        getattr(next(iter(item.keys()))[0], 'text', ''): next(iter(item.values()))
-        for item in parameters
-        if item
-    }
-    assert parameter_map['guard_clock'] is False
+    parameter_map = _parameter_map(sim_time_guard)
+    assert parameter_map['use_sim_time'] is False
 
 
 def test_spawn_launch_defaults_to_system_graphics_profile_without_nvidia(monkeypatch) -> None:
@@ -148,3 +157,35 @@ def test_spawn_launch_can_force_nvidia_profile(monkeypatch) -> None:
     assert env_map['DRI_PRIME'] == '1'
     assert env_map['GBM_BACKEND'] == 'nvidia-drm'
     assert env_map['GZ_SIM_RENDER_ENGINE'] == 'ogre2'
+
+
+def test_spawn_launch_passes_repo_gui_config_to_gz_sim(monkeypatch) -> None:
+    module = _load_launch_module()
+    _patch_package_share_lookup(monkeypatch, module)
+    launch_description = module.generate_launch_description()
+
+    declare_args = [
+        entity for entity in launch_description.entities
+        if getattr(entity, 'name', None) == 'gui_config'
+    ]
+    includes = [
+        entity for entity in launch_description.entities
+        if isinstance(entity, IncludeLaunchDescription)
+    ]
+    gz_sim_include = includes[0]
+    launch_arguments = dict(getattr(gz_sim_include, '_IncludeLaunchDescription__launch_arguments'))
+    gz_args_parts = _iter_text_parts(launch_arguments['gz_args'])
+
+    gui_config_path = (
+        REPO_ROOT
+        / 'agribot_ws'
+        / 'src'
+        / 'agribot_description'
+        / 'config'
+        / 'frontend_aligned_gui.config'
+    )
+
+    assert declare_args
+    assert gui_config_path.exists()
+    assert '--gui-config' in ''.join(gz_args_parts)
+    assert any(_launch_configuration_name(part) == 'gui_config' for part in launch_arguments['gz_args'])

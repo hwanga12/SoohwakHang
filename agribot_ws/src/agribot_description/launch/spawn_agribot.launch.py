@@ -69,6 +69,16 @@ def generate_launch_description():
         ),
         description='Path to the Gazebo world file'
     )
+    gui_config_arg = DeclareLaunchArgument(
+        'gui_config',
+        default_value=os.path.join(
+            pkg_agribot_description, 'config', 'frontend_aligned_gui.config'
+        ),
+        description=(
+            'Path to the Gazebo GUI config file. '
+            'Use a repo-managed config so local ~/.gz GUI camera caches do not rotate the farm view.'
+        ),
+    )
     gz_args_prefix_arg = DeclareLaunchArgument(
         'gz_args_prefix',
         default_value='-r',
@@ -121,7 +131,15 @@ def generate_launch_description():
         launch_arguments={
             # Start the simulation immediately so bridged sensor topics publish
             # without requiring a manual "play" click in the Gazebo GUI.
-            'gz_args': [LaunchConfiguration('gz_args_prefix'), ' ', LaunchConfiguration('world')],
+            # A repo-owned GUI config is passed explicitly so local ~/.gz GUI
+            # caches never override the initial farm camera direction.
+            'gz_args': [
+                LaunchConfiguration('gz_args_prefix'),
+                ' --gui-config ',
+                LaunchConfiguration('gui_config'),
+                ' ',
+                LaunchConfiguration('world'),
+            ],
         }.items(),
     )
 
@@ -279,6 +297,7 @@ def generate_launch_description():
         gz_resource_path,
         gz_partition_env,
         world_arg,
+        gui_config_arg,
         gz_args_prefix_arg,
         publish_map_to_odom_tf_arg,
         publish_odom_tf_arg,
