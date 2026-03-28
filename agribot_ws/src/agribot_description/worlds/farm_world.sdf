@@ -13,11 +13,11 @@
       <render_engine>ogre2</render_engine>
     </plugin>
 
-    <!-- Rotate the initial Gazebo top view by 90 deg so the first screen
-         matches the orientation operators see on the frontend map. -->
+    <!-- Keep the Gazebo top view aligned with the frontend map by using
+         the same top-down pitch plus a 90 deg yaw offset. -->
     <gui fullscreen="0">
       <camera name="frontend_aligned_camera">
-        <pose>0 0 22 0 1.56 0</pose>
+        <pose>0 0 22 0 1.56 1.5708</pose>
         <view_controller>orbit</view_controller>
         <projection_type>perspective</projection_type>
       </camera>

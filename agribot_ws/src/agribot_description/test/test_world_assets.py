@@ -45,7 +45,7 @@ def test_world_declares_frontend_aligned_gazebo_camera() -> None:
     camera = world_root.find('./world/gui/camera')
     assert camera is not None
     assert camera.attrib['name'] == 'frontend_aligned_camera'
-    assert camera.findtext('pose') == '0 0 22 0 1.56 0'
+    assert camera.findtext('pose') == '0 0 22 0 1.56 1.5708'
     assert camera.findtext('view_controller') == 'orbit'
     assert camera.findtext('projection_type') == 'perspective'
 
