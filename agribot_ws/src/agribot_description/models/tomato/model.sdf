@@ -29,6 +29,11 @@
             <scale>0.03 0.03 0.03</scale>
           </mesh>
         </geometry>
+        <material>
+          <ambient>0.55 0.08 0.06 1</ambient>
+          <diffuse>0.86 0.16 0.10 1</diffuse>
+          <specular>0.12 0.12 0.12 1</specular>
+        </material>
       </visual>
     </link>
   </model>

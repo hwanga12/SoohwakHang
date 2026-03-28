@@ -44,6 +44,8 @@ def test_tomato_model_uses_gazebo_mesh_and_half_scale_collision_volume() -> None
 
     assert tomato_root.findtext('./model/link/visual/geometry/mesh/uri') == 'meshes/tomato_gazebo.obj'
     assert tomato_root.findtext('./model/link/visual/geometry/mesh/scale') == '0.03 0.03 0.03'
+    assert tomato_root.findtext('./model/link/visual/material/ambient') == '0.55 0.08 0.06 1'
+    assert tomato_root.findtext('./model/link/visual/material/diffuse') == '0.86 0.16 0.10 1'
     assert tomato_root.findtext('./model/link/collision/pose') == '0 0 -0.002 0 0 0'
     assert tomato_root.findtext('./model/link/collision/geometry/sphere/radius') == '0.029'
 
