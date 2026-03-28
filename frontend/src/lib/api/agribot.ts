@@ -1475,7 +1475,7 @@ export const plantsFallback: PlantsPageData = {
       detail: '수확 후보를 다시 확인하는 발표용 샘플 카드입니다.',
       diagnosisLabel: '수확 후보 재확인',
       detectedAt: '09:38',
-      imageUrl: '/mock-images/harvest-closeup.png',
+      imageUrl: '/mock-images/healthy-default.jpg',
     },
   ],
   plants: [
@@ -1492,7 +1492,7 @@ export const plantsFallback: PlantsPageData = {
       status: '수확 후보',
       latestLabel: '',
       latestDisplayLabel: '',
-      latestImageUrl: '/mock-images/harvest-closeup.png',
+      latestImageUrl: '/mock-images/healthy-default.jpg',
     },
     {
       name: '토마토 06',
@@ -1537,7 +1537,7 @@ export const plantsFallback: PlantsPageData = {
       status: '순찰 관찰',
       latestLabel: '',
       latestDisplayLabel: '',
-      latestImageUrl: '/mock-images/harvest-closeup.png',
+      latestImageUrl: '/mock-images/healthy-default.jpg',
     },
   ],
 }
@@ -2921,7 +2921,7 @@ export async function runDemoDiagnosis({
     } satisfies DemoDiagnosisResult
   } catch (error) {
     markRouteFailed('POST', '/inference/demo/confirm')
-    throw new Error(readApiErrorMessage(error, '시연용 병해 진단을 처리하지 못했습니다.'))
+    throw new Error(readApiErrorMessage(error, '시연용 AI 진단을 처리하지 못했습니다.'))
   }
 }
 

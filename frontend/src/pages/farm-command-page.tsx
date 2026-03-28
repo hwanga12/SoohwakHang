@@ -440,14 +440,14 @@ function previewImageForAsset(
   status?: 'normal' | 'target' | 'attention' | 'handled',
 ) {
   if (kind === 'sprinkler') {
-    return '/mock-images/robot-camera-preview.png'
+    return '/mock-images/sprinkler-gazebo.jpg'
   }
 
   if (status === 'attention') {
     return '/mock-images/disease-closeup.png'
   }
 
-  return '/mock-images/harvest-closeup.png'
+  return '/mock-images/healthy-default.jpg'
 }
 
 function selectionTag(
@@ -2083,7 +2083,7 @@ export function FarmCommandPage() {
           [activeDiagnoseCommand.commandId]: true,
         }))
         setUiMessage(
-          `${activeDiagnoseCommand.plantName} 통로 관측 위치에 정지했습니다. 잠시 안정화한 뒤 시연용 병해 이미지를 AI에 전달합니다.`,
+          `${activeDiagnoseCommand.plantName} 통로 관측 위치에 정지했습니다. 잠시 안정화한 뒤 시연용 기준 이미지를 AI에 전달합니다.`,
         )
         setTimeout(() => {
           demoDiagnosisMutation.mutate({

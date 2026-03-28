@@ -24,7 +24,7 @@ _DEMO_MANIFEST_PATH = _DEMO_INPUT_ROOT / "diagnosis_demo_manifest.json"
 
 
 class DemoDiagnosisRequest(BaseModel):
-    plant_id: str = Field(..., description="시연용 병해 이미지를 덮어쓸 대상 plant id")
+    plant_id: str = Field(..., description="시연용 기준 이미지를 덮어쓸 대상 plant id")
     fruit_id: str = Field(default="", description="대상 fruit id. 비우면 manifest 기본값을 사용합니다.")
     robot_id: str = Field(default="AGR-02", description="시연 대상 로봇 ID")
     zone_id: str = Field(default="farm_01", description="시연 대상 zone id")

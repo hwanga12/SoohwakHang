@@ -317,7 +317,7 @@ def _build_dataset() -> dict[str, Any]:
             finding_label = "ripe_tomato" if ready_to_harvest else "healthy_leaf"
             recommended_action = "수확 요청 가능" if ready_to_harvest else "추가 관찰 유지"
             evidence = "정상 생육 패턴이 확인되었습니다."
-            image_url = "/mock-images/harvest-closeup.png" if ready_to_harvest else "/mock-images/greenhouse-overview.png"
+            image_url = "/mock-images/healthy-default.jpg"
         else:
             finding_label = scenario.finding_label
             recommended_action = scenario.recommended_action
