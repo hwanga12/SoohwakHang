@@ -38,11 +38,28 @@ def test_resolve_graphics_profile_defaults_to_system_without_nvidia(monkeypatch)
     assert resolve_graphics_profile() == 'system'
 
 
-def test_resolve_graphics_profile_defaults_to_nvidia_when_available(monkeypatch) -> None:
+def test_resolve_graphics_profile_defaults_to_system_even_when_nvidia_exists(monkeypatch) -> None:
     monkeypatch.delenv(GRAPHICS_PROFILE_ENV_VAR, raising=False)
     monkeypatch.setattr('agribot_bringup.launch_profile.os.path.exists', lambda _path: True)
 
-    assert resolve_graphics_profile() == 'nvidia'
+    assert resolve_graphics_profile() == 'system'
+
+
+def test_resolve_graphics_profile_auto_uses_nvidia_when_available(monkeypatch) -> None:
+    monkeypatch.setattr('agribot_bringup.launch_profile.os.path.exists', lambda _path: True)
+
+    assert resolve_graphics_profile('auto') == 'nvidia'
+
+
+def test_resolve_graphics_profile_auto_falls_back_to_system_without_nvidia(monkeypatch) -> None:
+    monkeypatch.setattr('agribot_bringup.launch_profile.os.path.exists', lambda _path: False)
+
+    assert resolve_graphics_profile('auto') == 'system'
+
+
+def test_resolve_graphics_profile_empty_value_falls_back_to_default() -> None:
+    assert resolve_graphics_profile() == 'system'
+    assert resolve_graphics_profile('') == 'system'
 
 
 def test_build_graphics_environment_actions_for_nvidia_profile() -> None:
@@ -110,4 +127,4 @@ def test_resolve_performance_defaults_for_balanced_profile() -> None:
 
     assert defaults['gz_args_prefix'] == '-r'
     assert defaults['use_rviz'] == 'true'
-    assert defaults['use_runtime_support'] == 'false'
+    assert defaults['use_runtime_support'] == 'true'

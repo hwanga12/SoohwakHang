@@ -9,7 +9,9 @@ from .shutdown_cleanup import LAUNCH_SESSION_ENV_VAR, resolve_launch_session_id
 
 
 GRAPHICS_PROFILE_ENV_VAR = 'AGRIBOT_GRAPHICS_PROFILE'
-DEFAULT_GRAPHICS_PROFILE = 'auto'
+# 기본 런치는 호스트 기본 그래픽 경로를 그대로 따라가야 팀원별 드라이버 차이에도
+# 같은 명령이 더 안정적으로 동작한다. 외장 GPU 강제는 명시 opt-in 으로만 허용한다.
+DEFAULT_GRAPHICS_PROFILE = 'system'
 _SUPPORTED_GRAPHICS_PROFILES = frozenset({'auto', 'nvidia', 'system'})
 ROS_DISCOVERY_RANGE_ENV_VAR = 'AGRIBOT_ROS_DISCOVERY_RANGE'
 DEFAULT_ROS_DISCOVERY_RANGE = 'LOCALHOST'
