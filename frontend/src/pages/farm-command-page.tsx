@@ -52,7 +52,9 @@ import {
   type SemanticAssetStatus,
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
-import { buildPlantTargetPose } from '@/lib/robot-map/approach-pose'
+import {
+  buildPlantInspectionTargetPose,
+} from '@/lib/robot-map/approach-pose'
 
 const robotControlActions = [
   { id: 'pause', title: '일시정지', icon: 'pause_circle', nextState: '일시정지' },
@@ -1592,7 +1594,7 @@ export function FarmCommandPage() {
       return null
     }
 
-    return buildPlantTargetPose(
+    return buildPlantInspectionTargetPose(
       selectedPlantDetail.id,
       liveScene,
       mapScene,
@@ -1805,7 +1807,7 @@ export function FarmCommandPage() {
       return
     }
 
-    const targetPose = buildPlantTargetPose(
+    const targetPose = buildPlantInspectionTargetPose(
       targetPlant.id,
       liveScene,
       mapScene,

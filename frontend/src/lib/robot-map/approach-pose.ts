@@ -100,21 +100,26 @@ function buildInspectionPoseFromScene(
   }
 }
 
-export function buildPlantTargetPose(
+function buildPlantPoseWithPreference(
   plantId: string,
   preferredScene: SemanticScene,
   fallbackScene: SemanticScene,
   fallbackPositionLabel: string,
   currentPose: { x: number, y: number } | null,
+  posePreference: 'approach-first' | 'navigation-first',
 ): RobotTargetPose | null {
   const preferredAsset = preferredScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
   const fallbackAsset = fallbackScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
   const targetAsset = preferredAsset ?? fallbackAsset
 
   if (targetAsset) {
+    const prioritizedPose =
+      posePreference === 'navigation-first'
+        ? targetAsset.navigationPose ?? targetAsset.approachPose
+        : targetAsset.approachPose ?? targetAsset.navigationPose
+
     return (
-      targetAsset.approachPose
-      ?? targetAsset.navigationPose
+      prioritizedPose
       ?? buildInspectionPoseFromScene(targetAsset.position, preferredScene, currentPose)
       ?? buildInspectionPoseFromScene(targetAsset.position, fallbackScene, currentPose)
     )
@@ -128,5 +133,39 @@ export function buildPlantTargetPose(
   return (
     buildInspectionPoseFromScene(parsedPose, preferredScene, currentPose)
     ?? buildInspectionPoseFromScene(parsedPose, fallbackScene, currentPose)
+  )
+}
+
+export function buildPlantTargetPose(
+  plantId: string,
+  preferredScene: SemanticScene,
+  fallbackScene: SemanticScene,
+  fallbackPositionLabel: string,
+  currentPose: { x: number, y: number } | null,
+): RobotTargetPose | null {
+  return buildPlantPoseWithPreference(
+    plantId,
+    preferredScene,
+    fallbackScene,
+    fallbackPositionLabel,
+    currentPose,
+    'approach-first',
+  )
+}
+
+export function buildPlantInspectionTargetPose(
+  plantId: string,
+  preferredScene: SemanticScene,
+  fallbackScene: SemanticScene,
+  fallbackPositionLabel: string,
+  currentPose: { x: number, y: number } | null,
+): RobotTargetPose | null {
+  return buildPlantPoseWithPreference(
+    plantId,
+    preferredScene,
+    fallbackScene,
+    fallbackPositionLabel,
+    currentPose,
+    'navigation-first',
   )
 }
