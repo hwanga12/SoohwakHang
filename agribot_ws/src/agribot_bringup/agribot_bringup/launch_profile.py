@@ -26,7 +26,9 @@ _PERFORMANCE_GROUP_DEFAULTS: dict[str, dict[str, dict[str, str]]] = {
             'use_iot': 'false',
             'use_perception': 'false',
             'use_rviz': 'true',
-            'use_runtime_support': 'false',
+            # 기본 시연 경로는 runtime bridge 노드가 항상 살아 있어야
+            # frontend/backed 요청이 ROS 주행 토픽으로 실제 연결된다.
+            'use_runtime_support': 'true',
         },
         'full': {
             'gz_args_prefix': '-r',

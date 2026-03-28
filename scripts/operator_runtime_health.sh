@@ -9,6 +9,7 @@ AGRIBOT_WS_DEFAULT="${AGRIBOT_WS}"
 DEFAULT_RUNTIME_DIR="/tmp/agribot_runtime"
 
 EXPECTED_RUNTIME_DIR="${AGRIBOT_RUNTIME_DIR:-${DEFAULT_RUNTIME_DIR}}"
+EXPECTED_GRAPHICS_PROFILE="${AGRIBOT_GRAPHICS_PROFILE:-auto}"
 BACKEND_URL="${BACKEND_URL:-http://${BACKEND_HOST}:${BACKEND_PORT}}"
 FRONTEND_URL="${FRONTEND_URL:-http://${FRONTEND_HOST}:${FRONTEND_PORT}}"
 ROS_DISTRO_VALUE="${ROS_DISTRO}"
@@ -82,6 +83,7 @@ export REPO_ROOT="${REPO_ROOT}"
 export AGRIBOT_WS="${AGRIBOT_WS_DEFAULT}"
 export ROS_DISTRO="${ROS_DISTRO_VALUE}"
 export AGRIBOT_RUNTIME_DIR="${EXPECTED_RUNTIME_DIR}"
+export AGRIBOT_GRAPHICS_PROFILE="${EXPECTED_GRAPHICS_PROFILE}"
 EOF
 }
 
@@ -91,14 +93,25 @@ reset_runtime_dir() {
     printf 'reset runtime dir: %s\n' "${EXPECTED_RUNTIME_DIR}"
 }
 
-read_process_runtime_dir() {
+read_process_env_value() {
     local pid="$1"
+    local key="$2"
 
     if [[ ! -r "/proc/${pid}/environ" ]]; then
         return
     fi
 
-    tr '\0' '\n' <"/proc/${pid}/environ" | sed -n 's/^AGRIBOT_RUNTIME_DIR=//p' | head -n 1
+    tr '\0' '\n' <"/proc/${pid}/environ" | sed -n "s/^${key}=//p" | head -n 1
+}
+
+read_process_runtime_dir() {
+    local pid="$1"
+    read_process_env_value "${pid}" "AGRIBOT_RUNTIME_DIR"
+}
+
+read_process_graphics_profile() {
+    local pid="$1"
+    read_process_env_value "${pid}" "AGRIBOT_GRAPHICS_PROFILE"
 }
 
 read_process_cmdline() {
@@ -128,11 +141,13 @@ check_port_process() {
 
     for pid in "${pids[@]}"; do
         local runtime_dir=""
+        local graphics_profile=""
         local cmdline=""
 
         runtime_dir="$(read_process_runtime_dir "${pid}")"
+        graphics_profile="$(read_process_graphics_profile "${pid}")"
         cmdline="$(read_process_cmdline "${pid}")"
-        note "${label} pid=${pid} runtime_dir=${runtime_dir:-<unset>} cmd=${cmdline:-<unknown>}"
+        note "${label} pid=${pid} runtime_dir=${runtime_dir:-<unset>} graphics_profile=${graphics_profile:-<unset>} cmd=${cmdline:-<unknown>}"
 
         if [[ "${enforce_runtime}" != "true" ]]; then
             continue
@@ -148,6 +163,10 @@ check_port_process() {
             fail "${label} pid ${pid} uses ${runtime_dir}, expected ${EXPECTED_RUNTIME_DIR}."
         else
             ok "${label} pid ${pid} uses the expected runtime directory."
+        fi
+
+        if [[ -n "${graphics_profile}" && "${graphics_profile}" != "${EXPECTED_GRAPHICS_PROFILE}" ]]; then
+            warn "${label} pid ${pid} uses graphics profile ${graphics_profile}, expected ${EXPECTED_GRAPHICS_PROFILE}."
         fi
     done
 }
@@ -168,11 +187,13 @@ check_named_processes() {
 
     for pid in "${pids[@]}"; do
         local runtime_dir=""
+        local graphics_profile=""
         local cmdline=""
 
         runtime_dir="$(read_process_runtime_dir "${pid}")"
+        graphics_profile="$(read_process_graphics_profile "${pid}")"
         cmdline="$(read_process_cmdline "${pid}")"
-        note "${label} pid=${pid} runtime_dir=${runtime_dir:-<unset>} cmd=${cmdline:-<unknown>}"
+        note "${label} pid=${pid} runtime_dir=${runtime_dir:-<unset>} graphics_profile=${graphics_profile:-<unset>} cmd=${cmdline:-<unknown>}"
 
         if [[ -z "${runtime_dir}" ]]; then
             if [[ "${EXPECTED_RUNTIME_DIR}" == "${DEFAULT_RUNTIME_DIR}" ]]; then
@@ -182,6 +203,10 @@ check_named_processes() {
             fi
         elif [[ "${runtime_dir}" != "${EXPECTED_RUNTIME_DIR}" ]]; then
             fail "${label} pid ${pid} uses ${runtime_dir}, expected ${EXPECTED_RUNTIME_DIR}."
+        fi
+
+        if [[ -n "${graphics_profile}" && "${graphics_profile}" != "${EXPECTED_GRAPHICS_PROFILE}" ]]; then
+            warn "${label} pid ${pid} uses graphics profile ${graphics_profile}, expected ${EXPECTED_GRAPHICS_PROFILE}."
         fi
     done
 }
@@ -415,6 +440,7 @@ check_runtime_files() {
 print_summary() {
     section "Summary"
     note "expected AGRIBOT_RUNTIME_DIR=${EXPECTED_RUNTIME_DIR}"
+    note "expected AGRIBOT_GRAPHICS_PROFILE=${EXPECTED_GRAPHICS_PROFILE}"
     note "backend URL=${BACKEND_URL}"
     note "frontend URL=${FRONTEND_URL}"
 
@@ -495,6 +521,7 @@ note "repo_root=${REPO_ROOT}"
 note "agribot_ws=${AGRIBOT_WS_DEFAULT}"
 note "ros_distro=${ROS_DISTRO_VALUE}"
 note "expected_runtime_dir=${EXPECTED_RUNTIME_DIR}"
+note "expected_graphics_profile=${EXPECTED_GRAPHICS_PROFILE}"
 
 section "Ports And Processes"
 check_port_process "backend" "$(extract_port "${BACKEND_URL}")" "true"
