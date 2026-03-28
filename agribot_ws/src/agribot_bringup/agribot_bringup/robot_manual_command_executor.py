@@ -485,6 +485,19 @@ def should_restore_paused_manual_navigation_after_failed_resume(
     )
 
 
+def should_run_resume_release_recovery(
+    context: ActiveCommandContext | None,
+    *,
+    distance_m: float,
+) -> bool:
+    return (
+        distance_m > 0.0
+        and context is not None
+        and context.command.command_type == 'resume_motion'
+        and context.target_pose is not None
+    )
+
+
 def _navigation_error_code(nav_result: Any) -> int:
     return int(getattr(nav_result, 'error_code', NAVIGATE_TO_POSE_NONE_ERROR_CODE) or 0)
 
@@ -533,6 +546,9 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('backup_action', 'backup')
         self.declare_parameter('goal_reject_retry_sec', 0.75)
         self.declare_parameter('goal_reject_retry_limit', 4)
+        self.declare_parameter('resume_release_recovery_distance_m', 0.14)
+        self.declare_parameter('resume_release_recovery_speed_mps', 0.05)
+        self.declare_parameter('resume_release_recovery_time_allowance_sec', 3.0)
         self.declare_parameter('start_occupied_recovery_distance_m', 0.28)
         self.declare_parameter('start_occupied_recovery_speed_mps', 0.08)
         self.declare_parameter('start_occupied_recovery_time_allowance_sec', 4.0)
@@ -559,6 +575,18 @@ class RobotManualCommandExecutor(Node):
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
         self._goal_reject_retry_sec = max(0.0, float(self.get_parameter('goal_reject_retry_sec').value))
         self._goal_reject_retry_limit = max(0, int(self.get_parameter('goal_reject_retry_limit').value))
+        self._resume_release_recovery_distance_m = max(
+            0.0,
+            float(self.get_parameter('resume_release_recovery_distance_m').value),
+        )
+        self._resume_release_recovery_speed_mps = max(
+            0.01,
+            float(self.get_parameter('resume_release_recovery_speed_mps').value),
+        )
+        self._resume_release_recovery_time_allowance_sec = max(
+            0.5,
+            float(self.get_parameter('resume_release_recovery_time_allowance_sec').value),
+        )
         self._start_occupied_recovery_distance_m = max(
             0.0,
             float(self.get_parameter('start_occupied_recovery_distance_m').value),
@@ -1400,6 +1428,8 @@ class RobotManualCommandExecutor(Node):
         context.home_waypoint_id = resume_context.home_waypoint_id
         context.target_pose = _coerce_pose(resume_context.target_pose, self._map_frame)
         self._resume_release_pending = True
+        if self._schedule_resume_release_recovery(context):
+            return
         self._start_navigation_command(
             context,
             target_pose=context.target_pose,
@@ -1735,6 +1765,111 @@ class RobotManualCommandExecutor(Node):
         self._recovery_send_future = self._backup_client.send_goal_async(goal)
         self._recovery_send_future.add_done_callback(self._handle_start_occupied_recovery_goal_response)
         return True
+
+    def _schedule_resume_release_recovery(self, context: ActiveCommandContext) -> bool:
+        if not should_run_resume_release_recovery(
+            context,
+            distance_m=self._resume_release_recovery_distance_m,
+        ):
+            return False
+        if not self._backup_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
+            self.get_logger().warning(
+                f'재개 직전 안전 후진용 {self._backup_action_name} action server를 찾지 못해 '
+                '원래 목표를 바로 다시 시도합니다.'
+            )
+            return False
+
+        recovery_label = (
+            '일시정지된 위치에서 바로 재출발하면 충돌로 판정될 수 있어 '
+            '잠시 후진한 뒤 저장된 목적지를 다시 시도합니다.'
+        )
+        self.get_logger().info(recovery_label)
+        self._write_status(self._build_status_payload(context, 'running', recovery_label))
+
+        goal = BackUp.Goal()
+        goal.target = Point(x=float(self._resume_release_recovery_distance_m))
+        goal.speed = float(self._resume_release_recovery_speed_mps)
+        goal.time_allowance = Duration(
+            seconds=float(self._resume_release_recovery_time_allowance_sec)
+        ).to_msg()
+        self._recovery_send_future = self._backup_client.send_goal_async(goal)
+        self._recovery_send_future.add_done_callback(self._handle_resume_release_recovery_goal_response)
+        return True
+
+    def _handle_resume_release_recovery_goal_response(self, future: Any) -> None:
+        self._recovery_send_future = None
+        try:
+            goal_handle = future.result()
+        except Exception as exc:
+            self.get_logger().warning(
+                f'재개 직전 안전 후진 goal 전송에 실패해 원래 목표를 바로 다시 시도합니다: {exc}'
+            )
+            self._resume_navigation_after_release_recovery()
+            return
+
+        if not goal_handle.accepted:
+            if self._pending_context is not None:
+                cancel_message, cancel_error = self._cancel_outcome_for_pending_transition()
+                self._finish_active_command(
+                    'canceled',
+                    cancel_message,
+                    error=cancel_error,
+                )
+                return
+            self.get_logger().warning(
+                '재개 직전 안전 후진 goal이 거부되어 원래 목표를 바로 다시 시도합니다.'
+            )
+            self._resume_navigation_after_release_recovery()
+            return
+
+        self._active_recovery_handle = goal_handle
+        self._recovery_result_future = goal_handle.get_result_async()
+        self._recovery_result_future.add_done_callback(self._handle_resume_release_recovery_result)
+
+    def _handle_resume_release_recovery_result(self, future: Any) -> None:
+        self._active_recovery_handle = None
+        self._recovery_result_future = None
+
+        if self._pending_context is not None:
+            cancel_message, cancel_error = self._cancel_outcome_for_pending_transition()
+            self._finish_active_command(
+                'canceled',
+                cancel_message,
+                error=cancel_error,
+            )
+            return
+
+        try:
+            result = future.result()
+        except Exception as exc:
+            self.get_logger().warning(
+                f'재개 직전 안전 후진 결과를 받지 못해 원래 목표를 바로 다시 시도합니다: {exc}'
+            )
+            self._resume_navigation_after_release_recovery()
+            return
+
+        if result.status != GoalStatus.STATUS_SUCCEEDED:
+            recovery_result = result.result
+            error_msg = str(getattr(recovery_result, 'error_msg', '') or '').strip()
+            error_code = int(getattr(recovery_result, 'error_code', BackUp.Result.UNKNOWN) or 0)
+            detail = error_msg or '후진으로 충분한 여유 공간을 만들지 못했습니다.'
+            self.get_logger().warning(
+                '재개 직전 안전 후진이 실패했지만 저장된 목적지는 유지한 채 '
+                f'원래 목표를 다시 시도합니다: {detail} (error_code={error_code})'
+            )
+
+        self._resume_navigation_after_release_recovery()
+
+    def _resume_navigation_after_release_recovery(self) -> None:
+        context = self._active_context
+        if context is None or context.target_pose is None:
+            return
+        self._dispatch_navigation_goal(
+            context,
+            target_pose=context.target_pose,
+            label='저장된 수동 이동 재개',
+            is_retry=True,
+        )
 
     def _handle_start_occupied_recovery_goal_response(self, future: Any) -> None:
         self._recovery_send_future = None

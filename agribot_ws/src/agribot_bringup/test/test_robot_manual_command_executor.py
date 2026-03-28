@@ -17,6 +17,7 @@ from agribot_bringup.robot_manual_command_executor import (
     is_resume_command_type,
     parse_manual_command_payload,
     should_restore_paused_manual_navigation_after_failed_resume,
+    should_run_resume_release_recovery,
     should_retry_start_occupied_recovery,
     resolve_preempt_current_navigation,
     resolve_return_home_target,
@@ -301,6 +302,32 @@ def test_failed_resume_motion_restores_paused_manual_navigation_context() -> Non
         context,
         status='succeeded',
     ) is False
+
+
+def test_resume_motion_runs_short_release_recovery_before_retrying_goal() -> None:
+    context = ActiveCommandContext(
+        command=ManualCommand(
+            command_id='cmd-resume-03',
+            command_type='resume_motion',
+            robot_id='AGR-02',
+            requested_by='frontend-operator',
+            target_pose=None,
+            home_waypoint_id=None,
+            preempt_current_navigation=False,
+        ),
+        received_at='2026-03-29T00:00:00+00:00',
+        target_pose=CommandPose(
+            x=-4.0,
+            y=2.0,
+            z=0.0,
+            yaw=0.0,
+            frame_id='map',
+        ),
+    )
+
+    assert should_run_resume_release_recovery(context, distance_m=0.14) is True
+    assert should_run_resume_release_recovery(context, distance_m=0.0) is False
+    assert should_run_resume_release_recovery(None, distance_m=0.14) is False
 
 
 def test_patrol_emergency_stop_scenario_captures_resume_context() -> None:
