@@ -75,14 +75,32 @@ cleanup_once() {
         --scope session \
         --session-id "${AGRIBOT_LAUNCH_SESSION_ID:-}" \
         >/dev/null 2>&1 || true
+    # 세션 태그를 놓친 orphan 프로세스가 남더라도,
+    # AgriBot 워크스페이스/허용 목록에 해당하는 프로세스만 추가 정리한다.
+    "${CLEANUP_SCRIPT}" \
+        --scope user \
+        --workspace-path "${AGRIBOT_WS}" \
+        >/dev/null 2>&1 || true
 }
 
 forward_signal_and_exit() {
-    exit "$1"
+    local exit_code="$1"
+    local signal_name="$2"
+
+    if [[ -n "${child_pid}" ]]; then
+        # setsid 로 띄운 ros2 launch 세션 전체에만 신호를 전달한다.
+        kill -s "${signal_name}" -- "-${child_pid}" >/dev/null 2>&1 || \
+            kill -s "${signal_name}" "${child_pid}" >/dev/null 2>&1 || true
+        sleep "${SHUTDOWN_WAIT_SECONDS}"
+    fi
+
+    cleanup_once
+    trap - EXIT
+    exit "${exit_code}"
 }
 
-trap 'forward_signal_and_exit 130' INT
-trap 'forward_signal_and_exit 143' TERM
+trap 'forward_signal_and_exit 130 INT' INT
+trap 'forward_signal_and_exit 143 TERM' TERM
 trap cleanup_once EXIT
 
 maybe_source_ros_env

@@ -16,9 +16,11 @@
       </inertial>
       <collision name="fruit_collision">
         <pose>0 0 -0.002 0 0 0</pose>
+        <!-- 수확 시각화용 과실은 유지하되, 로봇 주행 통로를 막지 않도록
+             충돌 반경을 최소 수준으로 낮춘다. -->
         <geometry>
           <sphere>
-            <radius>0.029</radius>
+            <radius>0.001</radius>
           </sphere>
         </geometry>
       </collision>
