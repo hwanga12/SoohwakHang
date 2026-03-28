@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from robot_command_bridge_service import (  # noqa: E402
     command_file_path,
     publish_robot_command,
 )
-from robot_map_service import read_layers_payload, read_status_payload  # noqa: E402
+from robot_map_service import read_layers_payload, read_pose_payload, read_status_payload  # noqa: E402
 from robot_runtime_state_service import (  # noqa: E402
     command_status_file_path,
     control_state_file_path,
@@ -197,6 +198,62 @@ def test_read_status_payload_prefers_authoritative_control_state() -> None:
     assert payload["mission_state"] == "비상 정지가 활성화되었습니다."
     assert payload["control_mode"] == "emergency_stop"
     assert payload["note"] == "비상 정지가 활성화되었습니다."
+
+
+def test_read_pose_payload_keeps_last_map_pose_when_snapshot_is_stale() -> None:
+    pose_snapshot_path = Path(os.environ["AGRIBOT_RUNTIME_DIR"]) / "robot_pose_snapshot.json"
+    _write_json(
+        pose_snapshot_path,
+        {
+            "robot_id": "AGR-02",
+            "map_id": "farm_map",
+            "pose": {
+                "x": -1.9,
+                "y": 4.8,
+                "z": 0.0,
+                "yaw": 1.57,
+                "frame_id": "map",
+            },
+            "linear_speed_mps": 0.0,
+            "updated_at": "2026-03-29T00:00:00+00:00",
+            "timestamp": 1.0,
+        },
+    )
+
+    payload = read_pose_payload()
+
+    assert payload["source"] == "live"
+    assert payload["pose"]["x"] == pytest.approx(-1.9)
+    assert payload["pose"]["y"] == pytest.approx(4.8)
+    assert "마지막 실제 좌표를 유지" in payload["note"]
+
+
+def test_read_pose_payload_falls_back_when_only_non_map_frame_exists() -> None:
+    pose_snapshot_path = Path(os.environ["AGRIBOT_RUNTIME_DIR"]) / "robot_pose_snapshot.json"
+    _write_json(
+        pose_snapshot_path,
+        {
+            "robot_id": "AGR-02",
+            "map_id": "farm_map",
+            "pose": {
+                "x": -1.9,
+                "y": 4.8,
+                "z": 0.0,
+                "yaw": 1.57,
+                "frame_id": "odom",
+            },
+            "linear_speed_mps": 0.0,
+            "updated_at": "2026-03-29T00:00:00+00:00",
+            "timestamp": 1.0,
+        },
+    )
+
+    payload = read_pose_payload()
+
+    assert payload["source"] == "fallback"
+    assert payload["pose"]["x"] == pytest.approx(2.0)
+    assert payload["pose"]["y"] == pytest.approx(-5.9)
+    assert "odom 프레임 pose만 확인" in payload["note"]
 
 
 def test_robot_control_pause_endpoint_publishes_pause_motion() -> None:

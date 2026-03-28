@@ -877,6 +877,34 @@ def _fallback_pose_payload(map_id: str) -> dict[str, Any]:
     }
 
 
+def _pose_payload_from_snapshot(
+    payload: dict[str, Any],
+    *,
+    resolved_map_id: str,
+    note: str,
+) -> dict[str, Any]:
+    pose = payload["pose"]
+    x_value = float(pose.get("x", 0.0))
+    current_zone_id = _guess_zone_id(x_value)
+    return {
+        "source": "live",
+        "robot_id": str(payload.get("robot_id", "AGR-02")),
+        "map_id": str(payload.get("map_id", resolved_map_id)),
+        "current_zone_id": current_zone_id,
+        "current_zone_label": ZONE_LABELS[current_zone_id],
+        "pose": {
+            "x": x_value,
+            "y": float(pose.get("y", 0.0)),
+            "z": float(pose.get("z", 0.0)),
+            "yaw": float(pose.get("yaw", 0.0)),
+            "frame_id": str(pose.get("frame_id", "map")).strip() or "map",
+        },
+        "linear_speed_mps": float(payload.get("linear_speed_mps", 0.0)),
+        "updated_at": str(payload.get("updated_at", datetime.now(timezone.utc).isoformat())),
+        "note": note,
+    }
+
+
 def read_pose_payload(map_id: str | None = None) -> dict[str, Any]:
     resolved_map_id = _sanitize_map_id(map_id)
     pose_snapshot_path = _pose_snapshot_path()
@@ -895,32 +923,28 @@ def read_pose_payload(map_id: str | None = None) -> dict[str, Any]:
     timestamp = payload.get("timestamp")
     is_recent = isinstance(timestamp, (int, float)) and (time.time() - float(timestamp) <= POSE_STALE_SECONDS)
     frame_id = str(pose.get("frame_id", "")).strip() or "map"
-    if frame_id != "map" or not is_recent:
+    if frame_id != "map":
         fallback = _fallback_pose_payload(resolved_map_id)
         fallback["note"] = (
-            f"{frame_id} 프레임 또는 오래된 pose만 확인되어 fallback 좌표를 유지합니다."
+            f"{frame_id} 프레임 pose만 확인되어 fallback 좌표를 유지합니다."
         )
         return fallback
 
-    x_value = float(pose.get("x", 0.0))
-    current_zone_id = _guess_zone_id(x_value)
-    return {
-        "source": "live",
-        "robot_id": str(payload.get("robot_id", "AGR-02")),
-        "map_id": str(payload.get("map_id", resolved_map_id)),
-        "current_zone_id": current_zone_id,
-        "current_zone_label": ZONE_LABELS[current_zone_id],
-        "pose": {
-            "x": x_value,
-            "y": float(pose.get("y", 0.0)),
-            "z": float(pose.get("z", 0.0)),
-            "yaw": float(pose.get("yaw", 0.0)),
-            "frame_id": frame_id,
-        },
-        "linear_speed_mps": float(payload.get("linear_speed_mps", 0.0)),
-        "updated_at": str(payload.get("updated_at", datetime.now(timezone.utc).isoformat())),
-        "note": "map 프레임 pose 스냅샷을 반영 중입니다.",
-    }
+    if not is_recent:
+        return _pose_payload_from_snapshot(
+            payload,
+            resolved_map_id=resolved_map_id,
+            note=(
+                "마지막 map 프레임 pose 스냅샷이 오래되었지만, "
+                "발표용 fallback 좌표 대신 마지막 실제 좌표를 유지합니다."
+            ),
+        )
+
+    return _pose_payload_from_snapshot(
+        payload,
+        resolved_map_id=resolved_map_id,
+        note="map 프레임 pose 스냅샷을 반영 중입니다.",
+    )
 
 
 def read_status_payload(map_id: str | None = None) -> dict[str, Any]:
