@@ -14,6 +14,7 @@ Usage:
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    ExecuteProcess,
     IncludeLaunchDescription,
     SetEnvironmentVariable,
     TimerAction,
@@ -119,6 +120,7 @@ def generate_launch_description():
             'use_sim_time': 'true',
             'use_rviz': use_rviz,
             'patrol_robot_pose_topic': '/odom',
+            'gz_partition': gz_partition,
         }.items()
     )
     gz_args_prefix_arg = DeclareLaunchArgument(
@@ -221,8 +223,52 @@ def generate_launch_description():
     )
 
     delayed_navigation = TimerAction(
-        period=5.0,
+        # GUI 세션에서는 Gazebo와 bridge가 안정화되기 전에 Nav2가 먼저 뜨면
+        # 초기 costmap/TF 타임아웃으로 첫 명령이 묻히는 경우가 있다.
+        period=10.0,
         actions=[navigation],
+    )
+    unpause_world = TimerAction(
+        # gz sim -r 이어도 GUI 붙는 시점에 world가 paused 상태로 남는 경우가 있어
+        # 실제 주행 시작 전 한 번 더 run 상태를 강제한다.
+        period=3.0,
+        actions=[
+            ExecuteProcess(
+                cmd=[
+                    'bash',
+                    '-lc',
+                    (
+                        f"export GZ_PARTITION='{gz_partition}'; "
+                        "gz service -s /world/farm_world/control "
+                        "--reqtype gz.msgs.WorldControl "
+                        "--reptype gz.msgs.Boolean "
+                        "--timeout 3000 "
+                        "--req 'pause: false' >/dev/null 2>&1 || true"
+                    ),
+                ],
+                shell=False,
+            ),
+        ],
+    )
+    unpause_world_retry = TimerAction(
+        period=8.0,
+        actions=[
+            ExecuteProcess(
+                cmd=[
+                    'bash',
+                    '-lc',
+                    (
+                        f"export GZ_PARTITION='{gz_partition}'; "
+                        "gz service -s /world/farm_world/control "
+                        "--reqtype gz.msgs.WorldControl "
+                        "--reptype gz.msgs.Boolean "
+                        "--timeout 3000 "
+                        "--req 'pause: false' >/dev/null 2>&1 || true"
+                    ),
+                ],
+                shell=False,
+            ),
+        ],
     )
 
     runtime_snapshot_exporter = Node(
@@ -284,6 +330,8 @@ def generate_launch_description():
         runtime_snapshot_exporter,
         robot_manual_command_executor,
         mission_bridge_executor,
+        unpause_world,
+        unpause_world_retry,
         delayed_navigation,
         iot_status_pipeline,
         perception,
