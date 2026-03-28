@@ -1,8 +1,8 @@
 <?xml version="1.0" ?>
 <sdf version="1.9">
   <world name="farm_world">
-    <physics name="1ms" type="ignored">
-      <max_step_size>0.001</max_step_size>
+    <physics name="2ms" type="ignored">
+      <max_step_size>0.004</max_step_size>
       <real_time_factor>1.0</real_time_factor>
     </physics>
 
@@ -75,7 +75,7 @@
 
     <include>
       <uri>model://agribot</uri>
-      <pose>0 0 0.5 0 0 1.5708</pose>
+      <pose>0 0 0.0 0 0 1.5708</pose>
     </include>
 
     <include>
@@ -197,6 +197,126 @@
       <name>tomato_23</name>
       <uri>model://tomato_plant</uri>
       <pose>6.0 6.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_01_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 -6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_02_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 -6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_03_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 -6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_04_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 -6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_05_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 -4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_06_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 -4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_07_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 -4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_08_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 -4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_09_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 -2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_10_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 -2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_11_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 -2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_12_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 -2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_13_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_14_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_15_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_16_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_17_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_18_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_19_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_20_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_21_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_22_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_23_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_24_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 6.0 0.34 0 0 0</pose>
     </include>
     <include>
       <name>sprinkler_0</name>

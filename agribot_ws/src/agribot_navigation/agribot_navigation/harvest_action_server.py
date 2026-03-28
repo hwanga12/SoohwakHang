@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import math
+import os
 from pathlib import Path
+import subprocess
 import threading
 import time
 import uuid
@@ -14,6 +16,7 @@ from action_msgs.msg import GoalStatus
 from agribot_interfaces.action import HarvestTomato
 from agribot_interfaces.msg import HarvestBasketState, HarvestEvent, MissionStatus
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
 from nav2_msgs.action import NavigateToPose
 import rclpy
 from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse
@@ -22,7 +25,7 @@ from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.task import Future
-from std_msgs.msg import String
+from std_msgs.msg import Float64, String
 from std_srvs.srv import Trigger
 
 from .harvest_action_support import (
@@ -53,9 +56,17 @@ from .harvest_runtime_store import (
 )
 from .harvest_routing import (
     CropCatalog,
+    HarvestRoutePlan,
     compute_harvest_route,
     get_default_crop_instances_path,
     load_crop_catalog,
+)
+from .harvest_simulation import (
+    HarvestAnimationConfig,
+    WorldPose,
+    build_gz_pose_request,
+    compute_basket_pose,
+    compute_carry_pose,
 )
 from .nav_goal_utils import build_latest_pose_stamped
 from .patrol_config import Pose2D, PatrolPlan, get_default_patrol_waypoints_path, load_patrol_plan
@@ -104,6 +115,22 @@ class HarvestActionServerNode(Node):
         self.declare_parameter('mission_status_topic', 'harvest/mission_status')
         self.declare_parameter('failure_alert_topic', 'harvest/alerts')
         self.declare_parameter('reject_duplicate_targets', True)
+        self.declare_parameter('robot_pose_topic', '/odom')
+        self.declare_parameter('harvest_animation_enabled', True)
+        self.declare_parameter('harvest_arm_command_topic', '/agribot/harvest_arm_joint/cmd_pos')
+        self.declare_parameter('gazebo_world_name', 'farm_world')
+        self.declare_parameter('gazebo_partition', os.environ.get('GZ_PARTITION', 'agribot_sim'))
+        self.declare_parameter('gazebo_command_timeout_ms', 3000)
+        self.declare_parameter('gz_executable', 'gz')
+        self.declare_parameter('harvest_arm_ready_position', 0.0)
+        self.declare_parameter('harvest_arm_reach_position', 0.48)
+        self.declare_parameter('harvest_arm_lift_position', -0.35)
+        self.declare_parameter('harvest_carry_forward_m', 0.24)
+        self.declare_parameter('harvest_carry_lateral_m', 0.0)
+        self.declare_parameter('harvest_carry_z_m', 0.46)
+        self.declare_parameter('harvest_basket_forward_m', -0.14)
+        self.declare_parameter('harvest_basket_lateral_m', 0.0)
+        self.declare_parameter('harvest_basket_z_m', 0.42)
 
         self._plan = self._load_patrol_plan()
         self._catalog = self._load_crop_catalog()
@@ -150,6 +177,32 @@ class HarvestActionServerNode(Node):
         }
         self._safety_stop_on_failure = bool(self.get_parameter('safety_stop_on_failure').value)
         self._reject_duplicate_targets = bool(self.get_parameter('reject_duplicate_targets').value)
+        self._harvest_animation_enabled = bool(
+            self.get_parameter('harvest_animation_enabled').value
+        )
+        self._gazebo_world_name = str(self.get_parameter('gazebo_world_name').value).strip()
+        self._gazebo_partition = str(self.get_parameter('gazebo_partition').value).strip()
+        self._gazebo_command_timeout_ms = int(
+            self.get_parameter('gazebo_command_timeout_ms').value
+        )
+        self._gz_executable = str(self.get_parameter('gz_executable').value).strip() or 'gz'
+        self._harvest_arm_ready_position = float(
+            self.get_parameter('harvest_arm_ready_position').value
+        )
+        self._harvest_arm_reach_position = float(
+            self.get_parameter('harvest_arm_reach_position').value
+        )
+        self._harvest_arm_lift_position = float(
+            self.get_parameter('harvest_arm_lift_position').value
+        )
+        self._animation_config = HarvestAnimationConfig(
+            carry_forward_m=float(self.get_parameter('harvest_carry_forward_m').value),
+            carry_lateral_m=float(self.get_parameter('harvest_carry_lateral_m').value),
+            carry_z_m=float(self.get_parameter('harvest_carry_z_m').value),
+            basket_forward_m=float(self.get_parameter('harvest_basket_forward_m').value),
+            basket_lateral_m=float(self.get_parameter('harvest_basket_lateral_m').value),
+            basket_z_m=float(self.get_parameter('harvest_basket_z_m').value),
+        )
 
         self._navigate_client = ActionClient(
             self,
@@ -171,6 +224,13 @@ class HarvestActionServerNode(Node):
             String,
             self._patrol_status_topic,
             self._handle_patrol_status,
+            10,
+            callback_group=callback_group,
+        )
+        self._robot_pose_subscription = self.create_subscription(
+            Odometry,
+            str(self.get_parameter('robot_pose_topic').value),
+            self._handle_robot_pose,
             10,
             callback_group=callback_group,
         )
@@ -199,6 +259,11 @@ class HarvestActionServerNode(Node):
             self._failure_alert_topic,
             10,
         )
+        self._arm_command_publisher = self.create_publisher(
+            Float64,
+            str(self.get_parameter('harvest_arm_command_topic').value),
+            10,
+        )
 
         self._goal_lock = threading.Lock()
         self._goal_in_progress = False
@@ -216,6 +281,7 @@ class HarvestActionServerNode(Node):
         self._current_tomato_id = ''
         self._last_execution_phase = ''
         self._retry_count = 0
+        self._latest_robot_pose: Pose2D | None = None
 
         self._action_server = ActionServer(
             self,
@@ -263,6 +329,19 @@ class HarvestActionServerNode(Node):
             self.get_logger().warning('Ignoring patrol status payload that is not a JSON object.')
             return
         self._last_patrol_status = payload
+
+    def _handle_robot_pose(self, msg: Odometry) -> None:
+        orientation = msg.pose.pose.orientation
+        yaw = math.atan2(
+            2.0 * ((orientation.w * orientation.z) + (orientation.x * orientation.y)),
+            1.0 - (2.0 * ((orientation.y * orientation.y) + (orientation.z * orientation.z))),
+        )
+        self._latest_robot_pose = Pose2D(
+            x=float(msg.pose.pose.position.x),
+            y=float(msg.pose.pose.position.y),
+            z=float(msg.pose.pose.position.z),
+            yaw=yaw,
+        )
 
     def _goal_callback(self, goal_request: HarvestTomato.Goal) -> GoalResponse:
         with self._goal_lock:
@@ -407,46 +486,15 @@ class HarvestActionServerNode(Node):
                 target_id=resolved_goal.tomato_id,
                 detail_message=f'Holding aligned posture for {resolved_goal.tomato_id}.',
             )
-            self._wait_phase(
+            self._play_harvest_animation(
                 goal_handle,
-                duration_sec=self._picking_duration_sec,
-                current_phase='PICKING',
-                aligned_to_target=True,
-                gripper_engaged=False,
-                target_id=resolved_goal.tomato_id,
-                detail_message=f'Simulating picking for {resolved_goal.tomato_id}.',
-            )
-            self._publish_feedback(
-                goal_handle,
-                current_phase='PICKING',
-                aligned_to_target=True,
-                gripper_engaged=True,
-                progress_pct=75.0,
-                target_id=resolved_goal.tomato_id,
-                detail_message=f'Gripper engaged for {resolved_goal.tomato_id}.',
-            )
-            self._wait_phase(
-                goal_handle,
-                duration_sec=self._verify_duration_sec,
-                current_phase='VERIFYING',
-                aligned_to_target=True,
-                gripper_engaged=True,
-                target_id=resolved_goal.tomato_id,
-                detail_message=f'Verifying harvest success for {resolved_goal.tomato_id}.',
+                route_plan=route_plan,
+                tomato_id=resolved_goal.tomato_id,
             )
             ensure_harvest_target_available(
                 catalog=self._catalog,
                 tomato_id=resolved_goal.tomato_id,
                 harvested_tomato_ids=self._harvested_tomato_ids if self._reject_duplicate_targets else set(),
-            )
-            self._wait_phase(
-                goal_handle,
-                duration_sec=self._basket_stow_duration_sec,
-                current_phase='STOWING',
-                aligned_to_target=True,
-                gripper_engaged=True,
-                target_id=resolved_goal.tomato_id,
-                detail_message=f'Loading {resolved_goal.tomato_id} into the basket.',
             )
 
             event_id = f'harvest-event-{uuid.uuid4()}'
@@ -534,6 +582,8 @@ class HarvestActionServerNode(Node):
         except HarvestActionCanceled as exc:
             event_id = success_event_id
             if not harvest_completed:
+                self._reset_visual_harvest_state(self._current_tomato_id)
+            if not harvest_completed:
                 event_id = f'harvest-event-{uuid.uuid4()}'
                 event = build_harvest_event(
                     event_id=event_id,
@@ -569,6 +619,8 @@ class HarvestActionServerNode(Node):
             )
         except (HarvestActionError, ValueError) as exc:
             event_id = success_event_id
+            if not harvest_completed:
+                self._reset_visual_harvest_state(self._current_tomato_id)
             if not harvest_completed:
                 event_id = f'harvest-event-{uuid.uuid4()}'
                 event = build_harvest_event(
@@ -923,6 +975,197 @@ class HarvestActionServerNode(Node):
         while time.monotonic() < deadline:
             self._ensure_goal_is_active(goal_handle)
             time.sleep(0.05)
+
+    def _play_harvest_animation(
+        self,
+        goal_handle,
+        *,
+        route_plan: HarvestRoutePlan,
+        tomato_id: str,
+    ) -> None:
+        if not self._harvest_animation_enabled:
+            self._run_non_visual_harvest_waits(goal_handle, tomato_id=tomato_id)
+            return
+
+        tomato = self._catalog.tomatoes.get(tomato_id)
+        if tomato is None:
+            self.get_logger().warning(
+                f'No tomato metadata found for animation target {tomato_id}; '
+                'falling back to timing-only harvest simulation.'
+            )
+            self._run_non_visual_harvest_waits(goal_handle, tomato_id=tomato_id)
+            return
+
+        self._publish_arm_position(self._harvest_arm_reach_position)
+        self._wait_phase(
+            goal_handle,
+            duration_sec=self._picking_duration_sec,
+            current_phase='PICKING',
+            aligned_to_target=True,
+            gripper_engaged=False,
+            target_id=tomato_id,
+            detail_message=f'Reaching toward {tomato_id} with the harvest arm.',
+        )
+
+        reference_pose = self._resolve_animation_reference_pose(route_plan)
+        if reference_pose is not None:
+            carry_pose = compute_carry_pose(reference_pose, self._animation_config)
+            self._set_gazebo_entity_pose(tomato.world_model_name, carry_pose)
+
+        self._publish_feedback(
+            goal_handle,
+            current_phase='PICKING',
+            aligned_to_target=True,
+            gripper_engaged=True,
+            progress_pct=75.0,
+            target_id=tomato_id,
+            detail_message=f'Gripper engaged and carrying {tomato_id}.',
+        )
+        self._publish_arm_position(self._harvest_arm_lift_position)
+        self._wait_phase(
+            goal_handle,
+            duration_sec=self._verify_duration_sec,
+            current_phase='VERIFYING',
+            aligned_to_target=True,
+            gripper_engaged=True,
+            target_id=tomato_id,
+            detail_message=f'Lifting and verifying {tomato_id} for basket loading.',
+        )
+
+        if reference_pose is not None:
+            basket_pose = compute_basket_pose(
+                reference_pose,
+                self._animation_config,
+                basket_slot_index=len(self._loaded_tomato_ids),
+            )
+            self._set_gazebo_entity_pose(tomato.world_model_name, basket_pose)
+
+        self._publish_arm_position(self._harvest_arm_ready_position)
+        self._wait_phase(
+            goal_handle,
+            duration_sec=self._basket_stow_duration_sec,
+            current_phase='STOWING',
+            aligned_to_target=True,
+            gripper_engaged=True,
+            target_id=tomato_id,
+            detail_message=f'Loading {tomato_id} into the rear basket.',
+        )
+
+    def _run_non_visual_harvest_waits(self, goal_handle, *, tomato_id: str) -> None:
+        self._wait_phase(
+            goal_handle,
+            duration_sec=self._picking_duration_sec,
+            current_phase='PICKING',
+            aligned_to_target=True,
+            gripper_engaged=False,
+            target_id=tomato_id,
+            detail_message=f'Simulating picking for {tomato_id}.',
+        )
+        self._publish_feedback(
+            goal_handle,
+            current_phase='PICKING',
+            aligned_to_target=True,
+            gripper_engaged=True,
+            progress_pct=75.0,
+            target_id=tomato_id,
+            detail_message=f'Gripper engaged for {tomato_id}.',
+        )
+        self._wait_phase(
+            goal_handle,
+            duration_sec=self._verify_duration_sec,
+            current_phase='VERIFYING',
+            aligned_to_target=True,
+            gripper_engaged=True,
+            target_id=tomato_id,
+            detail_message=f'Verifying harvest success for {tomato_id}.',
+        )
+        self._wait_phase(
+            goal_handle,
+            duration_sec=self._basket_stow_duration_sec,
+            current_phase='STOWING',
+            aligned_to_target=True,
+            gripper_engaged=True,
+            target_id=tomato_id,
+            detail_message=f'Loading {tomato_id} into the basket.',
+        )
+
+    def _resolve_animation_reference_pose(self, route_plan: HarvestRoutePlan) -> Pose2D | None:
+        if self._latest_robot_pose is not None:
+            return self._latest_robot_pose
+        if alignment_required(route_plan):
+            return route_plan.align_pose
+        return route_plan.approach_pose
+
+    def _publish_arm_position(self, position: float) -> None:
+        self._arm_command_publisher.publish(Float64(data=float(position)))
+
+    def _set_gazebo_entity_pose(self, entity_name: str, pose: WorldPose) -> bool:
+        command_env = os.environ.copy()
+        if self._gazebo_partition:
+            command_env['GZ_PARTITION'] = self._gazebo_partition
+
+        service_candidates = (
+            f'/world/{self._gazebo_world_name}/set_pose/blocking',
+            f'/world/{self._gazebo_world_name}/set_pose',
+        )
+        last_error = ''
+        for service_name in service_candidates:
+            try:
+                completed = subprocess.run(
+                    [
+                        self._gz_executable,
+                        'service',
+                        '-s',
+                        service_name,
+                        '--reqtype',
+                        'gz.msgs.Pose',
+                        '--reptype',
+                        'gz.msgs.Boolean',
+                        '--timeout',
+                        str(self._gazebo_command_timeout_ms),
+                        '--req',
+                        build_gz_pose_request(entity_name, pose),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    env=command_env,
+                    text=True,
+                )
+            except FileNotFoundError:
+                self.get_logger().warning(
+                    f'Gazebo CLI "{self._gz_executable}" was not found; '
+                    'skipping harvest animation pose update.'
+                )
+                return False
+
+            combined_output = f'{completed.stdout}\n{completed.stderr}'.strip()
+            if completed.returncode == 0 and 'data: false' not in combined_output.lower():
+                return True
+            last_error = combined_output or str(completed.returncode)
+
+        self.get_logger().warning(
+            f'Failed to move Gazebo entity {entity_name}: {last_error}'
+        )
+        return False
+
+    def _reset_visual_harvest_state(self, tomato_id: str) -> None:
+        self._publish_arm_position(self._harvest_arm_ready_position)
+        normalized_tomato_id = self._normalize_request_text(tomato_id)
+        if not normalized_tomato_id:
+            return
+
+        tomato = self._catalog.tomatoes.get(normalized_tomato_id)
+        if tomato is None:
+            return
+
+        self._set_gazebo_entity_pose(
+            tomato.world_model_name,
+            WorldPose(
+                x=tomato.pose.x,
+                y=tomato.pose.y,
+                z=tomato.pose.z,
+            ),
+        )
 
     def _wait_for_future(
         self,

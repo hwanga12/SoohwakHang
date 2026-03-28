@@ -24,6 +24,15 @@ maybe_source_ros_env() {
     source_ros_setup_files
 }
 
+ensure_launch_session_id() {
+    if [[ -n "${AGRIBOT_LAUNCH_SESSION_ID:-}" ]]; then
+        export AGRIBOT_LAUNCH_SESSION_ID
+        return
+    fi
+
+    export AGRIBOT_LAUNCH_SESSION_ID="agribot-launch-$(date +%s)-$$"
+}
+
 launch_file_supports_runtime_arg() {
     local package_name="$1"
     local launch_file="$2"
@@ -56,48 +65,33 @@ append_runtime_arg_if_supported() {
     printf '%s\0' "$@"
 }
 
-cleanup_process_group() {
-    if [[ -z "${child_pid}" ]]; then
-        return
-    fi
-
-    if kill -0 "${child_pid}" 2>/dev/null; then
-        kill -TERM "-${child_pid}" 2>/dev/null || kill -TERM "${child_pid}" 2>/dev/null || true
-        sleep "${SHUTDOWN_WAIT_SECONDS}"
-        kill -KILL "-${child_pid}" 2>/dev/null || kill -KILL "${child_pid}" 2>/dev/null || true
-    fi
-}
-
 cleanup_once() {
     if (( cleanup_done )); then
         return
     fi
 
     cleanup_done=1
-    cleanup_process_group
-    "${CLEANUP_SCRIPT}" >/dev/null 2>&1 || true
+    "${CLEANUP_SCRIPT}" \
+        --scope session \
+        --session-id "${AGRIBOT_LAUNCH_SESSION_ID:-}" \
+        >/dev/null 2>&1 || true
 }
 
 forward_signal_and_exit() {
-    local signal_name="$1"
-    local exit_code="$2"
-
-    if [[ -n "${child_pid}" ]]; then
-        kill "-${signal_name}" "-${child_pid}" 2>/dev/null || kill "-${signal_name}" "${child_pid}" 2>/dev/null || true
-    fi
-
-    exit "${exit_code}"
+    exit "$1"
 }
 
-trap 'forward_signal_and_exit INT 130' INT
-trap 'forward_signal_and_exit TERM 143' TERM
+trap 'forward_signal_and_exit 130' INT
+trap 'forward_signal_and_exit 143' TERM
 trap cleanup_once EXIT
 
 maybe_source_ros_env
 export AGRIBOT_RUNTIME_DIR
 echo "Using AGRIBOT_RUNTIME_DIR=${AGRIBOT_RUNTIME_DIR}"
 
-"${CLEANUP_SCRIPT}" >/dev/null 2>&1 || true
+"${CLEANUP_SCRIPT}" --scope user >/dev/null 2>&1 || true
+ensure_launch_session_id
+echo "Using AGRIBOT_LAUNCH_SESSION_ID=${AGRIBOT_LAUNCH_SESSION_ID}"
 
 mapfile -d '' -t launch_args < <(append_runtime_arg_if_supported "$@")
 
@@ -108,5 +102,9 @@ set +e
 wait "${child_pid}"
 launch_exit_code=$?
 set -e
+
+if [[ "${launch_exit_code}" -eq 130 || "${launch_exit_code}" -eq 143 ]]; then
+    sleep "${SHUTDOWN_WAIT_SECONDS}"
+fi
 
 exit "${launch_exit_code}"

@@ -151,9 +151,9 @@
   <!-- ==================== HARVEST ARM (Mesh Visual + Primitive Collision) ==================== -->
   <link name="harvest_arm_link">
     <visual>
-      <origin xyz="-0.025 0 0.081" rpy="0 -1.5708 -1.5708"/>
+      <origin xyz="-0.025 0 0.081" rpy="3.1416 -1.5708 -1.5708"/>
       <geometry>
-        <mesh filename="package://agribot_description/models/agribot/meshes/robotic_arm_gazebo.obj" scale="5.236 6.007 2.536"/>
+        <mesh filename="package://agribot_description/models/agribot/meshes/robotic_arm.glb" scale="5.236 6.007 2.536"/>
       </geometry>
     </visual>
     <collision>
@@ -169,19 +169,19 @@
       </geometry>
     </collision>
     <collision>
-      <origin xyz="0.25 0 0.16" rpy="0 0 0"/>
+      <origin xyz="0.25 0 0.22" rpy="0 0 0"/>
       <geometry>
         <box size="0.04 0.06 0.04"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="0.29 0.028 0.11" rpy="0 0 0"/>
+      <origin xyz="0.29 0.028 0.27" rpy="0 0 0"/>
       <geometry>
         <box size="0.02 0.014 0.10"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="0.29 -0.028 0.11" rpy="0 0 0"/>
+      <origin xyz="0.29 -0.028 0.27" rpy="0 0 0"/>
       <geometry>
         <box size="0.02 0.014 0.10"/>
       </geometry>
@@ -192,10 +192,12 @@
     </inertial>
   </link>
 
-  <joint name="harvest_arm_joint" type="fixed">
+  <joint name="harvest_arm_joint" type="revolute">
     <parent link="base_link"/>
     <child link="harvest_arm_link"/>
-    <origin xyz="-0.02 0 0.22" rpy="0 0 0"/>
+    <origin xyz="0.04 0 0.29" rpy="0 0.15 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.60" upper="0.70" effort="10.0" velocity="1.5"/>
   </joint>
 
   <!-- ==================== HARVEST BASKET (Placeholder Geometry) ==================== -->
