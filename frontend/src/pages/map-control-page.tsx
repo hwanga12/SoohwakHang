@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
@@ -759,6 +759,14 @@ export function MapControlPage() {
   const controlFeedbackTone = controlMutation.isError
     ? 'control-feedback--danger'
     : controlSummary.helperTone
+  const handleMapTargetSelect = useCallback((target: RobotTargetPose) => {
+    if (movementCommandBlocked) {
+      setNotice(movementCommandBlockMessage)
+      return
+    }
+    setPendingTarget({ type: 'pose', pose: target })
+    setNotice(`선택 좌표 ${formatPose(target)}. 아래 확인 버튼으로 이동 명령을 보낼 수 있습니다.`)
+  }, [movementCommandBlockMessage, movementCommandBlocked])
   const missionStateBadgeLabel =
     controlSummary.currentState === 'emergency_stopped'
       ? '비상 정지'
@@ -968,14 +976,7 @@ export function MapControlPage() {
             map={page.map}
             onMapClickFeedback={setNotice}
             onSelectAsset={setSelectedAssetId}
-            onSelectMapTarget={(target) => {
-              if (movementCommandBlocked) {
-                setNotice(movementCommandBlockMessage)
-                return
-              }
-              setPendingTarget({ type: 'pose', pose: target })
-              setNotice(`선택 좌표 ${formatPose(target)}. 아래 확인 버튼으로 이동 명령을 보낼 수 있습니다.`)
-            }}
+            onSelectMapTarget={handleMapTargetSelect}
             pendingTarget={pendingTarget?.pose ?? null}
             pose={page.robotPose}
             scene={page.scene}

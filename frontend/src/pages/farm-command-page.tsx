@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
@@ -1812,7 +1812,7 @@ export function FarmCommandPage() {
     })
   }
 
-  const handleGuideMove = (guideId: string) => {
+  const handleGuideMove = useCallback((guideId: string) => {
     setUiMessage(null)
     setActivityState('이동중')
 
@@ -1829,9 +1829,9 @@ export function FarmCommandPage() {
     }
 
     zoneMoveMutation.mutate(zoneId)
-  }
+  }, [robot.zonePresets, zoneMoveMutation])
 
-  const handleSelectAsset = (assetId: string) => {
+  const handleSelectAsset = useCallback((assetId: string) => {
     setSelectedAssetId(assetId)
     setUiMessage(null)
 
@@ -1847,7 +1847,7 @@ export function FarmCommandPage() {
     }
 
     setIsAssetModalOpen(false)
-  }
+  }, [])
 
   const closeAssetModal = () => {
     setIsAssetModalOpen(false)
