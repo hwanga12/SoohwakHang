@@ -20,13 +20,17 @@ import {
   type RobotTargetPose,
   type RobotZonePreset,
 } from '@/lib/api/agribot'
-import { buildPlantTargetPose } from '@/lib/robot-map/approach-pose'
 import {
   farmSemanticScene,
   resolveSemanticTargetId,
   type SemanticAsset,
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
+import {
+  buildPlantInspectionNavigationPlan,
+  type PlantNavigationPlan,
+  type PlantNavigationStep,
+} from '@/lib/robot-map/plant-navigation-plan'
 
 type ControlActionId = 'pause' | 'resume' | 'home' | 'emergency';
 type PendingControlRequest = {
@@ -48,10 +52,25 @@ type PendingTargetData =
       assetLabel: string
       inspectWaypointName: string | null
       pose: RobotTargetPose
+      plan: PlantNavigationPlan
     }
   | { type: 'preset'; preset: RobotZonePreset; pose: RobotTargetPose }
 
 type AssetPendingTarget = Extract<PendingTargetData, { type: 'asset' }>
+
+type ActiveNavigationPlan = {
+  commandId: string
+  assetId: string
+  assetLabel: string
+  finalPose: RobotTargetPose
+  steps: PlantNavigationStep[]
+  currentStepIndex: number
+}
+
+type NavigateDispatchInput = {
+  currentTargetPose: RobotTargetPose
+  assetPlan: ActiveNavigationPlan | null
+}
 
 type ControlCurrentState = 'idle' | 'paused' | 'emergency_stopped' | 'resumed'
 
@@ -111,7 +130,7 @@ function fallbackPositionLabel(asset: SemanticAsset) {
   return `x ${asset.position.x.toFixed(2)} / y ${asset.position.y.toFixed(2)}`
 }
 
-function buildPlantApproachPendingTarget(
+function buildPlantNavigationPendingTarget(
   asset: SemanticAsset | null,
   scene: SemanticScene,
   currentPose: { x: number, y: number } | null,
@@ -120,7 +139,7 @@ function buildPlantApproachPendingTarget(
     return null
   }
 
-  const pose = buildPlantTargetPose(
+  const plan = buildPlantInspectionNavigationPlan(
     asset.id,
     scene,
     farmSemanticScene,
@@ -128,7 +147,7 @@ function buildPlantApproachPendingTarget(
     currentPose,
   )
 
-  if (!pose) {
+  if (!plan) {
     return null
   }
 
@@ -137,7 +156,8 @@ function buildPlantApproachPendingTarget(
     assetId: asset.id,
     assetLabel: asset.label,
     inspectWaypointName: asset.inspectWaypointName ?? null,
-    pose,
+    pose: plan.inspectionPose,
+    plan,
   }
 }
 
@@ -664,9 +684,11 @@ export function MapControlPage() {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
   const [pendingTarget, setPendingTarget] = useState<PendingTargetData | null>(null)
   const [activeCommandTarget, setActiveCommandTarget] = useState<RobotTargetPose | null>(null)
+  const [activeNavigationPlan, setActiveNavigationPlan] = useState<ActiveNavigationPlan | null>(null)
   const [lastCommandId, setLastCommandId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [observedCommandState, setObservedCommandState] = useState<string | null>(null)
+  const [observedNavigationPlanState, setObservedNavigationPlanState] = useState<string | null>(null)
   const [transitionFeedback, setTransitionFeedback] = useState<NavigationTransitionFeedback | null>(null)
   const [pendingControlRequest, setPendingControlRequest] = useState<PendingControlRequest | null>(null)
 
@@ -735,15 +757,18 @@ export function MapControlPage() {
       ])
     },
     onError: (error: Error) => {
+      setActiveNavigationPlan(null)
       setNotice(error.message)
     },
   })
   const navigateMutation = useMutation({
-    mutationFn: sendRobotNavigateCommand,
-    onSuccess: async (response) => {
-      const nextTarget = response.targetPose
+    mutationFn: ({ currentTargetPose }: NavigateDispatchInput) => sendRobotNavigateCommand(currentTargetPose),
+    onSuccess: async (response, variables) => {
+      const nextTarget = variables.assetPlan?.finalPose ?? response.targetPose ?? variables.currentTargetPose
       const shouldAnnounceTransition =
-        response.preemptCurrentNavigation && isNavigationCommandInProgress(latestCommandStatus)
+        variables.assetPlan === null
+        && response.preemptCurrentNavigation
+        && isNavigationCommandInProgress(latestCommandStatus)
       const nextTransitionFeedback =
         shouldAnnounceTransition && nextTarget
           ? {
@@ -754,15 +779,24 @@ export function MapControlPage() {
 
       setLastCommandId(response.commandId)
       setObservedCommandState(null)
-      if (nextTarget) {
-        setActiveCommandTarget(nextTarget)
-      }
+      setObservedNavigationPlanState(null)
+      setActiveCommandTarget(nextTarget)
+      setActiveNavigationPlan(
+        variables.assetPlan
+          ? {
+              ...variables.assetPlan,
+              commandId: response.commandId,
+            }
+          : null,
+      )
       setPendingTarget(null)
       setTransitionFeedback(nextTransitionFeedback)
       setNotice(
         nextTransitionFeedback
           ? `${buildTransitionNotice(nextTransitionFeedback)} 상태 카드가 pending/running으로 바뀌는지 확인하세요.`
-          : '클릭한 좌표로 이동 요청을 보냈습니다. 상태 카드가 pending/running으로 바뀌는지 확인하세요.',
+          : variables.assetPlan
+            ? `${variables.assetPlan.assetLabel} 안전 관측 경로 이동을 시작했습니다.`
+            : '클릭한 좌표로 이동 요청을 보냈습니다. 상태 카드가 pending/running으로 바뀌는지 확인하세요.',
       )
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
@@ -786,7 +820,7 @@ export function MapControlPage() {
   )
   const selectedSummary = summarizeSelectedAsset(selectedAsset)
   const selectedAssetPendingTarget = useMemo(
-    () => buildPlantApproachPendingTarget(
+    () => buildPlantNavigationPendingTarget(
       selectedAsset ?? null,
       page.scene,
       { x: page.robotPose.x, y: page.robotPose.y },
@@ -831,7 +865,7 @@ export function MapControlPage() {
       return
     }
 
-    const nextPendingTarget = buildPlantApproachPendingTarget(
+    const nextPendingTarget = buildPlantNavigationPendingTarget(
       asset,
       page.scene,
       { x: page.robotPose.x, y: page.robotPose.y },
@@ -841,13 +875,13 @@ export function MapControlPage() {
       return
     }
     if (movementCommandBlocked) {
-      setNotice(`${asset.label} 접근 좌표는 계산했지만, ${movementCommandBlockMessage}`)
+      setNotice(`${asset.label} 관측 경로는 계산했지만, ${movementCommandBlockMessage}`)
       return
     }
 
     setPendingTarget(nextPendingTarget)
     setNotice(
-      `${asset.label} 선택. 작물 중심 대신 ${formatPose(nextPendingTarget.pose)} 접근 좌표로 이동을 준비했습니다.`,
+      `${asset.label} 선택. 최종 관측 위치 ${formatPose(nextPendingTarget.pose)} 기준으로 안전 경로를 준비했습니다.`,
     )
   }, [movementCommandBlockMessage, movementCommandBlocked, page.robotPose.x, page.robotPose.y, page.scene])
   const missionStateBadgeLabel =
@@ -955,7 +989,7 @@ export function MapControlPage() {
   }, [page.scene.assets, selectedAssetId, targetAssetId])
 
   useEffect(() => {
-    if (!trackedCommand) {
+    if (!trackedCommand || activeNavigationPlan !== null) {
       return
     }
 
@@ -983,7 +1017,63 @@ export function MapControlPage() {
       setTransitionFeedback(null)
       setNotice(latestCommandStatus.message || '최근 이동 요청이 취소되었습니다.')
     }
-  }, [latestCommandStatus, observedCommandState, trackedCommand, transitionFeedback])
+  }, [activeNavigationPlan, latestCommandStatus, observedCommandState, trackedCommand, transitionFeedback])
+
+  useEffect(() => {
+    if (activeNavigationPlan === null) {
+      return
+    }
+
+    if (latestCommandStatus.commandId !== activeNavigationPlan.commandId) {
+      return
+    }
+
+    const stateToken = `${latestCommandStatus.commandId}:${latestCommandStatus.status}:${latestCommandStatus.updatedAt}`
+    if (observedNavigationPlanState === stateToken) {
+      return
+    }
+    setObservedNavigationPlanState(stateToken)
+    setObservedCommandState(stateToken)
+
+    if (latestCommandStatus.status === 'pending' || latestCommandStatus.status === 'running') {
+      return
+    }
+
+    if (latestCommandStatus.status === 'succeeded') {
+      const nextStep = activeNavigationPlan.steps[activeNavigationPlan.currentStepIndex + 1] ?? null
+      if (nextStep) {
+        setNotice(
+          `${activeNavigationPlan.assetLabel} 경유 지점에 도착했습니다. 다음 안전 경로로 이어서 이동합니다.`,
+        )
+        navigateMutation.mutate({
+          currentTargetPose: nextStep.pose,
+          assetPlan: {
+            ...activeNavigationPlan,
+            currentStepIndex: activeNavigationPlan.currentStepIndex + 1,
+          },
+        })
+        return
+      }
+
+      setActiveNavigationPlan(null)
+      setNotice(
+        latestCommandStatus.message
+        || `${activeNavigationPlan.assetLabel} 안전 관측 위치 이동이 완료되었습니다.`,
+      )
+      return
+    }
+
+    setActiveNavigationPlan(null)
+    setNotice(
+      latestCommandStatus.message
+      || `${activeNavigationPlan.assetLabel} 안전 경로 이동이 실패했습니다.`,
+    )
+  }, [
+    activeNavigationPlan,
+    latestCommandStatus,
+    navigateMutation,
+    observedNavigationPlanState,
+  ])
 
   useEffect(() => {
     if (pendingControlRequest !== null && controlRequestObserved) {
@@ -1109,7 +1199,7 @@ export function MapControlPage() {
                   {pendingTarget.type === 'preset'
                     ? pendingTarget.preset.name
                     : pendingTarget.type === 'asset'
-                      ? `${pendingTarget.assetLabel} 접근`
+                      ? `${pendingTarget.assetLabel} 관측 경로`
                       : '좌표 지정'}
                 </span>
                 <strong>{formatPose(pendingTarget.pose)}</strong>
@@ -1117,7 +1207,7 @@ export function MapControlPage() {
                   {pendingTarget.type === 'preset'
                     ? '선택하신 구역으로의 주행을 시작하시겠습니까?'
                     : pendingTarget.type === 'asset'
-                      ? `${pendingTarget.inspectWaypointName ?? '순찰 메타데이터'} 기준 안전 접근 좌표입니다. 확인을 누르면 작물 중심 대신 이 위치로 주행합니다.`
+                      ? `${pendingTarget.inspectWaypointName ?? '순찰 메타데이터'} 기준 최종 관측 위치입니다. 필요한 경우 연결 통로를 먼저 경유한 뒤 이 위치로 주행합니다.`
                       : '빈 지도 영역을 눌러 잡은 목표입니다. 확인을 누르면 지정한 좌표로 주행합니다.'}
                 </p>
               </div>
@@ -1132,8 +1222,28 @@ export function MapControlPage() {
                     }
                     if (pendingTarget.type === 'preset') {
                       zoneMoveMutation.mutate(pendingTarget.preset)
+                    } else if (pendingTarget.type === 'asset') {
+                      const firstStep = pendingTarget.plan.steps[0] ?? null
+                      if (!firstStep) {
+                        setNotice(`${pendingTarget.assetLabel} 안전 경로를 계산하지 못했습니다.`)
+                        return
+                      }
+                      navigateMutation.mutate({
+                        currentTargetPose: firstStep.pose,
+                        assetPlan: {
+                          commandId: '',
+                          assetId: pendingTarget.assetId,
+                          assetLabel: pendingTarget.assetLabel,
+                          finalPose: pendingTarget.plan.inspectionPose,
+                          steps: pendingTarget.plan.steps,
+                          currentStepIndex: 0,
+                        },
+                      })
                     } else {
-                      navigateMutation.mutate(pendingTarget.pose)
+                      navigateMutation.mutate({
+                        currentTargetPose: pendingTarget.pose,
+                        assetPlan: null,
+                      })
                     }
                     setPendingTarget(null)
                   }}
@@ -1142,7 +1252,7 @@ export function MapControlPage() {
                   {pendingTarget.type === 'preset'
                     ? '이 구역으로 이동'
                     : pendingTarget.type === 'asset'
-                      ? '이 접근 위치로 이동'
+                      ? '이 관측 경로로 이동'
                       : '이 좌표로 이동'}
                 </button>
                 <button
@@ -1294,10 +1404,13 @@ export function MapControlPage() {
             </div>
             {selectedAssetPendingTarget ? (
               <div className="command-transition-note">
-                <span className="panel-kicker">작물 접근 좌표</span>
+                <span className="panel-kicker">작물 관측 경로</span>
                 <strong>{formatPose(selectedAssetPendingTarget.pose)}</strong>
                 <p>
-                  작물 중심 좌표가 아니라 통로에서 멈출 수 있는 위치입니다.
+                  작물 중심 좌표가 아니라 통로에서 멈출 수 있는 최종 관측 위치입니다.
+                  {selectedAssetPendingTarget.plan.steps.length > 1
+                    ? ` 시작 위치에 따라 ${selectedAssetPendingTarget.plan.steps.length - 1}개의 안전 경유 지점을 먼저 거칩니다.`
+                    : ''}
                   {selectedAssetPendingTarget.inspectWaypointName
                     ? ` ${selectedAssetPendingTarget.inspectWaypointName} 기준으로 계산했습니다.`
                     : ''}
@@ -1311,11 +1424,11 @@ export function MapControlPage() {
                       return
                     }
                     setPendingTarget(selectedAssetPendingTarget)
-                    setNotice(`${selectedAssetPendingTarget.assetLabel} 접근 좌표를 다시 선택했습니다.`)
+                    setNotice(`${selectedAssetPendingTarget.assetLabel} 관측 경로를 다시 선택했습니다.`)
                   }}
                   type="button"
                 >
-                  접근 위치로 이동 준비
+                  관측 경로 이동 준비
                 </button>
               </div>
             ) : null}

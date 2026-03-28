@@ -719,7 +719,7 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
           {map && onSelectMapTarget ? (
             <div className="robot-facility-map__hint">
               <strong>이동 목표 지정</strong>
-              <p>빈 지도는 좌표 직접 지정, 식물 아이콘은 작물 중심 대신 안전 접근 좌표를 선택합니다.</p>
+              <p>빈 지도는 좌표 직접 지정, 식물 아이콘은 작물 중심 대신 안전 관측 경로를 계산합니다.</p>
             </div>
           ) : null}
 

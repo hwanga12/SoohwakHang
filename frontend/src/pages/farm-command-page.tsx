@@ -55,6 +55,9 @@ import {
 import {
   buildPlantInspectionTargetPose,
 } from '@/lib/robot-map/approach-pose'
+import {
+  buildPlantInspectionNavigationPlan,
+} from '@/lib/robot-map/plant-navigation-plan'
 
 const robotControlActions = [
   { id: 'pause', title: '일시정지', icon: 'pause_circle', nextState: '일시정지' },
@@ -209,7 +212,7 @@ function mergeDiagnosisIntoObservationFeed(
   }
 }
 
-type DiagnosePhase = 'staging' | 'lane_entry' | 'inspection'
+type DiagnosePhase = 'transit' | 'inspection'
 
 type DiagnoseRouteStep = {
   phase: DiagnosePhase
@@ -637,111 +640,38 @@ function latestCommandToken(status: RobotCommandStatus) {
 
 const DIAGNOSE_OBSERVATION_DWELL_MS = 1200
 
-function poseDistanceXY(
-  left: { x: number, y: number } | null | undefined,
-  right: { x: number, y: number } | null | undefined,
-) {
-  if (!left || !right) {
-    return Number.POSITIVE_INFINITY
-  }
-
-  return Math.hypot(left.x - right.x, left.y - right.y)
-}
-
-function buildDiagnoseLaneStepPose(
-  plantId: string,
-  targetPose: RobotTargetPose,
-  currentPose: { x: number, y: number } | null,
-  scene: SemanticScene,
-) {
-  const targetAsset =
-    scene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
-    ?? null
-  const laneX = targetAsset?.navigationPose?.x ?? targetPose.x
-
-  const lanePoses = Array.from(
-    new Map(
-      scene.assets
-        .filter((asset) => (
-          asset.kind === 'plant'
-          && asset.navigationPose
-          && Math.abs(asset.navigationPose.x - laneX) <= 0.05
-        ))
-        .map((asset) => [
-          `${asset.navigationPose?.x.toFixed(2)}:${asset.navigationPose?.y.toFixed(2)}`,
-          asset.navigationPose!,
-        ]),
-    ).values(),
-  ).sort((left, right) => left.y - right.y)
-
-  if (lanePoses.length <= 1) {
-    return null
-  }
-
-  const nextLanePose =
-    targetPose.y >= 0
-      ? lanePoses.find((pose) => pose.y > targetPose.y + 0.05) ?? null
-      : [...lanePoses].reverse().find((pose) => pose.y < targetPose.y - 0.05) ?? null
-
-  if (!nextLanePose) {
-    return null
-  }
-
-  if (poseDistanceXY(currentPose, nextLanePose) <= 0.85) {
-    return null
-  }
-
-  if (poseDistanceXY(currentPose, targetPose) <= 1.35) {
-    return null
-  }
-
-  return {
-    x: nextLanePose.x,
-    y: nextLanePose.y,
-    z: nextLanePose.z,
-    yaw: nextLanePose.yaw,
-    frameId: nextLanePose.frameId,
-  } satisfies RobotTargetPose
-}
-
 function buildDiagnoseRoutePlan(
   plantId: string,
   targetPose: RobotTargetPose,
   currentPose: { x: number, y: number } | null,
   scene: SemanticScene,
+  fallbackPositionLabel: string,
 ) {
-  const steps: DiagnoseRouteStep[] = []
-  const laneStepPose = buildDiagnoseLaneStepPose(
+  const plan = buildPlantInspectionNavigationPlan(
     plantId,
-    targetPose,
-    currentPose,
     scene,
+    farmSemanticScene,
+    fallbackPositionLabel,
+    currentPose,
   )
 
-  if (laneStepPose) {
-    steps.push({
-      phase: 'lane_entry',
-      pose: laneStepPose,
-    })
-  }
-
-  steps.push({
-    phase: 'inspection',
-    pose: targetPose,
-  })
+  const routeSteps: DiagnoseRouteStep[] =
+    plan?.steps.map((step) => ({
+      phase: (step.phase === 'inspection' ? 'inspection' : 'transit') as DiagnosePhase,
+      pose: step.pose,
+    }))
+    ?? [{ phase: 'inspection', pose: targetPose }]
 
   return {
-    steps,
-    inspectionPose: targetPose,
+    steps: routeSteps,
+    inspectionPose: plan?.inspectionPose ?? targetPose,
   }
 }
 
 function describeDiagnosePhase(phase: DiagnosePhase) {
   switch (phase) {
-    case 'staging':
-      return '세로 통로'
-    case 'lane_entry':
-      return '진입 포인트'
+    case 'transit':
+      return '연결 통로'
     case 'inspection':
     default:
       return '관측 위치'
@@ -1738,6 +1668,7 @@ export function FarmCommandPage() {
       : []
 
   const dispatchDiagnoseStart = (input: QueuedDiagnoseStart) => {
+    const fallbackPositionLabel = plantLookup.get(input.plantId)?.positionLabel ?? ''
     const diagnoseRoute = buildDiagnoseRoutePlan(
       input.plantId,
       input.targetPose,
@@ -1748,6 +1679,7 @@ export function FarmCommandPage() {
           }
         : null,
       liveScene,
+      fallbackPositionLabel,
     )
     const firstStep = diagnoseRoute.steps[0]
 
@@ -1903,7 +1835,7 @@ export function FarmCommandPage() {
     )
 
     if (targetPose === null) {
-      setUiMessage(`${targetPlant.name} 진단 접근 좌표를 계산하지 못해 이동을 시작할 수 없습니다.`)
+      setUiMessage(`${targetPlant.name} 진단 관측 경로를 계산하지 못해 이동을 시작할 수 없습니다.`)
       return
     }
 

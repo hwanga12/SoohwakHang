@@ -19,6 +19,7 @@ from agribot_bringup.robot_manual_command_executor import (
     is_resume_command_type,
     parse_manual_command_payload,
     read_runtime_pose_snapshot,
+    should_release_orphaned_active_command,
     should_restore_paused_manual_navigation_after_failed_resume,
     should_treat_failed_navigation_as_success,
     should_run_resume_release_recovery,
@@ -298,6 +299,60 @@ def test_should_not_treat_failed_navigation_as_success_when_runtime_pose_is_far(
             frame_id='map',
         ),
         xy_tolerance_m=0.55,
+    ) is False
+
+
+def test_should_release_orphaned_active_command_when_terminal_status_was_already_written() -> None:
+    command = ManualCommand(
+        command_id='cmd-nav-terminal',
+        command_type='navigate_to_pose',
+        robot_id='AGR-02',
+        requested_by='frontend-operator',
+        target_pose=CommandPose(x=-4.0, y=2.0, z=0.0, yaw=-1.57, frame_id='map'),
+        home_waypoint_id=None,
+        preempt_current_navigation=True,
+    )
+    active_context = ActiveCommandContext(
+        command=command,
+        received_at='2026-03-29T00:00:00Z',
+        started_at='2026-03-29T00:00:01Z',
+        target_pose=command.target_pose,
+    )
+
+    assert should_release_orphaned_active_command(
+        active_context,
+        {
+            'command_id': 'cmd-nav-terminal',
+            'status': 'failed',
+        },
+        has_pending_activity=False,
+    ) is True
+
+
+def test_should_not_release_orphaned_active_command_while_executor_still_has_pending_activity() -> None:
+    command = ManualCommand(
+        command_id='cmd-nav-active',
+        command_type='navigate_to_pose',
+        robot_id='AGR-02',
+        requested_by='frontend-operator',
+        target_pose=CommandPose(x=4.0, y=6.0, z=0.0, yaw=1.57, frame_id='map'),
+        home_waypoint_id=None,
+        preempt_current_navigation=True,
+    )
+    active_context = ActiveCommandContext(
+        command=command,
+        received_at='2026-03-29T00:00:00Z',
+        started_at='2026-03-29T00:00:01Z',
+        target_pose=command.target_pose,
+    )
+
+    assert should_release_orphaned_active_command(
+        active_context,
+        {
+            'command_id': 'cmd-nav-active',
+            'status': 'failed',
+        },
+        has_pending_activity=True,
     ) is False
 
 

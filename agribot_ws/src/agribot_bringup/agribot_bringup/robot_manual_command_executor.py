@@ -591,6 +591,24 @@ def should_treat_failed_navigation_as_success(
     )
 
 
+def should_release_orphaned_active_command(
+    active_context: ActiveCommandContext | None,
+    last_status_payload: dict[str, Any] | None,
+    *,
+    has_pending_activity: bool,
+) -> bool:
+    if active_context is None or has_pending_activity or not isinstance(last_status_payload, dict):
+        return False
+
+    last_command_id = str(last_status_payload.get('command_id', '')).strip()
+    last_status = str(last_status_payload.get('status', '')).strip()
+    return (
+        bool(last_command_id)
+        and last_command_id == active_context.command.command_id
+        and last_status in TERMINAL_STATUSES
+    )
+
+
 class RobotManualCommandExecutor(Node):
     def __init__(self) -> None:
         super().__init__('robot_manual_command_executor')
@@ -953,6 +971,8 @@ class RobotManualCommandExecutor(Node):
         return self._latest_patrol_status.message
 
     def _poll_command_file(self) -> None:
+        self._release_orphaned_active_command_if_needed()
+
         if not self._command_path.exists():
             return
 
@@ -1059,6 +1079,58 @@ class RobotManualCommandExecutor(Node):
                 completed_at=_iso_now(),
             )
         )
+
+    def _has_pending_executor_activity(self) -> bool:
+        return any(
+            value is not None
+            for value in (
+                self._goal_send_future,
+                self._goal_result_future,
+                self._active_goal_handle,
+                self._goal_cancel_future,
+                self._service_future,
+                self._recovery_send_future,
+                self._recovery_result_future,
+                self._active_recovery_handle,
+                self._recovery_cancel_future,
+                self._goal_retry_timer,
+                self._patrol_state_wait,
+            )
+        )
+
+    def _release_orphaned_active_command_if_needed(self) -> None:
+        if not should_release_orphaned_active_command(
+            self._active_context,
+            self._last_status_payload,
+            has_pending_activity=self._has_pending_executor_activity(),
+        ):
+            return
+
+        active_context = self._active_context
+        if active_context is None:
+            return
+
+        self.get_logger().warning(
+            '터미널 status가 이미 기록됐지만 내부 active context가 남아 있어 정리합니다: '
+            f'{active_context.command.command_id}'
+        )
+        self._remember_processed_command_id(active_context.command.command_id)
+        self._active_context = None
+        self._active_goal_handle = None
+        self._goal_send_future = None
+        self._goal_result_future = None
+        self._goal_cancel_future = None
+        self._service_future = None
+        self._recovery_send_future = None
+        self._recovery_result_future = None
+        self._recovery_cancel_future = None
+        self._active_recovery_handle = None
+        self._start_occupied_recovery_count = 0
+        self._patrol_state_wait = None
+        self._navigation_cancel_reason = ''
+        self._resume_release_pending = False
+        self._goal_reject_retry_count = 0
+        self._update_control_state()
 
     def _build_non_active_command_status_payload(
         self,
