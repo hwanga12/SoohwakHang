@@ -1,0 +1,5 @@
+{
+  // VS Code 탐색기에서 .gitignore에 등록된 파일(build, log 등)을 다시 보이게 설정합니다. (기본값)
+  // 비전공 팀원들도 빌드 결과물이나 로그 파일을 쉽게 확인할 수 있도록 명시적으로 활성화했습니다.
+  "explorer.excludeGitIgnore": false
+}
