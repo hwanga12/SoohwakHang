@@ -727,10 +727,10 @@ export function summarizeSelectedAsset(asset: SemanticAsset | null) {
     `x ${asset.position.x.toFixed(1)} / y ${asset.position.y.toFixed(1)}`,
   ]
 
-  if (asset.navigationPose) {
-    chips.push(`이동 x ${asset.navigationPose.x.toFixed(2)} / y ${asset.navigationPose.y.toFixed(2)}`)
-  } else if (asset.approachPose) {
+  if (asset.approachPose) {
     chips.push(`접근 x ${asset.approachPose.x.toFixed(2)} / y ${asset.approachPose.y.toFixed(2)}`)
+  } else if (asset.navigationPose) {
+    chips.push(`이동 x ${asset.navigationPose.x.toFixed(2)} / y ${asset.navigationPose.y.toFixed(2)}`)
   }
 
   if (asset.inspectWaypointName) {
