@@ -3952,7 +3952,18 @@ button.robot-facility-map__row-guide.is-clickable {
 
 @media (max-width: 760px) {
   .farm-layout-page {
+    min-height: 100dvh;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    gap: 12px;
+    padding: 12px;
+    overflow: visible;
+  }
+
+  .farm-map-shell,
+  .farm-dashboard-shell {
     padding: 14px;
+    gap: 12px;
   }
 
   .farm-map-header {
@@ -3965,11 +3976,19 @@ button.robot-facility-map__row-guide.is-clickable {
   }
 
   .farm-map-board {
-    min-height: clamp(320px, 54svh, 460px);
+    min-height: clamp(280px, 44svh, 380px);
+    height: auto;
+    max-height: min(44svh, 380px);
+    aspect-ratio: 1 / 1.04;
   }
 
   .farm-map-board .camera-peek {
     width: 160px;
+  }
+
+  .farm-map-footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 
   .farm-action-row {
@@ -3981,7 +4000,7 @@ button.robot-facility-map__row-guide.is-clickable {
   }
 }
 
-@media (max-width: 480px) and (orientation: portrait) {
+@media (max-width: 560px), (max-height: 880px) and (orientation: portrait) {
   .farm-layout-page {
     height: 100dvh;
     min-height: 100dvh;
