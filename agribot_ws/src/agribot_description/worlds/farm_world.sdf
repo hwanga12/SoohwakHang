@@ -13,6 +13,16 @@
       <render_engine>ogre2</render_engine>
     </plugin>
 
+    <!-- Keep the initial Gazebo view aligned with the frontend map:
+         +X stays horizontal and +Y stays upward on screen. -->
+    <gui fullscreen="0">
+      <camera name="frontend_aligned_camera">
+        <pose>0 0 22 0 1.56 1.5708</pose>
+        <view_controller>orbit</view_controller>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>
       <pose>0 0 10 0 0 0</pose>

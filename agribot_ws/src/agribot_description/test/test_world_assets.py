@@ -39,6 +39,17 @@ def test_world_physics_and_tomato_catalog_stay_in_sync() -> None:
     assert tomato_model_names == catalog_tomato_names
 
 
+def test_world_declares_frontend_aligned_gazebo_camera() -> None:
+    world_root = _parse_xml(WORLD_PATH)
+
+    camera = world_root.find('./world/gui/camera')
+    assert camera is not None
+    assert camera.attrib['name'] == 'frontend_aligned_camera'
+    assert camera.findtext('pose') == '0 0 22 0 1.56 1.5708'
+    assert camera.findtext('view_controller') == 'orbit'
+    assert camera.findtext('projection_type') == 'perspective'
+
+
 def test_tomato_model_uses_gazebo_mesh_and_half_scale_collision_volume() -> None:
     tomato_root = _parse_xml(TOMATO_MODEL_PATH)
 

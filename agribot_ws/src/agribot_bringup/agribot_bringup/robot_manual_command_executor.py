@@ -70,6 +70,7 @@ RESUME_COMMAND_TYPES = {
 }
 PATROL_ACTIVE_STATES = {'starting', 'running', 'observing', 'stopping'}
 PATROL_RESUMABLE_STATES = PATROL_ACTIVE_STATES | {'stopped'}
+NAVIGATE_TO_POSE_NONE_ERROR_CODE = int(getattr(NavigateToPose.Result, 'NONE', 0) or 0)
 _UNSET = object()
 
 
@@ -471,10 +472,23 @@ def context_has_navigation_target(context: ActiveCommandContext | None) -> bool:
     return context is not None and context.target_pose is not None
 
 
+def _navigation_error_code(nav_result: Any) -> int:
+    return int(getattr(nav_result, 'error_code', NAVIGATE_TO_POSE_NONE_ERROR_CODE) or 0)
+
+
+def _navigation_error_message(nav_result: Any) -> str:
+    return str(getattr(nav_result, 'error_msg', '') or '').strip()
+
+
+def _navigation_result_indicates_start_occupied(nav_result: Any) -> bool:
+    error_msg = _navigation_error_message(nav_result).lower()
+    return bool(error_msg) and 'start' in error_msg and 'occupied' in error_msg
+
+
 def _navigation_failure_message(nav_result: Any) -> str:
-    error_msg = str(getattr(nav_result, 'error_msg', '') or '').strip()
-    error_code = int(getattr(nav_result, 'error_code', NavigateToPose.Result.NONE) or 0)
-    if error_code == NavigateToPose.Result.START_OCCUPIED:
+    error_msg = _navigation_error_message(nav_result)
+    error_code = _navigation_error_code(nav_result)
+    if _navigation_result_indicates_start_occupied(nav_result):
         return (
             '현재 시작 위치가 통로 밖 장애물로 판정되어 새 이동을 시작할 수 없습니다. '
             f'{error_msg or "로봇을 통로 중앙으로 되돌린 뒤 다시 시도하세요."} '
@@ -482,7 +496,7 @@ def _navigation_failure_message(nav_result: Any) -> str:
         )
 
     message = error_msg or '이동 명령이 실패했습니다.'
-    if error_code != NavigateToPose.Result.NONE:
+    if error_code != NAVIGATE_TO_POSE_NONE_ERROR_CODE:
         message = f'{message} (error_code={error_code})'
     return message
 
@@ -1668,10 +1682,7 @@ class RobotManualCommandExecutor(Node):
             self._finish_active_command('canceled', '이동 명령이 취소되었습니다.', error='goal_canceled')
             return
 
-        if (
-            nav_result.error_code == NavigateToPose.Result.START_OCCUPIED
-            and self._schedule_start_occupied_recovery()
-        ):
+        if _navigation_result_indicates_start_occupied(nav_result) and self._schedule_start_occupied_recovery():
             return
 
         message = _navigation_failure_message(nav_result)

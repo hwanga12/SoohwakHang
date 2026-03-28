@@ -1,8 +1,12 @@
+from types import SimpleNamespace
+
 from agribot_bringup.control_state import ControlMode
 from agribot_bringup.robot_manual_command_executor import (
     ActiveCommandContext,
     CommandPose,
     CommandValidationError,
+    _navigation_failure_message,
+    _navigation_result_indicates_start_occupied,
     ManualCommand,
     PatrolStatusSnapshot,
     build_manual_resume_context,
@@ -187,6 +191,21 @@ def test_should_retry_start_occupied_recovery_respects_retry_limit() -> None:
     assert should_retry_start_occupied_recovery(0, 2) is True
     assert should_retry_start_occupied_recovery(1, 1) is False
     assert should_retry_start_occupied_recovery(0, 0) is False
+
+
+def test_navigation_result_detects_start_occupied_without_missing_nav2_constant() -> None:
+    nav_result = SimpleNamespace(error_code=42, error_msg='GridBased planner failed: Start occupied')
+
+    assert _navigation_result_indicates_start_occupied(nav_result) is True
+    assert '현재 시작 위치가 통로 밖 장애물로 판정' in _navigation_failure_message(nav_result)
+    assert 'error_code=42' in _navigation_failure_message(nav_result)
+
+
+def test_navigation_failure_message_keeps_generic_errors_when_not_start_occupied() -> None:
+    nav_result = SimpleNamespace(error_code=17, error_msg='Goal failed')
+
+    assert _navigation_result_indicates_start_occupied(nav_result) is False
+    assert _navigation_failure_message(nav_result) == 'Goal failed (error_code=17)'
 
 
 def test_is_navigation_command_type_matches_manual_navigation_commands() -> None:
