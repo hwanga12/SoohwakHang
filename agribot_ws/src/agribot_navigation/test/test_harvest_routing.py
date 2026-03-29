@@ -37,7 +37,8 @@ def test_farm_harvest_metadata_covers_all_grid_targets() -> None:
     assert crop_catalog.zone_id == 'farm_01'
     assert len(crop_catalog.plants) == 24
     assert len(crop_catalog.tomatoes) == 24
-    assert len(patrol_plan.routes) == 4
+    assert len(patrol_plan.routes) == 5
+    assert 'farm_01_harvest_lane_center' in patrol_plan.routes
     assert observed_tomato_ids == set(crop_catalog.tomatoes)
 
 

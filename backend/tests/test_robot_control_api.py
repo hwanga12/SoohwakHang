@@ -296,6 +296,66 @@ def test_read_layers_payload_exposes_safe_approach_pose_for_plants() -> None:
     assert payload["request"]["accepted"] is True
 
 
+def test_read_layers_payload_exposes_dual_observation_candidates_for_center_tomato_plants() -> None:
+    payload = read_layers_payload()
+
+    plant_asset = next(
+        asset for asset in payload["assets"]
+        if asset["kind"] == "plant" and asset["id"] == "farm01_plant_19"
+    )
+
+    observation_candidates = plant_asset["observation_candidates"]
+    observation_waypoint_ids = {
+        candidate["inspect_waypoint_id"]
+        for candidate in observation_candidates
+    }
+
+    assert "farm_01_lane_center_inspect_05" in observation_waypoint_ids
+    assert "farm_01_lane_03_inspect_05" in observation_waypoint_ids
+
+    center_candidate = next(
+        candidate for candidate in observation_candidates
+        if candidate["inspect_waypoint_id"] == "farm_01_lane_center_inspect_05"
+    )
+    assert center_candidate["navigation_pose"]["x"] == pytest.approx(0.0)
+    assert center_candidate["navigation_pose"]["y"] == pytest.approx(4.0)
+    assert center_candidate["approach_pose"]["x"] == pytest.approx(1.25)
+    assert center_candidate["approach_pose"]["y"] == pytest.approx(4.0)
+
+
+def test_publish_navigate_command_keeps_all_observation_candidates_in_bridge_payload() -> None:
+    response = publish_robot_command(
+        robot_id="AGR-02",
+        command_type="navigate_to_pose",
+        requested_by="frontend-operator",
+        target_pose={
+            "x": 4.0,
+            "y": 4.0,
+            "z": 0.0,
+            "yaw": 1.5708,
+            "frame_id": "map",
+        },
+        payload={
+            "plant_id": "farm01_plant_19",
+            "inspect_waypoint_id": "farm_01_lane_03_inspect_05",
+            "inspect_waypoint_ids": [
+                "farm_01_lane_03_inspect_05",
+                "farm_01_lane_center_inspect_05",
+            ],
+        },
+    )
+
+    command_payload = json.loads(command_file_path().read_text(encoding="utf-8"))
+
+    assert response["accepted"] is True
+    assert command_payload["payload"]["plant_id"] == "farm01_plant_19"
+    assert command_payload["payload"]["inspect_waypoint_id"] == "farm_01_lane_03_inspect_05"
+    assert command_payload["payload"]["inspect_waypoint_ids"] == [
+        "farm_01_lane_03_inspect_05",
+        "farm_01_lane_center_inspect_05",
+    ]
+
+
 def test_missions_patrol_stop_endpoint_publishes_pause_patrol() -> None:
     _write_json(
         control_state_file_path(),

@@ -32,6 +32,7 @@ from agribot_bringup.robot_manual_command_executor import (
 )
 from agribot_bringup.manual_navigation_routing import (
     build_manual_navigation_route,
+    select_best_target_waypoint_id,
     select_start_waypoint_id,
 )
 from agribot_navigation.patrol_config import get_default_patrol_waypoints_path, load_patrol_plan
@@ -167,6 +168,38 @@ def test_parse_manual_command_payload_keeps_inspect_waypoint_id_for_plant_naviga
     )
 
     assert command.inspect_waypoint_id == 'farm_01_lane_02_inspect_03'
+
+
+def test_parse_manual_command_payload_keeps_candidate_inspect_waypoint_ids_for_plant_navigation() -> None:
+    command = parse_manual_command_payload(
+        {
+            'command_id': 'cmd-nav-plant-02',
+            'command_type': 'navigate_to_pose',
+            'robot_id': 'AGR-02',
+            'requested_by': 'frontend-operator',
+            'target_pose': {
+                'x': 4.0,
+                'y': 4.0,
+                'yaw': 1.5708,
+                'frame_id': 'map',
+            },
+            'payload': {
+                'plant_id': 'farm01_plant_19',
+                'inspect_waypoint_id': 'farm_01_lane_03_inspect_05',
+                'inspect_waypoint_ids': [
+                    'farm_01_lane_03_inspect_05',
+                    'farm_01_lane_center_inspect_05',
+                ],
+            },
+        }
+    )
+
+    assert command.plant_id == 'farm01_plant_19'
+    assert command.inspect_waypoint_id == 'farm_01_lane_03_inspect_05'
+    assert command.inspect_waypoint_ids == (
+        'farm_01_lane_03_inspect_05',
+        'farm_01_lane_center_inspect_05',
+    )
 
 
 def test_parse_manual_command_payload_defaults_non_navigation_preempt_to_false() -> None:
@@ -573,6 +606,38 @@ def test_build_manual_navigation_route_uses_patrol_lane_sequence_for_plant_inspe
     assert route.waypoint_ids[-1] == 'farm_01_lane_02_inspect_03'
     assert route.poses[-1].x == -4.0
     assert route.poses[-1].y == 2.0
+
+
+def test_select_best_target_waypoint_id_prefers_center_lane_candidate_from_home() -> None:
+    patrol_plan = load_patrol_plan(get_default_patrol_waypoints_path())
+
+    selected_waypoint_id = select_best_target_waypoint_id(
+        patrol_plan,
+        current_pose=SimpleNamespace(x=0.0, y=-8.6, z=0.0, yaw=1.5708),
+        candidate_waypoint_ids=(
+            'farm_01_lane_03_inspect_05',
+            'farm_01_lane_center_inspect_05',
+        ),
+        preferred_waypoint_id='farm_01_lane_03_inspect_05',
+    )
+
+    assert selected_waypoint_id == 'farm_01_lane_center_inspect_05'
+
+
+def test_select_best_target_waypoint_id_prefers_right_lane_candidate_when_robot_is_on_right_side() -> None:
+    patrol_plan = load_patrol_plan(get_default_patrol_waypoints_path())
+
+    selected_waypoint_id = select_best_target_waypoint_id(
+        patrol_plan,
+        current_pose=SimpleNamespace(x=5.6, y=4.2, z=0.0, yaw=3.1415),
+        candidate_waypoint_ids=(
+            'farm_01_lane_03_inspect_05',
+            'farm_01_lane_center_inspect_05',
+        ),
+        preferred_waypoint_id='farm_01_lane_center_inspect_05',
+    )
+
+    assert selected_waypoint_id == 'farm_01_lane_03_inspect_05'
 
 
 def test_select_start_waypoint_id_prefers_target_lane_anchor_when_robot_is_between_beds() -> None:

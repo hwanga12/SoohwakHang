@@ -1,5 +1,5 @@
 import type { RobotTargetPose } from '@/lib/api/agribot'
-import { buildPlantInspectionTargetPose } from '@/lib/robot-map/approach-pose'
+import { resolvePlantObservationSelection } from '@/lib/robot-map/approach-pose'
 import type { SemanticScene } from '@/lib/robot-map/farm-semantic-map'
 
 export type PlantNavigationStepPhase = 'inspection'
@@ -7,10 +7,15 @@ export type PlantNavigationStepPhase = 'inspection'
 export type PlantNavigationStep = {
   phase: PlantNavigationStepPhase
   pose: RobotTargetPose
+  displayPose: RobotTargetPose
 }
 
 export type PlantNavigationPlan = {
   inspectionPose: RobotTargetPose
+  inspectionDisplayPose: RobotTargetPose
+  inspectWaypointId: string | null
+  inspectWaypointIds: string[]
+  inspectWaypointName: string | null
   steps: PlantNavigationStep[]
 }
 
@@ -21,7 +26,7 @@ export function buildPlantInspectionNavigationPlan(
   fallbackPositionLabel: string,
   currentPose: { x: number, y: number } | null,
 ): PlantNavigationPlan | null {
-  const inspectionPose = buildPlantInspectionTargetPose(
+  const observationSelection = resolvePlantObservationSelection(
     plantId,
     preferredScene,
     fallbackScene,
@@ -29,12 +34,20 @@ export function buildPlantInspectionNavigationPlan(
     currentPose,
   )
 
-  if (!inspectionPose) {
+  if (!observationSelection) {
     return null
   }
 
   return {
-    inspectionPose,
-    steps: [{ phase: 'inspection', pose: inspectionPose }],
+    inspectionPose: observationSelection.navigationPose,
+    inspectionDisplayPose: observationSelection.displayPose,
+    inspectWaypointId: observationSelection.inspectWaypointId,
+    inspectWaypointIds: observationSelection.inspectWaypointIds,
+    inspectWaypointName: observationSelection.inspectWaypointName,
+    steps: [{
+      phase: 'inspection',
+      pose: observationSelection.navigationPose,
+      displayPose: observationSelection.displayPose,
+    }],
   }
 }

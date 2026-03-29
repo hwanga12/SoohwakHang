@@ -209,14 +209,44 @@ def _build_route_lookup() -> tuple[list[dict[str, Any]], dict[str, float]]:
     return (routes, routing_config)
 
 
-def _find_observation_context(
+def _sort_observation_candidate(
+    candidate: tuple[int, float, dict[str, Any], dict[str, Any]],
+) -> tuple[float, float, float, str, str]:
+    score, distance, route, waypoint = candidate
+    pose = waypoint["pose"]
+    return (
+        -score,
+        distance,
+        abs(float(pose["x"])),
+        str(route["route_id"]),
+        str(waypoint["waypoint_id"]),
+    )
+
+
+def _dedupe_observation_contexts(
+    candidates: list[tuple[int, float, dict[str, Any], dict[str, Any]]],
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    unique_contexts: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    seen_waypoint_ids: set[str] = set()
+
+    for _, _, route, waypoint in sorted(candidates, key=_sort_observation_candidate):
+        waypoint_id = str(waypoint["waypoint_id"])
+        if waypoint_id in seen_waypoint_ids:
+            continue
+        seen_waypoint_ids.add(waypoint_id)
+        unique_contexts.append((route, waypoint))
+
+    return unique_contexts
+
+
+def _find_observation_contexts(
     *,
     plant_id: str,
     tomato_id: str,
     tomato_pose: dict[str, float],
     routes: list[dict[str, Any]],
     waypoint_lookup: dict[str, dict[str, Any]],
-) -> tuple[dict[str, Any], dict[str, Any]] | None:
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     candidates: list[tuple[int, float, dict[str, Any], dict[str, Any]]] = []
 
     for route in routes:
@@ -239,11 +269,9 @@ def _find_observation_context(
             candidates.append((score, distance, route, waypoint))
 
     if candidates:
-        candidates.sort(key=lambda item: (-item[0], item[1], item[2]["route_id"], item[3]["waypoint_id"]))
-        _, _, route, waypoint = candidates[0]
-        return (route, waypoint)
+        return _dedupe_observation_contexts(candidates)
 
-    route_candidates: list[tuple[float, dict[str, Any], dict[str, Any]]] = []
+    route_candidates: list[tuple[int, float, dict[str, Any], dict[str, Any]]] = []
     for route in routes:
         if tomato_id not in route["observed_tomato_ids"] and plant_id not in route["observed_plant_ids"]:
             continue
@@ -265,12 +293,31 @@ def _find_observation_context(
             float(inspect_waypoint["pose"]["x"]) - tomato_pose["x"],
             float(inspect_waypoint["pose"]["y"]) - tomato_pose["y"],
         )
-        route_candidates.append((distance, route, inspect_waypoint))
+        route_candidates.append((1, distance, route, inspect_waypoint))
 
     if route_candidates:
-        route_candidates.sort(key=lambda item: (item[0], item[1]["route_id"], item[2]["waypoint_id"]))
-        _, route, waypoint = route_candidates[0]
-        return (route, waypoint)
+        return _dedupe_observation_contexts(route_candidates)
+
+    return []
+
+
+def _find_observation_context(
+    *,
+    plant_id: str,
+    tomato_id: str,
+    tomato_pose: dict[str, float],
+    routes: list[dict[str, Any]],
+    waypoint_lookup: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    contexts = _find_observation_contexts(
+        plant_id=plant_id,
+        tomato_id=tomato_id,
+        tomato_pose=tomato_pose,
+        routes=routes,
+        waypoint_lookup=waypoint_lookup,
+    )
+    if contexts:
+        return contexts[0]
 
     return None
 
@@ -364,27 +411,39 @@ def _build_plant_approach_lookup() -> dict[str, dict[str, Any]]:
 
     approach_lookup: dict[str, dict[str, Any]] = {}
     for plant_id, tomato in tomatoes_by_plant.items():
-        context = _find_observation_context(
+        contexts = _find_observation_contexts(
             plant_id=plant_id,
             tomato_id=str(tomato["tomato_id"]),
             tomato_pose=tomato["pose"],
             routes=routes,
             waypoint_lookup=waypoint_lookup,
         )
-        if context is None:
+        if not contexts:
             continue
-        route, inspect_waypoint = context
+        observation_candidates: list[dict[str, Any]] = []
+        for route, inspect_waypoint in contexts:
+            observation_candidates.append(
+                {
+                    "inspect_waypoint_id": inspect_waypoint["waypoint_id"],
+                    "inspect_waypoint_name": inspect_waypoint["display_name"],
+                    "navigation_pose": _build_navigation_pose(inspect_waypoint),
+                    "approach_pose": _compute_approach_pose(
+                        route=route,
+                        inspect_waypoint=inspect_waypoint,
+                        tomato_pose=tomato["pose"],
+                        waypoint_lookup=waypoint_lookup,
+                        routing_config=routing_config,
+                    ),
+                }
+            )
+
+        primary_candidate = observation_candidates[0]
         approach_lookup[plant_id] = {
-            "inspect_waypoint_id": inspect_waypoint["waypoint_id"],
-            "inspect_waypoint_name": inspect_waypoint["display_name"],
-            "navigation_pose": _build_navigation_pose(inspect_waypoint),
-            "approach_pose": _compute_approach_pose(
-                route=route,
-                inspect_waypoint=inspect_waypoint,
-                tomato_pose=tomato["pose"],
-                waypoint_lookup=waypoint_lookup,
-                routing_config=routing_config,
-            ),
+            "inspect_waypoint_id": primary_candidate["inspect_waypoint_id"],
+            "inspect_waypoint_name": primary_candidate["inspect_waypoint_name"],
+            "navigation_pose": primary_candidate["navigation_pose"],
+            "approach_pose": primary_candidate["approach_pose"],
+            "observation_candidates": observation_candidates,
         }
 
     return approach_lookup
@@ -1077,6 +1136,7 @@ def read_layers_payload(map_id: str | None = None) -> dict[str, Any]:
                 "approach_pose": approach_metadata.get("approach_pose"),
                 "inspect_waypoint_id": approach_metadata.get("inspect_waypoint_id"),
                 "inspect_waypoint_name": approach_metadata.get("inspect_waypoint_name"),
+                "observation_candidates": approach_metadata.get("observation_candidates", []),
                 "status": "normal",
             }
         )

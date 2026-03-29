@@ -1,11 +1,36 @@
 import type { RobotTargetPose } from '@/lib/api/agribot'
 import {
   parsePoseLabel,
+  type SemanticAsset,
+  type SemanticObservationCandidate,
+  type SemanticPose,
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
 
+const OBSERVATION_CANDIDATE_MATCH_TOLERANCE_M = 0.15
+
+export type PlantObservationSelection = {
+  targetAsset: SemanticAsset | null
+  inspectWaypointId: string | null
+  inspectWaypointIds: string[]
+  inspectWaypointName: string | null
+  navigationPose: RobotTargetPose
+  displayPose: RobotTargetPose
+  approachPose: RobotTargetPose | null
+}
+
 function clampToSceneBounds(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value))
+}
+
+function toRobotTargetPose(pose: SemanticPose): RobotTargetPose {
+  return {
+    x: pose.x,
+    y: pose.y,
+    z: pose.z,
+    yaw: pose.yaw,
+    frameId: pose.frameId,
+  }
 }
 
 function sortedUniqueValues(values: number[]) {
@@ -78,6 +103,127 @@ function resolveObservationAislePoseX(
   }
 }
 
+function uniqueWaypointIds(candidates: SemanticObservationCandidate[]) {
+  return Array.from(
+    new Set(
+      candidates
+        .map((candidate) => candidate.inspectWaypointId?.trim() ?? '')
+        .filter((waypointId) => waypointId.length > 0),
+    ),
+  )
+}
+
+function candidateNavigationPose(candidate: SemanticObservationCandidate) {
+  return candidate.navigationPose ?? candidate.approachPose ?? null
+}
+
+function candidateDisplayPose(candidate: SemanticObservationCandidate) {
+  return candidate.approachPose ?? candidate.navigationPose
+}
+
+function normalizeObservationCandidates(asset: SemanticAsset | null) {
+  if (!asset) {
+    return []
+  }
+
+  if (asset.observationCandidates && asset.observationCandidates.length > 0) {
+    return asset.observationCandidates.filter((candidate) => candidateNavigationPose(candidate) !== null)
+  }
+
+  if (asset.navigationPose || asset.approachPose) {
+    return [{
+      inspectWaypointId: asset.inspectWaypointId,
+      inspectWaypointName: asset.inspectWaypointName,
+      navigationPose: asset.navigationPose ?? asset.approachPose!,
+      approachPose: asset.approachPose,
+    }]
+  }
+
+  return []
+}
+
+function observationCandidateCost(
+  candidate: SemanticObservationCandidate,
+  options: {
+    plantPosition: { x: number, y: number }
+    currentPose: { x: number, y: number } | null
+  },
+) {
+  const { plantPosition, currentPose } = options
+  const navigationPose = candidateNavigationPose(candidate)
+  const displayPose = candidateDisplayPose(candidate)
+  if (!navigationPose || !displayPose) {
+    return {
+      travelDistance: Number.POSITIVE_INFINITY,
+      centerBias: Number.POSITIVE_INFINITY,
+      cropDistance: Number.POSITIVE_INFINITY,
+      waypointId: '',
+    }
+  }
+
+  const referencePose = currentPose ?? plantPosition
+  const travelDistance = Math.hypot(
+    navigationPose.x - referencePose.x,
+    navigationPose.y - referencePose.y,
+  )
+  const centerBias = Math.abs(navigationPose.x)
+  const cropDistance = Math.hypot(
+    displayPose.x - plantPosition.x,
+    displayPose.y - plantPosition.y,
+  )
+
+  return {
+    travelDistance,
+    centerBias,
+    cropDistance,
+    waypointId: candidate.inspectWaypointId ?? '',
+  }
+}
+
+function selectObservationCandidate(
+  targetAsset: SemanticAsset,
+  candidates: SemanticObservationCandidate[],
+  currentPose: { x: number, y: number } | null,
+) {
+  return [...candidates].sort((leftCandidate, rightCandidate) => {
+    const leftCost = observationCandidateCost(leftCandidate, {
+      plantPosition: targetAsset.position,
+      currentPose,
+    })
+    const rightCost = observationCandidateCost(rightCandidate, {
+      plantPosition: targetAsset.position,
+      currentPose,
+    })
+
+    if (leftCost.travelDistance !== rightCost.travelDistance) {
+      return leftCost.travelDistance - rightCost.travelDistance
+    }
+    if (leftCost.centerBias !== rightCost.centerBias) {
+      return leftCost.centerBias - rightCost.centerBias
+    }
+    if (leftCost.cropDistance !== rightCost.cropDistance) {
+      return leftCost.cropDistance - rightCost.cropDistance
+    }
+
+    return leftCost.waypointId.localeCompare(rightCost.waypointId)
+  })[0] ?? null
+}
+
+function buildFallbackObservationSelection(
+  pose: RobotTargetPose,
+  targetAsset: SemanticAsset | null,
+): PlantObservationSelection {
+  return {
+    targetAsset,
+    inspectWaypointId: targetAsset?.inspectWaypointId ?? null,
+    inspectWaypointIds: targetAsset?.inspectWaypointId ? [targetAsset.inspectWaypointId] : [],
+    inspectWaypointName: targetAsset?.inspectWaypointName ?? null,
+    navigationPose: pose,
+    displayPose: targetAsset?.approachPose ?? pose,
+    approachPose: targetAsset?.approachPose ?? null,
+  }
+}
+
 function buildInspectionPoseFromScene(
   position: { x: number, y: number },
   scene: SemanticScene,
@@ -100,6 +246,93 @@ function buildInspectionPoseFromScene(
   }
 }
 
+export function resolveObservationCandidateDisplayPose(
+  asset: SemanticAsset | null,
+  navigationPose: { x: number, y: number } | null | undefined,
+) {
+  if (!asset || !navigationPose) {
+    return null
+  }
+
+  const matchedCandidate = normalizeObservationCandidates(asset).find((candidate) => {
+    const candidatePose = candidateNavigationPose(candidate)
+    if (!candidatePose) {
+      return false
+    }
+
+    return (
+      Math.abs(candidatePose.x - navigationPose.x) <= OBSERVATION_CANDIDATE_MATCH_TOLERANCE_M
+      && Math.abs(candidatePose.y - navigationPose.y) <= OBSERVATION_CANDIDATE_MATCH_TOLERANCE_M
+    )
+  })
+
+  if (!matchedCandidate) {
+    return null
+  }
+
+  return toRobotTargetPose(candidateDisplayPose(matchedCandidate))
+}
+
+export function resolvePlantObservationSelection(
+  plantId: string,
+  preferredScene: SemanticScene,
+  fallbackScene: SemanticScene,
+  fallbackPositionLabel: string,
+  currentPose: { x: number, y: number } | null,
+): PlantObservationSelection | null {
+  const preferredAsset = preferredScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
+  const fallbackAsset = fallbackScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
+  const targetAsset = preferredAsset ?? fallbackAsset ?? null
+  const candidateSourceAsset =
+    normalizeObservationCandidates(preferredAsset ?? null).length > 0
+      ? preferredAsset
+      : fallbackAsset ?? preferredAsset ?? null
+
+  if (targetAsset && candidateSourceAsset) {
+    const observationCandidates = normalizeObservationCandidates(candidateSourceAsset)
+    const selectedCandidate = selectObservationCandidate(targetAsset, observationCandidates, currentPose)
+    if (selectedCandidate) {
+      const navigationPose = candidateNavigationPose(selectedCandidate)
+      const displayPose = candidateDisplayPose(selectedCandidate)
+      if (navigationPose && displayPose) {
+        return {
+          targetAsset,
+          inspectWaypointId: selectedCandidate.inspectWaypointId ?? null,
+          inspectWaypointIds: uniqueWaypointIds(observationCandidates),
+          inspectWaypointName: selectedCandidate.inspectWaypointName ?? null,
+          navigationPose: toRobotTargetPose(navigationPose),
+          displayPose: toRobotTargetPose(displayPose),
+          approachPose: selectedCandidate.approachPose
+            ? toRobotTargetPose(selectedCandidate.approachPose)
+            : null,
+        }
+      }
+    }
+
+    const fallbackPose =
+      targetAsset.navigationPose
+      ?? targetAsset.approachPose
+      ?? buildInspectionPoseFromScene(targetAsset.position, preferredScene, currentPose)
+      ?? buildInspectionPoseFromScene(targetAsset.position, fallbackScene, currentPose)
+
+    if (fallbackPose) {
+      return buildFallbackObservationSelection(fallbackPose, targetAsset)
+    }
+  }
+
+  const parsedPose = parsePoseLabel(fallbackPositionLabel)
+  if (!parsedPose) {
+    return null
+  }
+
+  const fallbackPose = (
+    buildInspectionPoseFromScene(parsedPose, preferredScene, currentPose)
+    ?? buildInspectionPoseFromScene(parsedPose, fallbackScene, currentPose)
+  )
+
+  return fallbackPose ? buildFallbackObservationSelection(fallbackPose, targetAsset) : null
+}
+
 function buildPlantPoseWithPreference(
   plantId: string,
   preferredScene: SemanticScene,
@@ -108,32 +341,20 @@ function buildPlantPoseWithPreference(
   currentPose: { x: number, y: number } | null,
   posePreference: 'approach-first' | 'navigation-first',
 ): RobotTargetPose | null {
-  const preferredAsset = preferredScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
-  const fallbackAsset = fallbackScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
-  const targetAsset = preferredAsset ?? fallbackAsset
-
-  if (targetAsset) {
-    const prioritizedPose =
-      posePreference === 'navigation-first'
-        ? targetAsset.navigationPose ?? targetAsset.approachPose
-        : targetAsset.approachPose ?? targetAsset.navigationPose
-
-    return (
-      prioritizedPose
-      ?? buildInspectionPoseFromScene(targetAsset.position, preferredScene, currentPose)
-      ?? buildInspectionPoseFromScene(targetAsset.position, fallbackScene, currentPose)
-    )
-  }
-
-  const parsedPose = parsePoseLabel(fallbackPositionLabel)
-  if (!parsedPose) {
+  const observationSelection = resolvePlantObservationSelection(
+    plantId,
+    preferredScene,
+    fallbackScene,
+    fallbackPositionLabel,
+    currentPose,
+  )
+  if (!observationSelection) {
     return null
   }
 
-  return (
-    buildInspectionPoseFromScene(parsedPose, preferredScene, currentPose)
-    ?? buildInspectionPoseFromScene(parsedPose, fallbackScene, currentPose)
-  )
+  return posePreference === 'navigation-first'
+    ? observationSelection.navigationPose
+    : observationSelection.approachPose ?? observationSelection.navigationPose
 }
 
 export function buildPlantTargetPose(

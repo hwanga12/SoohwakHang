@@ -184,6 +184,75 @@ def build_manual_navigation_route(
     )
 
 
+def estimate_navigation_route_cost(
+    plan: PatrolPlan,
+    *,
+    current_pose: Pose2D | None,
+    target_waypoint_id: str,
+) -> float:
+    if target_waypoint_id not in plan.waypoints:
+        return float('inf')
+
+    if current_pose is None:
+        return 0.0
+
+    start_waypoint_id = select_start_waypoint_id(
+        plan,
+        current_pose,
+        target_waypoint_id=target_waypoint_id,
+    )
+    if start_waypoint_id is None:
+        return float('inf')
+
+    waypoint_path = shortest_waypoint_path(plan, start_waypoint_id, target_waypoint_id)
+    if not waypoint_path:
+        return float('inf')
+
+    total_cost = pose_distance_xy(current_pose, plan.waypoints[start_waypoint_id].pose)
+    for left_waypoint_id, right_waypoint_id in zip(waypoint_path, waypoint_path[1:]):
+        total_cost += _edge_distance(plan, left_waypoint_id, right_waypoint_id)
+
+    return total_cost
+
+
+def select_best_target_waypoint_id(
+    plan: PatrolPlan,
+    *,
+    current_pose: Pose2D | None,
+    candidate_waypoint_ids: tuple[str, ...] | list[str],
+    preferred_waypoint_id: str | None = None,
+) -> str | None:
+    normalized_candidates = tuple(
+        dict.fromkeys(
+            waypoint_id.strip()
+            for waypoint_id in candidate_waypoint_ids
+            if waypoint_id.strip() in plan.waypoints
+        )
+    )
+
+    if not normalized_candidates:
+        if preferred_waypoint_id and preferred_waypoint_id in plan.waypoints:
+            return preferred_waypoint_id
+        return None
+
+    if len(normalized_candidates) == 1:
+        return normalized_candidates[0]
+
+    return min(
+        normalized_candidates,
+        key=lambda waypoint_id: (
+            estimate_navigation_route_cost(
+                plan,
+                current_pose=current_pose,
+                target_waypoint_id=waypoint_id,
+            ),
+            0 if preferred_waypoint_id and waypoint_id == preferred_waypoint_id else 1,
+            abs(plan.waypoints[waypoint_id].pose.x),
+            waypoint_id,
+        ),
+    )
+
+
 def shortest_waypoint_path(
     plan: PatrolPlan,
     start_waypoint_id: str,

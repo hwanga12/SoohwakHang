@@ -175,6 +175,26 @@ def _coerce_optional_waypoint_id(
     return normalized or None
 
 
+def _coerce_optional_string_list(
+    payload: dict[str, Any],
+    *,
+    field_name: str,
+) -> list[str]:
+    raw_value = payload.get(field_name)
+    if raw_value is None:
+        return []
+    if not isinstance(raw_value, list):
+        raise RobotCommandValidationError(f"{field_name} 는 문자열 배열이어야 합니다.")
+
+    values: list[str] = []
+    for item in raw_value:
+        normalized = str(item).strip()
+        if normalized:
+            values.append(normalized)
+
+    return values
+
+
 def _validate_target_pose_bounds(
     target_pose: dict[str, Any],
     map_id: str | None = None,
@@ -521,6 +541,15 @@ def publish_robot_command(
         )
         if inspect_waypoint_id:
             command_payload["inspect_waypoint_id"] = inspect_waypoint_id
+        inspect_waypoint_ids = _coerce_optional_string_list(
+            normalized_payload,
+            field_name="inspect_waypoint_ids",
+        )
+        if inspect_waypoint_ids:
+            command_payload["inspect_waypoint_ids"] = inspect_waypoint_ids
+        plant_id = str(normalized_payload.get("plant_id", "")).strip()
+        if plant_id:
+            command_payload["plant_id"] = plant_id
     elif normalized_command_type == "move_to_zone":
         resolved_target_zone_id = str(target_zone_id or "").strip()
         if not resolved_target_zone_id:

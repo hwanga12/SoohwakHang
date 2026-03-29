@@ -1,6 +1,21 @@
 export type SemanticAssetKind = 'plant' | 'sprinkler'
 export type SemanticAssetStatus = 'normal' | 'target' | 'attention' | 'handled'
 
+export type SemanticPose = {
+  x: number
+  y: number
+  z: number
+  yaw: number
+  frameId: string
+}
+
+export type SemanticObservationCandidate = {
+  inspectWaypointId?: string
+  inspectWaypointName?: string
+  navigationPose: SemanticPose
+  approachPose?: SemanticPose
+}
+
 export type SemanticAsset = {
   id: string
   linkedId?: string
@@ -13,22 +28,11 @@ export type SemanticAsset = {
     x: number
     y: number
   }
-  navigationPose?: {
-    x: number
-    y: number
-    z: number
-    yaw: number
-    frameId: string
-  }
-  approachPose?: {
-    x: number
-    y: number
-    z: number
-    yaw: number
-    frameId: string
-  }
+  navigationPose?: SemanticPose
+  approachPose?: SemanticPose
   inspectWaypointId?: string
   inspectWaypointName?: string
+  observationCandidates?: SemanticObservationCandidate[]
   status: SemanticAssetStatus
 }
 

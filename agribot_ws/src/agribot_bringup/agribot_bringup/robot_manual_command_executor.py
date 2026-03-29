@@ -40,6 +40,7 @@ from .control_state import (
 from .manual_navigation_routing import (
     ManualNavigationRoute,
     build_manual_navigation_route,
+    select_best_target_waypoint_id,
 )
 from .runtime_snapshot_service import (
     DEFAULT_FRAME_ID,
@@ -140,7 +141,9 @@ class ManualCommand:
     robot_id: str
     requested_by: str
     target_pose: CommandPose | None
+    plant_id: str | None = None
     inspect_waypoint_id: str | None = None
+    inspect_waypoint_ids: tuple[str, ...] = ()
     home_waypoint_id: str | None = None
     preempt_current_navigation: bool = False
 
@@ -201,6 +204,20 @@ def _extract_optional_bool(payload: dict[str, Any], key: str) -> bool | None:
         if normalized in {'false', '0', 'no', 'n', 'off'}:
             return False
     raise ValueError(f'{key} 는 bool 이어야 합니다.')
+
+
+def _extract_string_list(payload: dict[str, Any], key: str) -> tuple[str, ...]:
+    raw_value = payload.get(key)
+    if raw_value is None:
+        return ()
+    if not isinstance(raw_value, list):
+        raise ValueError(f'{key} 는 문자열 배열이어야 합니다.')
+
+    return tuple(
+        normalized
+        for item in raw_value
+        if (normalized := str(item).strip())
+    )
 
 
 def _coerce_pose(payload: dict[str, Any], default_frame: str) -> CommandPose:
@@ -425,9 +442,17 @@ def parse_manual_command_payload(
         raw_payload,
         'home_waypoint_id',
     )
+    plant_id = _extract_string(payload, 'plant_id') or _extract_string(
+        raw_payload,
+        'plant_id',
+    )
     inspect_waypoint_id = _extract_string(payload, 'inspect_waypoint_id') or _extract_string(
         raw_payload,
         'inspect_waypoint_id',
+    )
+    inspect_waypoint_ids = _extract_string_list(payload, 'inspect_waypoint_ids') or _extract_string_list(
+        raw_payload,
+        'inspect_waypoint_ids',
     )
 
     return ManualCommand(
@@ -436,7 +461,9 @@ def parse_manual_command_payload(
         robot_id=robot_id,
         requested_by=requested_by,
         target_pose=target_pose,
+        plant_id=plant_id or None,
         inspect_waypoint_id=inspect_waypoint_id or None,
+        inspect_waypoint_ids=inspect_waypoint_ids,
         home_waypoint_id=home_waypoint_id or None,
         preempt_current_navigation=preempt_current_navigation,
     )
@@ -1702,6 +1729,43 @@ class RobotManualCommandExecutor(Node):
             )
         )
 
+    def _resolve_navigation_target_pose(
+        self,
+        context: ActiveCommandContext,
+        requested_target_pose: CommandPose,
+    ) -> CommandPose:
+        current_pose = read_runtime_pose_snapshot(
+            self._runtime_dir,
+            expected_frame=self._map_frame,
+        )
+        candidate_waypoint_ids = (
+            context.command.inspect_waypoint_ids
+            or ((context.command.inspect_waypoint_id,) if context.command.inspect_waypoint_id else ())
+        )
+        selected_waypoint_id = select_best_target_waypoint_id(
+            self._plan,
+            current_pose=current_pose,
+            candidate_waypoint_ids=candidate_waypoint_ids,
+            preferred_waypoint_id=context.command.inspect_waypoint_id,
+        )
+        if not selected_waypoint_id:
+            return requested_target_pose
+
+        selected_waypoint = self._plan.waypoints.get(selected_waypoint_id)
+        if selected_waypoint is None:
+            return requested_target_pose
+
+        if context.target_waypoint_id != selected_waypoint_id:
+            self.get_logger().info(
+                '식물 관측 후보 중 현재 위치에서 가장 효율적인 waypoint를 선택했습니다. '
+                f'plant_id={context.command.plant_id or "-"}, '
+                f'selected={selected_waypoint_id}, '
+                f'preferred={context.command.inspect_waypoint_id or "-"}'
+            )
+
+        context.target_waypoint_id = selected_waypoint_id
+        return self._command_pose_from_pose2d(selected_waypoint.pose)
+
     def _start_navigation_command(
         self,
         context: ActiveCommandContext,
@@ -1730,7 +1794,7 @@ class RobotManualCommandExecutor(Node):
         self._start_occupied_recovery_count = 0
         self._simulation_pose_reset_recovery_count = 0
         self._cancel_simulation_pose_reset_retry_timer()
-        context.target_pose = target_pose
+        context.target_pose = self._resolve_navigation_target_pose(context, target_pose)
         context.target_waypoint_id = (
             context.target_waypoint_id
             or context.command.inspect_waypoint_id
@@ -1742,7 +1806,7 @@ class RobotManualCommandExecutor(Node):
             return
         self._dispatch_navigation_goal(
             context,
-            target_pose=target_pose,
+            target_pose=context.target_pose,
             label=label,
             is_retry=False,
         )
