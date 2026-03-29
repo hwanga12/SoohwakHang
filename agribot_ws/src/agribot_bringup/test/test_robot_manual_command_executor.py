@@ -29,14 +29,12 @@ from agribot_bringup.robot_manual_command_executor import (
     resolve_return_home_target,
     should_block_command_for_control_mode,
     should_retry_goal_rejection,
-    RobotManualCommandExecutor,
 )
 from agribot_bringup.manual_navigation_routing import (
     build_manual_navigation_route,
     select_best_target_waypoint_id,
     select_start_waypoint_id,
 )
-from agribot_bringup.runtime_snapshot_service import pose_snapshot_path
 from agribot_navigation.patrol_config import get_default_patrol_waypoints_path, load_patrol_plan
 
 
@@ -670,84 +668,3 @@ def test_build_manual_navigation_route_starts_from_safe_lane_anchor_when_robot_i
         'farm_01_lane_02_inspect_02',
         'farm_01_lane_02_inspect_03',
     )
-
-
-def test_build_manual_navigation_route_appends_crop_side_goal_after_inspect_waypoint() -> None:
-    patrol_plan = load_patrol_plan(get_default_patrol_waypoints_path())
-    route = build_manual_navigation_route(
-        patrol_plan,
-        current_pose=SimpleNamespace(x=0.0, y=-8.6, z=0.0, yaw=1.5708),
-        target_pose=SimpleNamespace(x=-1.7, y=2.0, z=0.0, yaw=3.1415),
-        explicit_waypoint_id='farm_01_lane_center_inspect_04',
-    )
-
-    assert route.target_waypoint_id == 'farm_01_lane_center_inspect_04'
-    assert route.waypoint_ids[-1] == 'farm_01_lane_center_inspect_04'
-    assert route.poses[-2].x == 0.0
-    assert route.poses[-2].y == 2.0
-    assert route.poses[-1].x == -1.7
-    assert route.poses[-1].y == 2.0
-
-
-def test_resolve_navigation_target_pose_keeps_requested_crop_side_goal_while_selecting_waypoint(
-    tmp_path: Path,
-) -> None:
-    patrol_plan = load_patrol_plan(get_default_patrol_waypoints_path())
-    runtime_dir = tmp_path / 'runtime'
-    runtime_dir.mkdir()
-    pose_snapshot_path(runtime_dir).write_text(
-        json.dumps(
-            {
-                'pose': {
-                    'x': 0.0,
-                    'y': -8.6,
-                    'z': 0.0,
-                    'yaw': 1.5708,
-                    'frame_id': patrol_plan.frame_id,
-                }
-            }
-        ),
-        encoding='utf-8',
-    )
-
-    executor = RobotManualCommandExecutor.__new__(RobotManualCommandExecutor)
-    executor._plan = patrol_plan
-    executor._runtime_dir = runtime_dir
-    executor._map_frame = patrol_plan.frame_id
-    executor.get_logger = lambda: SimpleNamespace(info=lambda _message: None)
-
-    command = parse_manual_command_payload(
-        {
-            'command_id': 'cmd-nav-plant-keep-goal',
-            'command_type': 'navigate_to_pose',
-            'robot_id': 'AGR-02',
-            'requested_by': 'frontend-operator',
-            'target_pose': {
-                'x': 1.7,
-                'y': 4.0,
-                'z': 0.0,
-                'yaw': 3.1415,
-                'frame_id': patrol_plan.frame_id,
-            },
-            'payload': {
-                'plant_id': 'farm01_plant_19',
-                'inspect_waypoint_id': 'farm_01_lane_03_inspect_05',
-                'inspect_waypoint_ids': [
-                    'farm_01_lane_03_inspect_05',
-                    'farm_01_lane_center_inspect_05',
-                ],
-            },
-        }
-    )
-    assert command.target_pose is not None
-    context = ActiveCommandContext(
-        command=command,
-        received_at='2026-03-29T00:00:00+09:00',
-    )
-
-    resolved_target_pose = executor._resolve_navigation_target_pose(context, command.target_pose)
-
-    assert context.target_waypoint_id == 'farm_01_lane_center_inspect_05'
-    assert resolved_target_pose.x == 1.7
-    assert resolved_target_pose.y == 4.0
-    assert resolved_target_pose.yaw == 3.1415

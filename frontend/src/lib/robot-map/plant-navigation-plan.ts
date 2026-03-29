@@ -39,16 +39,14 @@ export function buildPlantInspectionNavigationPlan(
   }
 
   return {
-    // 식물 클릭 이동은 안전한 inspect waypoint를 기준으로 경로를 고르되,
-    // 실제 최종 정지는 작물 쪽 관측 pose 로 마무리한다.
-    inspectionPose: observationSelection.goalPose,
+    inspectionPose: observationSelection.navigationPose,
     inspectionDisplayPose: observationSelection.displayPose,
     inspectWaypointId: observationSelection.inspectWaypointId,
     inspectWaypointIds: observationSelection.inspectWaypointIds,
     inspectWaypointName: observationSelection.inspectWaypointName,
     steps: [{
       phase: 'inspection',
-      pose: observationSelection.goalPose,
+      pose: observationSelection.navigationPose,
       displayPose: observationSelection.displayPose,
     }],
   }
