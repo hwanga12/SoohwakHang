@@ -72,6 +72,8 @@ const robotControlActions = [
   { id: 'home', title: '귀가', icon: 'route', nextState: '귀가중' },
 ] as const
 
+const LIVE_CAMERA_POLL_INTERVAL_MS = 2_500
+
 const DEMO_DIAGNOSIS_PLANT_ID = 'farm01_plant_18'
 
 type ActionRecordTone = 'accent' | 'danger' | 'healthy' | 'warning'
@@ -1448,7 +1450,7 @@ export function FarmCommandPage() {
     queryKey: ['robot', 'live-camera', 'latest'],
     queryFn: async () => getLiveCameraSnapshot(),
     enabled: isAssetModalOpen && Boolean(selectedPlantDetail?.id ?? selectedPlantId),
-    refetchInterval: isAssetModalOpen ? 1_500 : false,
+    refetchInterval: isAssetModalOpen ? LIVE_CAMERA_POLL_INTERVAL_MS : false,
   })
   const selectedPlantLiveCamera = selectedPlantLiveCameraQuery.data ?? emptyLiveCameraSnapshot
 
