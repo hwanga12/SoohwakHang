@@ -56,6 +56,7 @@ def _build_node_for_recovery(
     inspect_pose: Pose2D,
     inspect_waypoint_fallback_enabled: bool = True,
     demo_recovery_enabled: bool = True,
+    navigation_target_mode: str = 'approach_pose',
 ):
     node = object.__new__(HarvestRouteNode)
     warnings: list[str] = []
@@ -63,9 +64,12 @@ def _build_node_for_recovery(
     node._plan = SimpleNamespace(waypoints={'farm_01_lane_01_inspect_01': _build_waypoint(pose=inspect_pose)})
     node._harvest_inspect_waypoint_fallback_enabled = inspect_waypoint_fallback_enabled
     node._harvest_demo_recovery_enabled = demo_recovery_enabled
+    node._harvest_navigation_target_mode = navigation_target_mode
+    node._harvest_goal_soft_tolerance_m = 0.4
     node._using_inspect_waypoint_approach = False
     node._using_demo_harvest_recovery = False
-    node.get_logger = lambda: SimpleNamespace(warning=warnings.append)
+    node._latest_robot_pose = None
+    node.get_logger = lambda: SimpleNamespace(warning=warnings.append, info=warnings.append)
     return node, warnings
 
 
@@ -197,3 +201,41 @@ def test_handle_goal_response_uses_fallback_return_waypoint_when_return_goal_is_
     assert fallback_calls == [True]
     assert errors == []
     assert warnings
+
+
+def test_start_approach_navigation_uses_safe_inspect_waypoint_target_in_default_mode() -> None:
+    inspect_pose = Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708)
+    node, _ = _build_node_for_recovery(
+        approach_pose=Pose2D(x=-6.75, y=-6.0, z=0.0, yaw=0.0),
+        inspect_pose=inspect_pose,
+        navigation_target_mode='inspect_waypoint',
+    )
+    started: list[tuple[Pose2D, str, str]] = []
+    node._start_navigation = lambda pose, *, phase, message: started.append((pose, phase, message))
+
+    HarvestRouteNode._start_approach_navigation(node)
+
+    assert len(started) == 1
+    pose, phase, message = started[0]
+    assert pose == inspect_pose
+    assert phase == 'approaching'
+    assert 'safe harvest observation waypoint' in message
+
+
+def test_start_return_navigation_finishes_immediately_when_robot_is_already_near_target() -> None:
+    inspect_pose = Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708)
+    node, _ = _build_node_for_recovery(
+        approach_pose=Pose2D(x=-6.75, y=-6.0, z=0.0, yaw=0.0),
+        inspect_pose=inspect_pose,
+        navigation_target_mode='inspect_waypoint',
+    )
+    node._latest_robot_pose = Pose2D(x=-8.05, y=-6.02, z=0.0, yaw=1.5708)
+    node._start_navigation = lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError('return navigation should be skipped when already near the target')
+    )
+    finished = {'called': False}
+    node._finish_sequence_after_return = lambda: finished.__setitem__('called', True)
+
+    HarvestRouteNode._start_return_navigation(node, use_fallback=False)
+
+    assert finished['called'] is True

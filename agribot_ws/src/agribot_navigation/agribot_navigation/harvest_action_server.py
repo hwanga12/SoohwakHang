@@ -67,6 +67,7 @@ from .harvest_simulation import (
     build_gz_pose_request,
     compute_basket_pose,
     compute_carry_pose,
+    compute_grasp_pose,
 )
 from .nav_goal_utils import build_latest_pose_stamped
 from .patrol_config import Pose2D, PatrolPlan, get_default_patrol_waypoints_path, load_patrol_plan
@@ -125,12 +126,20 @@ class HarvestActionServerNode(Node):
         self.declare_parameter('harvest_arm_ready_position', 0.0)
         self.declare_parameter('harvest_arm_reach_position', 0.48)
         self.declare_parameter('harvest_arm_lift_position', -0.35)
+        self.declare_parameter('harvest_grasp_sec', 0.18)
+        self.declare_parameter('harvest_grasp_forward_m', 0.31)
+        self.declare_parameter('harvest_grasp_lateral_m', 0.0)
+        self.declare_parameter('harvest_grasp_z_m', 0.54)
         self.declare_parameter('harvest_carry_forward_m', 0.24)
         self.declare_parameter('harvest_carry_lateral_m', 0.0)
         self.declare_parameter('harvest_carry_z_m', 0.46)
         self.declare_parameter('harvest_basket_forward_m', -0.14)
         self.declare_parameter('harvest_basket_lateral_m', 0.0)
         self.declare_parameter('harvest_basket_z_m', 0.42)
+        self.declare_parameter('harvest_visual_basket_slot_count', 2)
+        self.declare_parameter('harvest_basket_slot_lateral_spacing_m', 0.05)
+        self.declare_parameter('harvest_basket_slot_forward_spacing_m', 0.0)
+        self.declare_parameter('harvest_basket_overflow_stack_z_m', 0.035)
 
         self._plan = self._load_patrol_plan()
         self._catalog = self._load_crop_catalog()
@@ -195,13 +204,30 @@ class HarvestActionServerNode(Node):
         self._harvest_arm_lift_position = float(
             self.get_parameter('harvest_arm_lift_position').value
         )
+        self._harvest_grasp_sec = max(
+            0.0,
+            float(self.get_parameter('harvest_grasp_sec').value),
+        )
         self._animation_config = HarvestAnimationConfig(
+            grasp_forward_m=float(self.get_parameter('harvest_grasp_forward_m').value),
+            grasp_lateral_m=float(self.get_parameter('harvest_grasp_lateral_m').value),
+            grasp_z_m=float(self.get_parameter('harvest_grasp_z_m').value),
             carry_forward_m=float(self.get_parameter('harvest_carry_forward_m').value),
             carry_lateral_m=float(self.get_parameter('harvest_carry_lateral_m').value),
             carry_z_m=float(self.get_parameter('harvest_carry_z_m').value),
             basket_forward_m=float(self.get_parameter('harvest_basket_forward_m').value),
             basket_lateral_m=float(self.get_parameter('harvest_basket_lateral_m').value),
             basket_z_m=float(self.get_parameter('harvest_basket_z_m').value),
+            basket_slot_count=int(self.get_parameter('harvest_visual_basket_slot_count').value),
+            basket_slot_lateral_spacing_m=float(
+                self.get_parameter('harvest_basket_slot_lateral_spacing_m').value
+            ),
+            basket_slot_forward_spacing_m=float(
+                self.get_parameter('harvest_basket_slot_forward_spacing_m').value
+            ),
+            basket_overflow_stack_z_m=float(
+                self.get_parameter('harvest_basket_overflow_stack_z_m').value
+            ),
         )
 
         self._navigate_client = ActionClient(
@@ -417,6 +443,7 @@ class HarvestActionServerNode(Node):
                 preferred_return_waypoint_id=self._preferred_return_waypoint_id(
                     resolved_goal.preferred_approach_waypoint_id
                 ),
+                current_pose=self._latest_robot_pose,
             )
             resume_patrol_after_return = (
                 route_plan.return_mode == 'resume_patrol' and self._auto_resume_patrol
@@ -449,7 +476,7 @@ class HarvestActionServerNode(Node):
                 ),
                 operation=lambda: self._run_navigation_phase(
                     goal_handle,
-                    route_plan.approach_pose,
+                    self._approach_navigation_pose(route_plan),
                     current_phase='APPROACHING',
                     aligned_to_target=False,
                     gripper_engaged=False,
@@ -807,6 +834,12 @@ class HarvestActionServerNode(Node):
             )
             return fallback_waypoint_id
 
+    def _approach_navigation_pose(self, route_plan: HarvestRoutePlan) -> Pose2D:
+        waypoint = self._plan.waypoints.get(route_plan.inspect_waypoint_id)
+        if waypoint is not None:
+            return waypoint.pose
+        return route_plan.approach_pose
+
     def _resume_patrol_after_return(self, goal_handle, *, return_waypoint_id: str) -> None:
         self._publish_feedback(
             goal_handle,
@@ -1008,6 +1041,29 @@ class HarvestActionServerNode(Node):
         )
 
         reference_pose = self._resolve_animation_reference_pose(route_plan)
+        if reference_pose is not None:
+            grasp_pose = compute_grasp_pose(reference_pose, self._animation_config)
+            self._set_gazebo_entity_pose(tomato.world_model_name, grasp_pose)
+
+        self._publish_feedback(
+            goal_handle,
+            current_phase='PICKING',
+            aligned_to_target=True,
+            gripper_engaged=True,
+            progress_pct=72.0,
+            target_id=tomato_id,
+            detail_message=f'{tomato_id}를 그리퍼 가까이에 고정했습니다.',
+        )
+        self._wait_phase(
+            goal_handle,
+            duration_sec=self._harvest_grasp_sec,
+            current_phase='PICKING',
+            aligned_to_target=True,
+            gripper_engaged=True,
+            target_id=tomato_id,
+            detail_message=f'{tomato_id}를 그리퍼 가까이 붙인 상태를 유지합니다.',
+        )
+
         if reference_pose is not None:
             carry_pose = compute_carry_pose(reference_pose, self._animation_config)
             self._set_gazebo_entity_pose(tomato.world_model_name, carry_pose)

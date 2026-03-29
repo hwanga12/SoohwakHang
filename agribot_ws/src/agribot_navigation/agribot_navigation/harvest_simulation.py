@@ -17,12 +17,19 @@ class WorldPose:
 
 @dataclass(frozen=True)
 class HarvestAnimationConfig:
+    grasp_forward_m: float = 0.31
+    grasp_lateral_m: float = 0.0
+    grasp_z_m: float = 0.54
     carry_forward_m: float = 0.24
     carry_lateral_m: float = 0.0
     carry_z_m: float = 0.46
     basket_forward_m: float = -0.14
     basket_lateral_m: float = 0.0
     basket_z_m: float = 0.42
+    basket_slot_count: int = 2
+    basket_slot_lateral_spacing_m: float = 0.05
+    basket_slot_forward_spacing_m: float = 0.0
+    basket_overflow_stack_z_m: float = 0.035
 
 
 def compute_relative_world_pose(
@@ -38,6 +45,18 @@ def compute_relative_world_pose(
         x=robot_pose.x + (forward_offset_m * cos_yaw) - (lateral_offset_m * sin_yaw),
         y=robot_pose.y + (forward_offset_m * sin_yaw) + (lateral_offset_m * cos_yaw),
         z=z_m,
+    )
+
+
+def compute_grasp_pose(
+    robot_pose: Pose2D,
+    config: HarvestAnimationConfig,
+) -> WorldPose:
+    return compute_relative_world_pose(
+        robot_pose,
+        forward_offset_m=config.grasp_forward_m,
+        lateral_offset_m=config.grasp_lateral_m,
+        z_m=config.grasp_z_m,
     )
 
 
@@ -59,13 +78,17 @@ def compute_basket_pose(
     *,
     basket_slot_index: int = 0,
 ) -> WorldPose:
-    lateral_slot = ((basket_slot_index % 3) - 1) * 0.045
-    forward_slot = (basket_slot_index // 3) * -0.03
+    slot_count = max(1, int(config.basket_slot_count))
+    visual_slot_index = min(max(0, basket_slot_index), slot_count - 1)
+    centered_slot_index = visual_slot_index - ((slot_count - 1) / 2.0)
+    lateral_slot = centered_slot_index * config.basket_slot_lateral_spacing_m
+    forward_slot = visual_slot_index * -config.basket_slot_forward_spacing_m
+    overflow_level = max(0, basket_slot_index - (slot_count - 1))
     return compute_relative_world_pose(
         robot_pose,
         forward_offset_m=config.basket_forward_m + forward_slot,
         lateral_offset_m=config.basket_lateral_m + lateral_slot,
-        z_m=config.basket_z_m,
+        z_m=config.basket_z_m + (overflow_level * config.basket_overflow_stack_z_m),
     )
 
 

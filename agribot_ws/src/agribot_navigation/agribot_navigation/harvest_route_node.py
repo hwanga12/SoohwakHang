@@ -41,6 +41,7 @@ from .harvest_simulation import (
     build_gz_pose_request,
     compute_basket_pose,
     compute_carry_pose,
+    compute_grasp_pose,
 )
 from .harvest_runtime_store import (
     harvest_action_status_path,
@@ -118,16 +119,26 @@ class HarvestRouteNode(Node):
         self.declare_parameter('harvest_arm_reach_position', 0.48)
         self.declare_parameter('harvest_arm_lift_position', -0.35)
         self.declare_parameter('harvest_reach_sec', 0.55)
+        self.declare_parameter('harvest_grasp_sec', 0.18)
         self.declare_parameter('harvest_lift_sec', 0.55)
         self.declare_parameter('harvest_stow_sec', 0.65)
+        self.declare_parameter('harvest_grasp_forward_m', 0.31)
+        self.declare_parameter('harvest_grasp_lateral_m', 0.0)
+        self.declare_parameter('harvest_grasp_z_m', 0.54)
         self.declare_parameter('harvest_carry_forward_m', 0.24)
         self.declare_parameter('harvest_carry_lateral_m', 0.0)
         self.declare_parameter('harvest_carry_z_m', 0.46)
         self.declare_parameter('harvest_basket_forward_m', -0.14)
         self.declare_parameter('harvest_basket_lateral_m', 0.0)
         self.declare_parameter('harvest_basket_z_m', 0.42)
+        self.declare_parameter('harvest_visual_basket_slot_count', 2)
+        self.declare_parameter('harvest_basket_slot_lateral_spacing_m', 0.05)
+        self.declare_parameter('harvest_basket_slot_forward_spacing_m', 0.0)
+        self.declare_parameter('harvest_basket_overflow_stack_z_m', 0.035)
         self.declare_parameter('harvest_inspect_waypoint_fallback_enabled', True)
         self.declare_parameter('harvest_demo_recovery_enabled', True)
+        self.declare_parameter('harvest_navigation_target_mode', 'inspect_waypoint')
+        self.declare_parameter('harvest_goal_soft_tolerance_m', 0.4)
 
         self._plan = self._load_patrol_plan()
         self._catalog = self._load_crop_catalog()
@@ -159,6 +170,7 @@ class HarvestRouteNode(Node):
             self.get_parameter('harvest_arm_lift_position').value
         )
         self._harvest_reach_sec = max(0.0, float(self.get_parameter('harvest_reach_sec').value))
+        self._harvest_grasp_sec = max(0.0, float(self.get_parameter('harvest_grasp_sec').value))
         self._harvest_lift_sec = max(0.0, float(self.get_parameter('harvest_lift_sec').value))
         self._harvest_stow_sec = max(0.0, float(self.get_parameter('harvest_stow_sec').value))
         self._harvest_inspect_waypoint_fallback_enabled = bool(
@@ -167,13 +179,33 @@ class HarvestRouteNode(Node):
         self._harvest_demo_recovery_enabled = bool(
             self.get_parameter('harvest_demo_recovery_enabled').value
         )
+        self._harvest_navigation_target_mode = str(
+            self.get_parameter('harvest_navigation_target_mode').value
+        ).strip() or 'inspect_waypoint'
+        self._harvest_goal_soft_tolerance_m = max(
+            0.05,
+            float(self.get_parameter('harvest_goal_soft_tolerance_m').value),
+        )
         self._animation_config = HarvestAnimationConfig(
+            grasp_forward_m=float(self.get_parameter('harvest_grasp_forward_m').value),
+            grasp_lateral_m=float(self.get_parameter('harvest_grasp_lateral_m').value),
+            grasp_z_m=float(self.get_parameter('harvest_grasp_z_m').value),
             carry_forward_m=float(self.get_parameter('harvest_carry_forward_m').value),
             carry_lateral_m=float(self.get_parameter('harvest_carry_lateral_m').value),
             carry_z_m=float(self.get_parameter('harvest_carry_z_m').value),
             basket_forward_m=float(self.get_parameter('harvest_basket_forward_m').value),
             basket_lateral_m=float(self.get_parameter('harvest_basket_lateral_m').value),
             basket_z_m=float(self.get_parameter('harvest_basket_z_m').value),
+            basket_slot_count=int(self.get_parameter('harvest_visual_basket_slot_count').value),
+            basket_slot_lateral_spacing_m=float(
+                self.get_parameter('harvest_basket_slot_lateral_spacing_m').value
+            ),
+            basket_slot_forward_spacing_m=float(
+                self.get_parameter('harvest_basket_slot_forward_spacing_m').value
+            ),
+            basket_overflow_stack_z_m=float(
+                self.get_parameter('harvest_basket_overflow_stack_z_m').value
+            ),
         )
 
         crop_status_topic = str(self.get_parameter('crop_status_topic').value)
@@ -347,6 +379,7 @@ class HarvestRouteNode(Node):
                 tomato_id,
                 return_mode=return_mode,
                 preferred_return_waypoint_id=preferred_return_waypoint_id,
+                current_pose=self._latest_robot_pose,
             )
         except ValueError as exc:
             self._set_error(f'Failed to plan harvest route for {tomato_id}: {exc}')
@@ -442,23 +475,29 @@ class HarvestRouteNode(Node):
             self._set_error('Cannot start approach navigation without an active harvest plan.')
             return
 
-        pose = self._active_plan.approach_pose
+        pose = self._approach_navigation_pose()
         message = (
             f'Approaching {self._active_plan.tomato_id} from '
             f'{self._active_plan.inspect_waypoint_name}.'
         )
+        if self._should_use_inspect_waypoint_navigation():
+            message = (
+                f'Navigating to the safe harvest observation waypoint for '
+                f'{self._active_plan.tomato_id} via '
+                f'{self._active_plan.inspect_waypoint_name}.'
+            )
         if self._using_inspect_waypoint_approach:
-            inspect_pose = self._inspect_waypoint_pose()
-            if inspect_pose is None:
-                self._set_error(
-                    'Cannot retry approach via inspect waypoint because the waypoint metadata is missing.'
-                )
-                return
-            pose = inspect_pose
             message = (
                 f'Approach pose was blocked, retrying {self._active_plan.tomato_id} via '
                 f'{self._active_plan.inspect_waypoint_name}.'
             )
+        if self._latest_pose_is_near(pose):
+            self.get_logger().info(
+                f'Already near the harvest navigation target for {self._active_plan.tomato_id}; '
+                'starting the harvest sequence without an extra navigation goal.'
+            )
+            self._start_harvest_dwell()
+            return
 
         self._start_navigation(
             pose,
@@ -492,9 +531,18 @@ class HarvestRouteNode(Node):
         )
         self._used_return_fallback = use_fallback
         self._current_return_waypoint_id = waypoint_id
+        target_pose = self._plan.waypoints[waypoint_id].pose
+        if self._latest_pose_is_near(target_pose):
+            fallback_note = ' using fallback return target' if use_fallback else ''
+            self.get_logger().info(
+                f'Return target {waypoint_id}{fallback_note} is already within the safe tolerance; '
+                'finishing the harvest sequence without another navigation goal.'
+            )
+            self._finish_sequence_after_return()
+            return
         fallback_note = ' using fallback return target' if use_fallback else ''
         self._start_navigation(
-            self._plan.waypoints[waypoint_id].pose,
+            target_pose,
             phase='returning',
             message=(
                 f'Returning from harvest toward {waypoint_id}{fallback_note}.'
@@ -602,6 +650,29 @@ class HarvestRouteNode(Node):
             self._set_error(f'The {phase} goal was canceled before completion.')
             return
 
+        if self._navigation_phase_is_effectively_complete(phase):
+            if phase == 'approaching':
+                self.get_logger().warning(
+                    f'{phase} navigation reported failure, but the robot is already near the safe '
+                    f'observation target for {self._active_plan.tomato_id}; continuing with harvest.'
+                )
+                self._start_harvest_dwell()
+                return
+            if phase == 'aligning':
+                self.get_logger().warning(
+                    f'{phase} navigation reported failure, but the robot is already near the alignment '
+                    f'target for {self._active_plan.tomato_id}; continuing with settle.'
+                )
+                self._start_alignment_settle()
+                return
+            if phase == 'returning':
+                self.get_logger().warning(
+                    f'{phase} navigation reported failure, but the robot is already near '
+                    f'{self._current_return_waypoint_id}; completing the return stage.'
+                )
+                self._finish_sequence_after_return()
+                return
+
         error_msg = nav_result.error_msg if nav_result.error_msg else f'{phase} navigation failed.'
         if nav_result.error_code != NavigateToPose.Result.NONE:
             error_msg = f'{error_msg} (error_code={nav_result.error_code})'
@@ -636,6 +707,7 @@ class HarvestRouteNode(Node):
         inspect_pose = self._inspect_waypoint_pose()
         if (
             self._harvest_inspect_waypoint_fallback_enabled
+            and not self._should_use_inspect_waypoint_navigation()
             and not self._using_inspect_waypoint_approach
             and inspect_pose is not None
             and not _poses_are_effectively_same(self._active_plan.approach_pose, inspect_pose)
@@ -675,7 +747,11 @@ class HarvestRouteNode(Node):
         if self._active_plan is None:
             return False
 
-        if self._using_inspect_waypoint_approach or self._using_demo_harvest_recovery:
+        if (
+            self._should_use_inspect_waypoint_navigation()
+            or self._using_inspect_waypoint_approach
+            or self._using_demo_harvest_recovery
+        ):
             return False
 
         distance = math.hypot(
@@ -753,9 +829,9 @@ class HarvestRouteNode(Node):
         if self._harvest_animation_enabled:
             self._publish_arm_position(self._harvest_arm_reach_position)
             if self._harvest_reach_sec <= 0.0:
-                self._continue_harvest_to_carry()
+                self._continue_harvest_to_grasp()
                 return
-            self._schedule_harvest_timer(self._harvest_reach_sec, self._continue_harvest_to_carry)
+            self._schedule_harvest_timer(self._harvest_reach_sec, self._continue_harvest_to_grasp)
             return
 
         if self._harvest_dwell_sec <= 0.0:
@@ -763,6 +839,36 @@ class HarvestRouteNode(Node):
             return
 
         self._schedule_harvest_timer(self._harvest_dwell_sec, self._finish_harvest_dwell)
+
+    def _continue_harvest_to_grasp(self) -> None:
+        self._cancel_harvest_timer()
+        if self._active_plan is None:
+            return
+        tomato = self._catalog.tomatoes.get(self._active_plan.tomato_id)
+        if tomato is None:
+            self.get_logger().warning(
+                f'No tomato metadata found for animation target {self._active_plan.tomato_id}.'
+            )
+            self._finish_harvest_dwell()
+            return
+
+        reference_pose = self._resolve_animation_reference_pose()
+        if reference_pose is not None:
+            grasp_pose = compute_grasp_pose(reference_pose, self._animation_config)
+            self._set_gazebo_entity_pose(tomato.world_model_name, grasp_pose)
+
+        self._set_state(
+            'harvesting',
+            f'{self._active_plan.tomato_id}를 그리퍼 가까이 고정했습니다.',
+        )
+        self._publish_execution_status(
+            current_phase='PICKING',
+            detail_message=self._sequence_message,
+        )
+        if self._harvest_grasp_sec <= 0.0:
+            self._continue_harvest_to_carry()
+            return
+        self._schedule_harvest_timer(self._harvest_grasp_sec, self._continue_harvest_to_carry)
 
     def _continue_harvest_to_carry(self) -> None:
         self._cancel_harvest_timer()
@@ -903,7 +1009,50 @@ class HarvestRouteNode(Node):
             return None
         if self._alignment_required():
             return self._active_plan.align_pose
+        return self._approach_navigation_pose()
+
+    def _should_use_inspect_waypoint_navigation(self) -> bool:
+        return self._harvest_navigation_target_mode == 'inspect_waypoint'
+
+    def _approach_navigation_pose(self) -> Pose2D:
+        if self._active_plan is None:
+            raise RuntimeError('Active harvest plan is required to resolve the approach pose.')
+
+        inspect_pose = self._inspect_waypoint_pose()
+        if (
+            inspect_pose is not None
+            and (
+                self._should_use_inspect_waypoint_navigation()
+                or self._using_inspect_waypoint_approach
+            )
+        ):
+            return inspect_pose
         return self._active_plan.approach_pose
+
+    def _latest_pose_is_near(self, target_pose: Pose2D) -> bool:
+        if self._latest_robot_pose is None:
+            return False
+        return (
+            math.hypot(
+                self._latest_robot_pose.x - target_pose.x,
+                self._latest_robot_pose.y - target_pose.y,
+            )
+            <= self._harvest_goal_soft_tolerance_m
+        )
+
+    def _navigation_phase_is_effectively_complete(self, phase: str) -> bool:
+        if self._active_plan is None:
+            return False
+        if phase == 'approaching':
+            return self._latest_pose_is_near(self._approach_navigation_pose())
+        if phase == 'aligning':
+            return self._latest_pose_is_near(self._active_plan.align_pose)
+        if phase == 'returning' and self._current_return_waypoint_id:
+            waypoint = self._plan.waypoints.get(self._current_return_waypoint_id)
+            if waypoint is None:
+                return False
+            return self._latest_pose_is_near(waypoint.pose)
+        return False
 
     def _publish_arm_position(self, position: float) -> None:
         self._arm_command_pub.publish(Float64(data=float(position)))

@@ -38,6 +38,23 @@ def test_resolve_animation_reference_pose_prefers_latest_robot_pose() -> None:
     assert resolved == node._latest_robot_pose
 
 
+def test_approach_navigation_pose_prefers_inspect_waypoint_pose() -> None:
+    node = object.__new__(HarvestActionServerNode)
+    inspect_pose = Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708)
+    node._plan = SimpleNamespace(
+        waypoints={
+            'farm_01_lane_01_inspect_01': SimpleNamespace(pose=inspect_pose),
+        }
+    )
+
+    resolved = HarvestActionServerNode._approach_navigation_pose(
+        node,
+        _build_route_plan(),
+    )
+
+    assert resolved == inspect_pose
+
+
 def test_reset_visual_harvest_state_restores_arm_and_tomato_pose() -> None:
     node = object.__new__(HarvestActionServerNode)
     published_positions: list[float] = []

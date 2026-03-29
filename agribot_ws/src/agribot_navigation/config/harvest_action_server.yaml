@@ -32,9 +32,17 @@ harvest_action_server:
     harvest_arm_ready_position: 0.0
     harvest_arm_reach_position: 0.48
     harvest_arm_lift_position: -0.35
+    harvest_grasp_sec: 0.18
+    harvest_grasp_forward_m: 0.31
+    harvest_grasp_lateral_m: 0.0
+    harvest_grasp_z_m: 0.54
     harvest_carry_forward_m: 0.24
     harvest_carry_lateral_m: 0.0
     harvest_carry_z_m: 0.46
     harvest_basket_forward_m: -0.14
     harvest_basket_lateral_m: 0.0
     harvest_basket_z_m: 0.42
+    harvest_visual_basket_slot_count: 2
+    harvest_basket_slot_lateral_spacing_m: 0.05
+    harvest_basket_slot_forward_spacing_m: 0.0
+    harvest_basket_overflow_stack_z_m: 0.035
