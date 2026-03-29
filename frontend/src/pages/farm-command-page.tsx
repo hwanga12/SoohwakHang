@@ -58,6 +58,7 @@ import {
 import {
   buildPlantInspectionNavigationPlan,
 } from '@/lib/robot-map/plant-navigation-plan'
+import { buildNavigationPreviewPath } from '@/lib/robot-map/navigation-preview'
 
 const robotControlActions = [
   { id: 'pause', title: '일시정지', icon: 'pause_circle', nextState: '일시정지' },
@@ -811,7 +812,7 @@ function buildDiagnoseUiState(
           title: '관측 위치 도착 완료',
           detail:
             latestCommandStatus.message
-            || '선택한 식물을 볼 수 있는 통로 관측 위치까지 이동을 완료했습니다.',
+            || '목표 지점에 도착했습니다. 선택한 식물을 볼 수 있는 통로 관측 위치까지 이동을 완료했습니다.',
           badgeLabel: 'succeeded',
           badgeTone: 'table-tag--healthy',
           buttonLabel: '다시 진단하기',
@@ -1624,6 +1625,24 @@ export function FarmCommandPage() {
         : null,
     )
   }, [liveScene, mapScene, robotPose, selectedPlantDetail])
+  const diagnoseCommandActive =
+    latestCommandStatus.status === 'pending' || latestCommandStatus.status === 'running'
+  const mapPreviewPath = useMemo(() => {
+    if (activeDiagnoseCommand !== null) {
+      return buildNavigationPreviewPath(
+        robotPose,
+        activeDiagnoseCommand.routeSteps
+          .slice(activeDiagnoseCommand.currentStepIndex)
+          .map((step) => step.pose),
+      )
+    }
+
+    if (selectedPlantTargetPose) {
+      return buildNavigationPreviewPath(robotPose, [selectedPlantTargetPose])
+    }
+
+    return []
+  }, [activeDiagnoseCommand, robotPose, selectedPlantTargetPose])
   const diagnoseUiState = buildDiagnoseUiState(
     latestCommandStatus,
     activeDiagnoseCommand,
@@ -2002,7 +2021,7 @@ export function FarmCommandPage() {
 
       setUiMessage(
         latestCommandStatus.message
-        || `${activeDiagnoseCommand.plantName} 통로 관측 위치까지 이동을 완료했습니다.`,
+        || `${activeDiagnoseCommand.plantName} 목표 지점에 도착했습니다. 통로 관측 위치까지 이동을 완료했습니다.`,
       )
       return
     }
@@ -2206,14 +2225,17 @@ export function FarmCommandPage() {
 
         <div className="map-board farm-map-board">
           <RobotFacilityMap
+            activeCommandTarget={diagnoseCommandActive ? latestCommandStatus.targetPose : null}
+            activeCommandTargetLabel="실행 중 목표"
             onSelectAsset={handleSelectAsset}
             onSelectGuide={handleGuideMove}
+            pendingTarget={activeDiagnoseCommand?.currentTargetPose ?? selectedPlantTargetPose}
+            pendingTargetLabel="선택한 관측 후보"
             pose={robotPose}
+            previewPath={mapPreviewPath}
             scene={mapScene}
             selectedAssetId={selectedAssetId}
             targetAssetId={targetAssetId}
-            activeCommandTarget={latestCommandStatus.status === 'running' ? latestCommandStatus.targetPose : null}
-            pendingTarget={activeDiagnoseCommand?.currentTargetPose ?? selectedPlantTargetPose}
             zoom={1}
           />
         </div>

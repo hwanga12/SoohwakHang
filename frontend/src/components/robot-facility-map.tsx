@@ -19,6 +19,7 @@ import {
   type SemanticAsset,
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
+import { type NavigationPreviewPoint } from '@/lib/robot-map/navigation-preview'
 
 type RobotFacilityMapProps = {
   map?: RobotMapData
@@ -28,6 +29,9 @@ type RobotFacilityMapProps = {
   targetAssetId: string | null
   pendingTarget?: RobotTargetPose | null
   activeCommandTarget?: RobotTargetPose | null
+  pendingTargetLabel?: string
+  activeCommandTargetLabel?: string
+  previewPath?: NavigationPreviewPoint[] | null
   zoom: number
   onSelectAsset: (assetId: string) => void
   onSelectGuide?: (guideId: string) => void
@@ -348,6 +352,26 @@ function sameMap(left: RobotMapData | undefined, right: RobotMapData | undefined
   )
 }
 
+function samePreviewPath(
+  left: NavigationPreviewPoint[] | null | undefined,
+  right: NavigationPreviewPoint[] | null | undefined,
+) {
+  if (left === right) {
+    return true
+  }
+  if (!left || !right || left.length !== right.length) {
+    return false
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index].x !== right[index].x || left[index].y !== right[index].y) {
+      return false
+    }
+  }
+
+  return true
+}
+
 function sameScene(left: SemanticScene, right: SemanticScene) {
   if (left === right) {
     return true
@@ -416,10 +440,13 @@ function areRobotFacilityMapPropsEqual(
     && previous.onSelectGuide === next.onSelectGuide
     && previous.onSelectMapTarget === next.onSelectMapTarget
     && previous.onMapClickFeedback === next.onMapClickFeedback
+    && previous.pendingTargetLabel === next.pendingTargetLabel
+    && previous.activeCommandTargetLabel === next.activeCommandTargetLabel
     && sameMap(previous.map, next.map)
     && samePose(previous.pose, next.pose)
     && samePose(previous.pendingTarget, next.pendingTarget)
     && samePose(previous.activeCommandTarget, next.activeCommandTarget)
+    && samePreviewPath(previous.previewPath, next.previewPath)
     && sameScene(previous.scene, next.scene)
   )
 }
@@ -432,6 +459,9 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
   targetAssetId,
   pendingTarget = null,
   activeCommandTarget = null,
+  pendingTargetLabel = '선택한 후보',
+  activeCommandTargetLabel = '실행 중 목표',
+  previewPath = null,
   zoom,
   onSelectAsset,
   onSelectGuide,
@@ -454,6 +484,8 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
   const robotCoreStyle: CSSProperties = {
     transform: `translate(-50%, -50%) rotate(${rotationDegreesForPose(pose)}deg)`,
   }
+  const showPendingTarget = pendingTarget !== null && !samePose(pendingTarget, activeCommandTarget)
+  const visiblePendingTarget = showPendingTarget ? pendingTarget : null
   const rowGuideItems = useMemo(
     () => scene.rowGuides.map((guide) => ({
       guide,
@@ -492,6 +524,18 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
         })),
     [map, scene, selectedAssetId, showDevices, showLabels, showPlants, targetAssetId],
   )
+  const previewPathPolyline = useMemo(() => {
+    if (!previewPath || previewPath.length < 2) {
+      return ''
+    }
+
+    return previewPath
+      .map((point) => {
+        const overlayPoint = toOverlayPercent(scene, map, point.x, point.y)
+        return `${parsePercentValue(overlayPoint.left)},${parsePercentValue(overlayPoint.top)}`
+      })
+      .join(' ')
+  }, [map, previewPath, scene])
 
   useEffect(() => {
     if (!map) {
@@ -689,23 +733,29 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
             )
           })}
 
+          {previewPathPolyline ? (
+            <svg aria-hidden="true" className="robot-facility-map__path-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <polyline className="robot-facility-map__path-line" points={previewPathPolyline} />
+            </svg>
+          ) : null}
+
           {activeCommandTarget ? (
             <div
               className="robot-facility-map__target robot-facility-map__target--active"
               style={toOverlayPercent(scene, map, activeCommandTarget.x, activeCommandTarget.y)}
             >
               <span className="robot-facility-map__target-dot" />
-              <span className="robot-facility-map__target-label">요청 목표</span>
+              <span className="robot-facility-map__target-label">{activeCommandTargetLabel}</span>
             </div>
           ) : null}
 
-          {pendingTarget ? (
+          {visiblePendingTarget ? (
             <div
               className="robot-facility-map__target robot-facility-map__target--pending"
-              style={toOverlayPercent(scene, map, pendingTarget.x, pendingTarget.y)}
+              style={toOverlayPercent(scene, map, visiblePendingTarget.x, visiblePendingTarget.y)}
             >
               <span className="robot-facility-map__target-dot" />
-              <span className="robot-facility-map__target-label">선택 좌표</span>
+              <span className="robot-facility-map__target-label">{pendingTargetLabel}</span>
             </div>
           ) : null}
 
@@ -719,7 +769,7 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
           {map && onSelectMapTarget ? (
             <div className="robot-facility-map__hint">
               <strong>이동 목표 지정</strong>
-              <p>빈 지도는 좌표 직접 지정, 식물 아이콘은 작물 중심 대신 안전 관측 경로를 계산합니다.</p>
+              <p>빈 지도는 좌표 직접 지정, 식물 아이콘은 작물 중심 대신 안전 관측 후보를 계산합니다.</p>
             </div>
           ) : null}
 

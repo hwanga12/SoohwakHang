@@ -1583,7 +1583,7 @@ button {
 
 .robot-facility-map__target {
   position: absolute;
-  z-index: 3;
+  z-index: 4;
   display: grid;
   justify-items: center;
   gap: 6px;
@@ -1615,6 +1615,26 @@ button {
   font-size: 0.72rem;
   font-weight: 700;
   box-shadow: 0 8px 16px rgba(69, 81, 52, 0.12);
+}
+
+.robot-facility-map__path-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.robot-facility-map__path-line {
+  fill: none;
+  stroke: rgba(46, 164, 164, 0.88);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 5 3;
+  filter: drop-shadow(0 0 6px rgba(46, 164, 164, 0.26));
 }
 
 .map-overlay {

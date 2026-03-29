@@ -31,6 +31,7 @@ import {
   type PlantNavigationPlan,
   type PlantNavigationStep,
 } from '@/lib/robot-map/plant-navigation-plan'
+import { buildNavigationPreviewPath } from '@/lib/robot-map/navigation-preview'
 
 type ControlActionId = 'pause' | 'resume' | 'home' | 'emergency';
 type PendingControlRequest = {
@@ -130,6 +131,19 @@ function formatPose(pose: RobotTargetPose) {
 
 function fallbackPositionLabel(asset: SemanticAsset) {
   return `x ${asset.position.x.toFixed(2)} / y ${asset.position.y.toFixed(2)}`
+}
+
+function pendingTargetLabel(pendingTarget: PendingTargetData | null) {
+  if (pendingTarget === null) {
+    return '선택한 후보'
+  }
+  if (pendingTarget.type === 'asset') {
+    return '선택한 관측 후보'
+  }
+  if (pendingTarget.type === 'preset') {
+    return '선택한 구역 목표'
+  }
+  return '선택 좌표'
 }
 
 function buildPlantNavigationPendingTarget(
@@ -770,23 +784,24 @@ export function MapControlPage() {
       { inspectWaypointId: assetPlan?.inspectWaypointId ?? null },
     ),
     onSuccess: async (response, variables) => {
-      const nextTarget = variables.assetPlan?.finalPose ?? response.targetPose ?? variables.currentTargetPose
+      const dispatchedTarget = response.targetPose ?? variables.currentTargetPose
+      const finalTarget = variables.assetPlan?.finalPose ?? dispatchedTarget
       const shouldAnnounceTransition =
         variables.assetPlan === null
         && response.preemptCurrentNavigation
         && isNavigationCommandInProgress(latestCommandStatus)
       const nextTransitionFeedback =
-        shouldAnnounceTransition && nextTarget
+        shouldAnnounceTransition && finalTarget
           ? {
               previousCommandId: latestCommandStatus.commandId,
-              targetSummary: `좌표 ${formatPose(nextTarget)}`,
+              targetSummary: `좌표 ${formatPose(finalTarget)}`,
             }
           : null
 
       setLastCommandId(response.commandId)
       setObservedCommandState(null)
       setObservedNavigationPlanState(null)
-      setActiveCommandTarget(nextTarget)
+      setActiveCommandTarget(dispatchedTarget)
       setActiveNavigationPlan(
         variables.assetPlan
           ? {
@@ -911,6 +926,42 @@ export function MapControlPage() {
     transitionFeedback,
     controlSummary,
   )
+  const isTrackedCommandActive =
+    trackedCommand
+    && (latestCommandStatus.status === 'pending' || latestCommandStatus.status === 'running')
+  const mapPreviewPath = useMemo(() => {
+    if (pendingTarget) {
+      if (pendingTarget.type === 'asset') {
+        return buildNavigationPreviewPath(
+          page.robotPose,
+          pendingTarget.plan.steps.map((step) => step.pose),
+        )
+      }
+
+      return buildNavigationPreviewPath(page.robotPose, [pendingTarget.pose])
+    }
+
+    if (isTrackedCommandActive && activeNavigationPlan) {
+      return buildNavigationPreviewPath(
+        page.robotPose,
+        activeNavigationPlan.steps
+          .slice(activeNavigationPlan.currentStepIndex)
+          .map((step) => step.pose),
+      )
+    }
+
+    if (isTrackedCommandActive && activeCommandTarget) {
+      return buildNavigationPreviewPath(page.robotPose, [activeCommandTarget])
+    }
+
+    return []
+  }, [
+    activeCommandTarget,
+    activeNavigationPlan,
+    isTrackedCommandActive,
+    page.robotPose,
+    pendingTarget,
+  ])
 
   const controlActionDisabledReason = (actionId: ControlActionId) => {
     if (actionId === 'emergency') {
@@ -1006,20 +1057,23 @@ export function MapControlPage() {
 
     setObservedCommandState(stateToken)
     if (latestCommandStatus.status === 'succeeded') {
+      setActiveCommandTarget(null)
       if (transitionFeedback) {
         setNotice(`${transitionFeedback.targetSummary} 기준 새 목표 전환 이동이 완료되었습니다.`)
         setTransitionFeedback(null)
       } else {
-        setNotice('최근 이동 요청이 성공적으로 완료되었습니다.')
+        setNotice('목표 지점에 도착했습니다. 최근 이동 요청이 성공적으로 완료되었습니다.')
       }
       return
     }
     if (latestCommandStatus.status === 'failed') {
+      setActiveCommandTarget(null)
       setTransitionFeedback(null)
       setNotice(latestCommandStatus.message || '최근 이동 요청이 실패했습니다.')
       return
     }
     if (latestCommandStatus.status === 'canceled') {
+      setActiveCommandTarget(null)
       setTransitionFeedback(null)
       setNotice(latestCommandStatus.message || '최근 이동 요청이 취소되었습니다.')
     }
@@ -1062,14 +1116,16 @@ export function MapControlPage() {
       }
 
       setActiveNavigationPlan(null)
+      setActiveCommandTarget(null)
       setNotice(
         latestCommandStatus.message
-        || `${activeNavigationPlan.assetLabel} 안전 관측 위치 이동이 완료되었습니다.`,
+        || `${activeNavigationPlan.assetLabel} 안전 관측 위치에 도착했습니다.`,
       )
       return
     }
 
     setActiveNavigationPlan(null)
+    setActiveCommandTarget(null)
     setNotice(
       latestCommandStatus.message
       || `${activeNavigationPlan.assetLabel} 안전 경로 이동이 실패했습니다.`,
@@ -1151,13 +1207,16 @@ export function MapControlPage() {
           </div>
 
           <RobotFacilityMap
-            activeCommandTarget={activeCommandTarget}
+            activeCommandTarget={isTrackedCommandActive ? activeCommandTarget : null}
+            activeCommandTargetLabel="실행 중 목표"
             map={page.map}
             onMapClickFeedback={setNotice}
             onSelectAsset={handleAssetSelect}
             onSelectMapTarget={handleMapTargetSelect}
             pendingTarget={pendingTarget?.pose ?? null}
+            pendingTargetLabel={pendingTargetLabel(pendingTarget)}
             pose={page.robotPose}
+            previewPath={mapPreviewPath}
             scene={page.scene}
             selectedAssetId={selectedAssetId}
             targetAssetId={targetAssetId}
@@ -1371,6 +1430,12 @@ export function MapControlPage() {
                 <article className="detail-card">
                   <span className="detail-label">최근 목표 좌표</span>
                   <strong className="detail-value">{formatPose(activeCommandTarget)}</strong>
+                </article>
+              ) : null}
+              {activeNavigationPlan ? (
+                <article className="detail-card">
+                  <span className="detail-label">예상 최종 관측 위치</span>
+                  <strong className="detail-value">{formatPose(activeNavigationPlan.finalPose)}</strong>
                 </article>
               ) : null}
             </div>
