@@ -32,7 +32,9 @@ class HarvestAnimationConfig:
     basket_slot_lateral_spacing_m: float = 0.05
     basket_slot_forward_spacing_m: float = 0.0
     basket_overflow_stack_z_m: float = 0.035
-    hidden_z_m: float = -2.0
+    hidden_x_m: float = 999.0
+    hidden_y_m: float = 999.0
+    hidden_z_m: float = -10.0
 
 
 def compute_relative_world_pose(
@@ -100,8 +102,8 @@ def compute_hidden_pose(
     config: HarvestAnimationConfig,
 ) -> WorldPose:
     return WorldPose(
-        x=source_pose.x,
-        y=source_pose.y,
+        x=config.hidden_x_m,
+        y=config.hidden_y_m,
         z=config.hidden_z_m,
     )
 

@@ -137,7 +137,9 @@ class HarvestRouteNode(Node):
         self.declare_parameter('harvest_basket_slot_lateral_spacing_m', 0.05)
         self.declare_parameter('harvest_basket_slot_forward_spacing_m', 0.0)
         self.declare_parameter('harvest_basket_overflow_stack_z_m', 0.035)
-        self.declare_parameter('harvest_hidden_z_m', -2.0)
+        self.declare_parameter('harvest_hidden_x_m', 999.0)
+        self.declare_parameter('harvest_hidden_y_m', 999.0)
+        self.declare_parameter('harvest_hidden_z_m', -10.0)
         self.declare_parameter('harvest_inspect_waypoint_fallback_enabled', True)
         self.declare_parameter('harvest_demo_recovery_enabled', False)
         self.declare_parameter('harvest_navigation_target_mode', 'inspect_waypoint')
@@ -209,6 +211,8 @@ class HarvestRouteNode(Node):
             basket_overflow_stack_z_m=float(
                 self.get_parameter('harvest_basket_overflow_stack_z_m').value
             ),
+            hidden_x_m=float(self.get_parameter('harvest_hidden_x_m').value),
+            hidden_y_m=float(self.get_parameter('harvest_hidden_y_m').value),
             hidden_z_m=float(self.get_parameter('harvest_hidden_z_m').value),
         )
 

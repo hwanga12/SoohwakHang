@@ -141,7 +141,9 @@ class HarvestActionServerNode(Node):
         self.declare_parameter('harvest_basket_slot_lateral_spacing_m', 0.05)
         self.declare_parameter('harvest_basket_slot_forward_spacing_m', 0.0)
         self.declare_parameter('harvest_basket_overflow_stack_z_m', 0.035)
-        self.declare_parameter('harvest_hidden_z_m', -2.0)
+        self.declare_parameter('harvest_hidden_x_m', 999.0)
+        self.declare_parameter('harvest_hidden_y_m', 999.0)
+        self.declare_parameter('harvest_hidden_z_m', -10.0)
 
         self._plan = self._load_patrol_plan()
         self._catalog = self._load_crop_catalog()
@@ -230,6 +232,8 @@ class HarvestActionServerNode(Node):
             basket_overflow_stack_z_m=float(
                 self.get_parameter('harvest_basket_overflow_stack_z_m').value
             ),
+            hidden_x_m=float(self.get_parameter('harvest_hidden_x_m').value),
+            hidden_y_m=float(self.get_parameter('harvest_hidden_y_m').value),
             hidden_z_m=float(self.get_parameter('harvest_hidden_z_m').value),
         )
 

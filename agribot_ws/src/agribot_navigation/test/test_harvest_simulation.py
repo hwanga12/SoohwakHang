@@ -86,6 +86,9 @@ def test_compute_grasp_pose_places_tomato_near_gripper_fingers() -> None:
 def test_compute_hidden_pose_drops_harvested_tomato_below_world_floor() -> None:
     pose = Pose2D(x=-2.0, y=4.0, z=0.82, yaw=0.0)
 
-    hidden_pose = compute_hidden_pose(pose, HarvestAnimationConfig(hidden_z_m=-2.5))
+    hidden_pose = compute_hidden_pose(
+        pose,
+        HarvestAnimationConfig(hidden_x_m=120.0, hidden_y_m=-45.0, hidden_z_m=-10.0),
+    )
 
-    assert hidden_pose == WorldPose(x=-2.0, y=4.0, z=-2.5)
+    assert hidden_pose == WorldPose(x=120.0, y=-45.0, z=-10.0)

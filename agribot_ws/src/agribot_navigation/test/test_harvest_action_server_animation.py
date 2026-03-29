@@ -100,7 +100,11 @@ def test_hide_harvested_tomato_visual_moves_entity_below_world_floor() -> None:
             )
         }
     )
-    node._animation_config = HarvestAnimationConfig(hidden_z_m=-2.0)
+    node._animation_config = HarvestAnimationConfig(
+        hidden_x_m=999.0,
+        hidden_y_m=999.0,
+        hidden_z_m=-10.0,
+    )
     node._set_gazebo_entity_pose = lambda entity_name, pose: pose_updates.append((entity_name, pose))
     node._normalize_request_text = HarvestActionServerNode._normalize_request_text.__get__(
         node,
@@ -115,6 +119,6 @@ def test_hide_harvested_tomato_visual_moves_entity_below_world_floor() -> None:
 
     assert len(pose_updates) == 1
     assert pose_updates[0][0] == 'farm01_plant_01_tomato_01'
-    assert pose_updates[0][1].x == -6.0
-    assert pose_updates[0][1].y == -6.0
-    assert pose_updates[0][1].z == -2.0
+    assert pose_updates[0][1].x == 999.0
+    assert pose_updates[0][1].y == 999.0
+    assert pose_updates[0][1].z == -10.0
