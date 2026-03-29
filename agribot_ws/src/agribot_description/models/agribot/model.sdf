@@ -25,6 +25,10 @@
           <iyz>0</iyz>
         </inertia>
       </inertial>
+      <velocity_decay>
+        <linear>1.20</linear>
+        <angular>1.60</angular>
+      </velocity_decay>
 
       <!-- Simple box collision for physics -->
       <collision name="chassis_collision">
@@ -72,8 +76,8 @@
         <surface>
           <friction>
             <ode>
-              <mu>1.0</mu>
-              <mu2>1.0</mu2>
+              <mu>1.8</mu>
+              <mu2>1.8</mu2>
             </ode>
           </friction>
         </surface>
@@ -117,8 +121,8 @@
         <surface>
           <friction>
             <ode>
-              <mu>1.0</mu>
-              <mu2>1.0</mu2>
+              <mu>1.8</mu>
+              <mu2>1.8</mu2>
             </ode>
           </friction>
         </surface>
@@ -161,8 +165,8 @@
         <surface>
           <friction>
             <ode>
-              <mu>0.0</mu>
-              <mu2>0.0</mu2>
+              <mu>0.18</mu>
+              <mu2>0.18</mu2>
             </ode>
           </friction>
         </surface>
@@ -545,8 +549,8 @@
           <upper>1.79769e+308</upper>
         </limit>
         <dynamics>
-          <damping>0.35</damping>
-          <friction>0.20</friction>
+          <damping>1.50</damping>
+          <friction>0.70</friction>
         </dynamics>
       </axis>
     </joint>
@@ -562,8 +566,8 @@
           <upper>1.79769e+308</upper>
         </limit>
         <dynamics>
-          <damping>0.35</damping>
-          <friction>0.20</friction>
+          <damping>1.50</damping>
+          <friction>0.70</friction>
         </dynamics>
       </axis>
     </joint>
@@ -637,14 +641,14 @@
            keeping acceleration and jerk bounded enough for Nav2 tracking. -->
       <max_linear_velocity>1.60</max_linear_velocity>
       <min_linear_velocity>-1.60</min_linear_velocity>
-      <max_linear_acceleration>0.80</max_linear_acceleration>
-      <min_linear_acceleration>-0.80</min_linear_acceleration>
+      <max_linear_acceleration>0.90</max_linear_acceleration>
+      <min_linear_acceleration>-1.60</min_linear_acceleration>
       <max_linear_jerk>1.20</max_linear_jerk>
       <min_linear_jerk>-1.20</min_linear_jerk>
       <max_angular_velocity>3.20</max_angular_velocity>
       <min_angular_velocity>-3.20</min_angular_velocity>
-      <max_angular_acceleration>1.00</max_angular_acceleration>
-      <min_angular_acceleration>-1.00</min_angular_acceleration>
+      <max_angular_acceleration>1.10</max_angular_acceleration>
+      <min_angular_acceleration>-1.80</min_angular_acceleration>
       <max_angular_jerk>1.50</max_angular_jerk>
       <min_angular_jerk>-1.50</min_angular_jerk>
       <topic>cmd_vel_safe</topic>
