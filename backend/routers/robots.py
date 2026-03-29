@@ -12,6 +12,7 @@ from robot_command_bridge_service import (
     publish_robot_command,
     read_latest_command_status_payload,
 )
+from robot_navigation_preview_service import read_navigation_preview_payload
 from robot_map_service import (
     image_path_for_map,
     read_layers_payload,
@@ -193,6 +194,15 @@ def get_robot_map_layers(map_id: Optional[str] = Query(default=None)):
     """식물, 급수 포인트, row guide 등 semantic layer 반환"""
     try:
         return {"data": read_layers_payload(map_id)}
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/navigation-preview")
+def get_robot_navigation_preview(map_id: Optional[str] = Query(default=None)):
+    """현재 로봇 기준으로 짧게 잘라낸 예상 주행 경로를 반환"""
+    try:
+        return {"data": read_navigation_preview_payload(map_id)}
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

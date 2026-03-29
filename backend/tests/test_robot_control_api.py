@@ -17,12 +17,18 @@ from robot_command_bridge_service import (  # noqa: E402
     command_file_path,
     publish_robot_command,
 )
-from robot_map_service import read_layers_payload, read_pose_payload, read_status_payload  # noqa: E402
+from robot_map_service import (  # noqa: E402
+    read_layers_payload,
+    read_pose_payload,
+    read_status_payload,
+)
+from robot_navigation_preview_service import read_navigation_preview_payload  # noqa: E402
 from robot_runtime_state_service import (  # noqa: E402
     command_status_file_path,
     control_state_file_path,
     mission_request_file_path,
     mission_status_record_file_path,
+    navigation_path_snapshot_file_path,
     read_latest_command_status_payload,
 )
 from routers import missions, robots  # noqa: E402
@@ -254,6 +260,56 @@ def test_read_pose_payload_falls_back_when_only_non_map_frame_exists() -> None:
     assert payload["pose"]["x"] == pytest.approx(2.0)
     assert payload["pose"]["y"] == pytest.approx(-5.9)
     assert "odom 프레임 pose만 확인" in payload["note"]
+
+
+def test_read_navigation_preview_payload_returns_live_local_plan_points() -> None:
+    _write_json(
+        navigation_path_snapshot_file_path(),
+        {
+            "robot_id": "AGR-02",
+            "map_id": "farm_map",
+            "frame_id": "map",
+            "preview_kind": "local_plan",
+            "active_topic": "/local_plan",
+            "active_points": [
+                {"x": 0.0, "y": 6.0, "z": 0.0, "yaw": 1.57, "frame_id": "map"},
+                {"x": 0.3, "y": 5.8, "z": 0.0, "yaw": 1.52, "frame_id": "map"},
+                {"x": 0.6, "y": 5.5, "z": 0.0, "yaw": 1.48, "frame_id": "map"},
+            ],
+            "updated_at": "2026-03-30T00:00:00+00:00",
+        },
+    )
+
+    payload = read_navigation_preview_payload()
+
+    assert payload["source"] == "live"
+    assert payload["available"] is True
+    assert payload["preview_kind"] == "local_plan"
+    assert payload["active_topic"] == "/local_plan"
+    assert len(payload["points"]) == 3
+    assert payload["points"][0]["x"] == pytest.approx(0.0)
+    assert payload["points"][2]["y"] == pytest.approx(5.5)
+
+
+def test_read_navigation_preview_payload_hides_preview_when_points_are_missing() -> None:
+    _write_json(
+        navigation_path_snapshot_file_path(),
+        {
+            "robot_id": "AGR-02",
+            "map_id": "farm_map",
+            "frame_id": "map",
+            "preview_kind": "none",
+            "active_topic": None,
+            "active_points": [],
+            "updated_at": "2026-03-30T00:00:00+00:00",
+        },
+    )
+
+    payload = read_navigation_preview_payload()
+
+    assert payload["source"] == "fallback"
+    assert payload["available"] is False
+    assert payload["points"] == []
 
 
 def test_robot_control_pause_endpoint_publishes_pause_motion() -> None:

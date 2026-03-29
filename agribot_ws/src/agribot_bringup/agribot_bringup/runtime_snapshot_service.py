@@ -17,6 +17,7 @@ DEFAULT_FRAME_ID = 'map'
 DEFAULT_RUNTIME_DIR = Path(os.environ.get('AGRIBOT_RUNTIME_DIR', '/tmp/agribot_runtime'))
 POSE_SNAPSHOT_FILENAME = 'robot_pose_snapshot.json'
 SEMANTIC_LAYER_SNAPSHOT_FILENAME = 'robot_map_layers_snapshot.json'
+NAVIGATION_PATH_SNAPSHOT_FILENAME = 'robot_navigation_path_snapshot.json'
 MANUAL_COMMAND_FILENAME = 'robot_manual_command.json'
 MANUAL_COMMAND_STATUS_FILENAME = 'robot_manual_command_status.json'
 CONTROL_STATE_FILENAME = 'robot_control_state.json'
@@ -37,6 +38,10 @@ def pose_snapshot_path(runtime_dir: Path | None = None) -> Path:
 
 def semantic_layer_snapshot_path(runtime_dir: Path | None = None) -> Path:
     return (runtime_dir or runtime_dir_from_env()) / SEMANTIC_LAYER_SNAPSHOT_FILENAME
+
+
+def navigation_path_snapshot_path(runtime_dir: Path | None = None) -> Path:
+    return (runtime_dir or runtime_dir_from_env()) / NAVIGATION_PATH_SNAPSHOT_FILENAME
 
 
 def manual_command_path(runtime_dir: Path | None = None) -> Path:
@@ -504,6 +509,41 @@ def build_pose_snapshot_payload(
         'linear_speed_mps': float(linear_speed_mps),
         'source_mode': source_mode,
         'updated_at': datetime.now(timezone.utc).isoformat(),
+        'timestamp': timestamp,
+    }
+
+
+def build_navigation_path_snapshot_payload(
+    *,
+    map_id: str,
+    robot_id: str,
+    frame_id: str,
+    preview_kind: str,
+    active_points: list[dict[str, Any]],
+    active_topic: str | None,
+    local_plan_points: list[dict[str, Any]],
+    local_plan_topic: str | None,
+    local_plan_updated_at: str | None,
+    global_plan_points: list[dict[str, Any]],
+    global_plan_topic: str | None,
+    global_plan_updated_at: str | None,
+) -> dict[str, Any]:
+    timestamp = time.time()
+    updated_at = datetime.now(timezone.utc).isoformat()
+    return {
+        'robot_id': robot_id,
+        'map_id': map_id,
+        'frame_id': frame_id,
+        'preview_kind': preview_kind,
+        'active_points': active_points,
+        'active_topic': active_topic,
+        'local_plan_points': local_plan_points,
+        'local_plan_topic': local_plan_topic,
+        'local_plan_updated_at': local_plan_updated_at,
+        'global_plan_points': global_plan_points,
+        'global_plan_topic': global_plan_topic,
+        'global_plan_updated_at': global_plan_updated_at,
+        'updated_at': updated_at,
         'timestamp': timestamp,
     }
 

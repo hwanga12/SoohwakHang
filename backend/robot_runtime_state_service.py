@@ -10,6 +10,7 @@ DEFAULT_RUNTIME_DIR = Path(os.environ.get("AGRIBOT_RUNTIME_DIR", "/tmp/agribot_r
 MANUAL_COMMAND_FILENAME = "robot_manual_command.json"
 MANUAL_COMMAND_STATUS_FILENAME = "robot_manual_command_status.json"
 CONTROL_STATE_FILENAME = "robot_control_state.json"
+NAVIGATION_PATH_SNAPSHOT_FILENAME = "robot_navigation_path_snapshot.json"
 MISSION_REQUEST_FILENAME = "robot_mission_request.json"
 MISSION_STATUS_FILENAME = "robot_mission_status.json"
 MISSION_STATUS_DIRNAME = "mission_statuses"
@@ -79,6 +80,10 @@ def command_status_file_path() -> Path:
 
 def control_state_file_path() -> Path:
     return runtime_dir_from_env() / CONTROL_STATE_FILENAME
+
+
+def navigation_path_snapshot_file_path() -> Path:
+    return runtime_dir_from_env() / NAVIGATION_PATH_SNAPSHOT_FILENAME
 
 
 def mission_request_file_path() -> Path:

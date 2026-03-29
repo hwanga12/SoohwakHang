@@ -1199,6 +1199,7 @@ export function FarmCommandPage() {
   const dashboard = dashboardQuery.data
   const robot = robotQuery.data
   const latestCommandStatus = robot.latestCommandStatus
+  const navigationPreview = robot.navigationPreview
   const plants = plantsQuery.data
   const environment = environmentQuery.data
   const harvest = harvestQuery.data
@@ -1750,6 +1751,15 @@ export function FarmCommandPage() {
   const mapPreviewPath = useMemo(() => {
     if (
       activeDiagnoseCommand !== null
+      && navigationPreview.available
+      && navigationPreview.points.length >= 2
+      && diagnoseCommandActive
+    ) {
+      return buildNavigationPreviewPath(stableRobotPose, navigationPreview.points)
+    }
+
+    if (
+      activeDiagnoseCommand !== null
       && latestCommandStatus.routeTargetPose
       && latestCommandStatus.finalTargetPose
       && diagnoseCommandActive
@@ -1776,7 +1786,7 @@ export function FarmCommandPage() {
     }
 
     return []
-  }, [activeDiagnoseCommand, selectedPlantTargetPose, stableRobotPose])
+  }, [activeDiagnoseCommand, diagnoseCommandActive, latestCommandStatus, navigationPreview, selectedPlantTargetPose, stableRobotPose])
   const stableMapPreviewPath = useStablePreviewPath(mapPreviewPath)
   const activeDiagnoseAsset = useMemo(
     () => (
@@ -2389,6 +2399,7 @@ export function FarmCommandPage() {
           queries: [
             createGetSignal('로봇 상태', mapSource('/robot/status'), '/robot/status'),
             createGetSignal('로봇 위치', mapSource('/robot/pose'), '/robot/pose'),
+            createGetSignal('예상 경로', mapSource('/robot/navigation-preview'), '/robot/navigation-preview'),
             createGetSignal('날씨 메모', dashboardSource('/environment/latest'), '/environment/latest'),
           ],
           actions: [

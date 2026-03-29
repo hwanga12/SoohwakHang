@@ -133,6 +133,27 @@ export type RobotCommandStatus = {
   controlState: RobotControlState | null
 }
 
+export type RobotNavigationPreviewPoint = {
+  x: number
+  y: number
+  z: number
+  yaw: number
+  frameId: string
+}
+
+export type RobotNavigationPreview = {
+  source: DataSource
+  available: boolean
+  robotId: string
+  mapId: string
+  frameId: string
+  previewKind: 'none' | 'local_plan' | 'global_plan'
+  points: RobotNavigationPreviewPoint[]
+  activeTopic: string | null
+  updatedAt: string
+  note: string
+}
+
 export type RobotCommandDispatch = {
   commandId: string
   message: string
@@ -245,6 +266,7 @@ export type RobotPageData = {
   map: RobotMapData
   scene: SemanticScene
   robotPose: RobotTargetPose
+  navigationPreview: RobotNavigationPreview
   latestCommandStatus: RobotCommandStatus
 }
 
@@ -1102,6 +1124,47 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
   }
 }
 
+function readRobotNavigationPreview(payload: unknown): RobotNavigationPreview | null {
+  const record = readRecord(payload)
+  if (!record) {
+    return null
+  }
+
+  const rawPreviewKind = readString(record.preview_kind)
+  const previewKind =
+    rawPreviewKind === 'local_plan' || rawPreviewKind === 'global_plan'
+      ? rawPreviewKind
+      : 'none'
+  const points = asArray(record.points)
+    .map((item): RobotNavigationPreviewPoint | null => {
+      const point = readRecord(item)
+      if (!point) {
+        return null
+      }
+      return {
+        x: readNumber(point.x, 0),
+        y: readNumber(point.y, 0),
+        z: readNumber(point.z, 0),
+        yaw: readNumber(point.yaw, 0),
+        frameId: readString(point.frame_id) || 'map',
+      }
+    })
+    .filter((item): item is RobotNavigationPreviewPoint => item !== null)
+
+  return {
+    source: toQuerySource(payload),
+    available: readBoolean(record.available, points.length >= 2),
+    robotId: readString(record.robot_id) || 'AGR-02',
+    mapId: readString(record.map_id) || 'farm_map',
+    frameId: readString(record.frame_id) || 'map',
+    previewKind,
+    points,
+    activeTopic: readString(record.active_topic) || null,
+    updatedAt: readString(record.updated_at),
+    note: readString(record.note) || '예상 경로 정보가 준비되지 않았습니다.',
+  }
+}
+
 function normalizeTaskStatus(value: unknown): RobotCommandStatus['status'] {
   const status = readString(value) as RobotCommandStatus['status']
   return (
@@ -1525,6 +1588,19 @@ const robotFallbackCommandStatus: RobotCommandStatus = {
   controlState: null,
 }
 
+const robotFallbackNavigationPreview: RobotNavigationPreview = {
+  source: 'fallback',
+  available: false,
+  robotId: 'AGR-02',
+  mapId: 'farm_map',
+  frameId: 'map',
+  previewKind: 'none',
+  points: [],
+  activeTopic: null,
+  updatedAt: '',
+  note: '실시간 예상 경로 스냅샷이 아직 없습니다.',
+}
+
 export const robotFallback: RobotPageData = {
   source: 'fallback',
   debug: {
@@ -1533,6 +1609,7 @@ export const robotFallback: RobotPageData = {
       '/robot/pose': 'fallback',
       '/robot/map': 'fallback',
       '/robot/map/layers': 'fallback',
+      '/robot/navigation-preview': 'fallback',
       '/robot/commands/latest': 'fallback',
       '/zones': 'fallback',
     },
@@ -1574,6 +1651,7 @@ export const robotFallback: RobotPageData = {
   map: robotFallbackMap,
   scene: farmSemanticScene,
   robotPose: robotFallbackPose,
+  navigationPreview: robotFallbackNavigationPreview,
   latestCommandStatus: robotFallbackCommandStatus,
 }
 
@@ -2037,13 +2115,22 @@ export async function getDashboardPageData(): Promise<DashboardPageData> {
 }
 
 export async function getRobotPageData(): Promise<RobotPageData> {
-  const [statusPayload, posePayload, zonesPayload, mapPayload, layersPayload, commandStatusPayload] =
+  const [
+    statusPayload,
+    posePayload,
+    zonesPayload,
+    mapPayload,
+    layersPayload,
+    navigationPreviewPayload,
+    commandStatusPayload,
+  ] =
     await Promise.all([
       safeGetCached('/robot/status', ROBOT_RUNTIME_CACHE_TTL_MS),
       safeGetCached('/robot/pose', ROBOT_RUNTIME_CACHE_TTL_MS),
       safeGetCached('/zones', ROBOT_STATIC_CACHE_TTL_MS),
       safeGetCached('/robot/map', ROBOT_STATIC_CACHE_TTL_MS),
       safeGetCached('/robot/map/layers', ROBOT_STATIC_CACHE_TTL_MS),
+      safeGetCached('/robot/navigation-preview', ROBOT_RUNTIME_CACHE_TTL_MS),
       safeGetCached('/robot/commands/latest', ROBOT_RUNTIME_CACHE_TTL_MS),
     ])
 
@@ -2052,6 +2139,7 @@ export async function getRobotPageData(): Promise<RobotPageData> {
     '/robot/pose': toQuerySource(posePayload),
     '/robot/map': toQuerySource(mapPayload),
     '/robot/map/layers': toQuerySource(layersPayload),
+    '/robot/navigation-preview': toQuerySource(navigationPreviewPayload),
     '/robot/commands/latest': toQuerySource(commandStatusPayload),
     '/zones': toQuerySource(zonesPayload),
   }
@@ -2063,6 +2151,8 @@ export async function getRobotPageData(): Promise<RobotPageData> {
   const robotPose = readRobotTargetPose(poseRecord, robotFallbackPose)
   const mapData = readRobotMapData(mapPayload) ?? robotFallbackMap
   const scene = readSemanticScene(layersPayload) ?? robotFallback.scene
+  const navigationPreview =
+    readRobotNavigationPreview(navigationPreviewPayload) ?? robotFallback.navigationPreview
   const commandStatus = readRobotCommandStatus(commandStatusPayload) ?? robotFallback.latestCommandStatus
   const zones = asArray(zonesPayload)
   const metrics = [...robotFallback.metrics]
@@ -2161,6 +2251,7 @@ export async function getRobotPageData(): Promise<RobotPageData> {
     map: mapData,
     scene,
     robotPose,
+    navigationPreview,
     latestCommandStatus: commandStatus,
   }
 }

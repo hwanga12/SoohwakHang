@@ -840,6 +840,7 @@ export function MapControlPage() {
   const stableMap = useStableRobotMap(page.map)
   const stableRobotPose = useStableRobotPose(page.robotPose)
   const latestCommandStatus = page.latestCommandStatus
+  const navigationPreview = page.navigationPreview
   const querySource = (path: string) =>
     page.debug.querySources[path]
     ?? (path === '/robot/commands/latest' ? latestCommandStatus.source : 'fallback')
@@ -1012,6 +1013,14 @@ export function MapControlPage() {
 
     if (
       isTrackedCommandActive
+      && navigationPreview.available
+      && navigationPreview.points.length >= 2
+    ) {
+      return buildNavigationPreviewPath(stableRobotPose, navigationPreview.points)
+    }
+
+    if (
+      isTrackedCommandActive
       && latestCommandStatus.routeTargetPose
       && latestCommandStatus.finalTargetPose
     ) {
@@ -1039,6 +1048,7 @@ export function MapControlPage() {
     activeCommandTarget,
     activeNavigationPlan,
     isTrackedCommandActive,
+    navigationPreview,
     pendingTarget,
     stableRobotPose,
   ])
@@ -1279,6 +1289,7 @@ export function MapControlPage() {
               createGetSignal('로봇 위치', querySource('/robot/pose'), '/robot/pose'),
               createGetSignal('정적 지도', querySource('/robot/map'), '/robot/map'),
               createGetSignal('지도 레이어', querySource('/robot/map/layers'), '/robot/map/layers'),
+              createGetSignal('예상 경로', querySource('/robot/navigation-preview'), '/robot/navigation-preview'),
               createGetSignal('명령 상태', querySource('/robot/commands/latest'), '/robot/commands/latest'),
             ],
             actions: [
