@@ -74,6 +74,9 @@ type ActiveNavigationPlan = {
   assetLabel: string
   inspectWaypointId: string | null
   inspectWaypointIds: string[]
+  observationCandidates: PlantNavigationPlan['observationCandidates']
+  routeAnchorPose: RobotTargetPose
+  routeAnchorDisplayPose: RobotTargetPose
   finalPose: RobotTargetPose
   finalDisplayPose: RobotTargetPose
   steps: PlantNavigationStep[]
@@ -81,7 +84,7 @@ type ActiveNavigationPlan = {
 }
 
 type NavigateDispatchInput = {
-  currentTargetPose: RobotTargetPose
+  requestTargetPose: RobotTargetPose
   assetPlan: ActiveNavigationPlan | null
 }
 
@@ -780,16 +783,17 @@ export function MapControlPage() {
     },
   })
   const navigateMutation = useMutation({
-    mutationFn: ({ currentTargetPose, assetPlan }: NavigateDispatchInput) => sendRobotNavigateCommand(
-      currentTargetPose,
+    mutationFn: ({ requestTargetPose, assetPlan }: NavigateDispatchInput) => sendRobotNavigateCommand(
+      requestTargetPose,
       {
         inspectWaypointId: assetPlan?.inspectWaypointId ?? null,
         inspectWaypointIds: assetPlan?.inspectWaypointIds ?? [],
+        observationCandidates: assetPlan?.observationCandidates ?? [],
         plantId: assetPlan?.assetId ?? null,
       },
     ),
     onSuccess: async (response, variables) => {
-      const dispatchedTarget = response.targetPose ?? variables.currentTargetPose
+      const dispatchedTarget = response.targetPose ?? variables.requestTargetPose
       const finalTarget = variables.assetPlan?.finalPose ?? dispatchedTarget
       const shouldAnnounceTransition =
         variables.assetPlan === null
@@ -942,19 +946,54 @@ export function MapControlPage() {
     ),
     [activeNavigationPlan, stableScene.assets],
   )
+  const activeFinalCommandTarget = useMemo(() => {
+    if (!isTrackedCommandActive) {
+      return null
+    }
+
+    return latestCommandStatus.finalTargetPose ?? activeNavigationPlan?.finalPose ?? activeCommandTarget
+  }, [
+    activeCommandTarget,
+    activeNavigationPlan,
+    isTrackedCommandActive,
+    latestCommandStatus.finalTargetPose,
+  ])
   const activeCommandMarkerPose = useMemo(() => {
     if (!isTrackedCommandActive || !activeCommandTarget) {
       return null
     }
 
-    return (
-      resolveObservationCandidateDisplayPose(activeNavigationAsset, activeCommandTarget)
-      ?? activeNavigationPlan?.steps[activeNavigationPlan.currentStepIndex]?.displayPose
-      ?? activeNavigationPlan?.finalDisplayPose
-      ?? activeCommandTarget
-    )
+    if (latestCommandStatus.navigationPhase === 'final_observation') {
+      return (
+        resolveObservationCandidateDisplayPose(activeNavigationAsset, activeFinalCommandTarget)
+        ?? activeNavigationPlan?.finalDisplayPose
+        ?? activeFinalCommandTarget
+        ?? activeCommandTarget
+      )
+    }
+
+    return latestCommandStatus.routeTargetPose ?? activeCommandTarget
   }, [
     activeCommandTarget,
+    activeFinalCommandTarget,
+    activeNavigationAsset,
+    activeNavigationPlan,
+    isTrackedCommandActive,
+    latestCommandStatus.navigationPhase,
+    latestCommandStatus.routeTargetPose,
+  ])
+  const activeFinalCommandMarkerPose = useMemo(() => {
+    if (!isTrackedCommandActive || !activeFinalCommandTarget) {
+      return null
+    }
+
+    return (
+      resolveObservationCandidateDisplayPose(activeNavigationAsset, activeFinalCommandTarget)
+      ?? activeNavigationPlan?.finalDisplayPose
+      ?? activeFinalCommandTarget
+    )
+  }, [
+    activeFinalCommandTarget,
     activeNavigationAsset,
     activeNavigationPlan,
     isTrackedCommandActive,
@@ -971,12 +1010,23 @@ export function MapControlPage() {
       return buildNavigationPreviewPath(stableRobotPose, [pendingTarget.pose])
     }
 
+    if (
+      isTrackedCommandActive
+      && latestCommandStatus.routeTargetPose
+      && latestCommandStatus.finalTargetPose
+    ) {
+      return buildNavigationPreviewPath(
+        stableRobotPose,
+        latestCommandStatus.navigationPhase === 'route_anchor'
+          ? [latestCommandStatus.routeTargetPose, latestCommandStatus.finalTargetPose]
+          : [latestCommandStatus.finalTargetPose],
+      )
+    }
+
     if (isTrackedCommandActive && activeNavigationPlan) {
       return buildNavigationPreviewPath(
         stableRobotPose,
-        activeNavigationPlan.steps
-          .slice(activeNavigationPlan.currentStepIndex)
-          .map((step) => step.pose),
+        activeNavigationPlan.steps.map((step) => step.pose),
       )
     }
 
@@ -999,6 +1049,10 @@ export function MapControlPage() {
   )
   const stableActiveCommandTarget = useStableRobotPose(isTrackedCommandActive ? activeCommandTarget : null)
   const stableActiveCommandMarkerPose = useStableRobotPose(activeCommandMarkerPose)
+  const stableActiveFinalCommandTarget = useStableRobotPose(
+    isTrackedCommandActive ? activeFinalCommandTarget : null,
+  )
+  const stableActiveFinalCommandMarkerPose = useStableRobotPose(activeFinalCommandMarkerPose)
   const plantAssetCount = useMemo(
     () => stableScene.assets.filter((asset) => asset.kind === 'plant').length,
     [stableScene.assets],
@@ -1164,21 +1218,6 @@ export function MapControlPage() {
     }
 
     if (latestCommandStatus.status === 'succeeded') {
-      const nextStep = activeNavigationPlan.steps[activeNavigationPlan.currentStepIndex + 1] ?? null
-      if (nextStep) {
-        setNotice(
-          `${activeNavigationPlan.assetLabel} 경유 지점에 도착했습니다. 다음 안전 경로로 이어서 이동합니다.`,
-        )
-        navigateMutation.mutate({
-          currentTargetPose: nextStep.pose,
-          assetPlan: {
-            ...activeNavigationPlan,
-            currentStepIndex: activeNavigationPlan.currentStepIndex + 1,
-          },
-        })
-        return
-      }
-
       setActiveNavigationPlan(null)
       setActiveCommandTarget(null)
       setNotice(
@@ -1197,7 +1236,6 @@ export function MapControlPage() {
   }, [
     activeNavigationPlan,
     latestCommandStatus,
-    navigateMutation,
     observedNavigationPlanState,
   ])
 
@@ -1274,6 +1312,9 @@ export function MapControlPage() {
             activeCommandTarget={stableActiveCommandTarget}
             activeCommandTargetLabel="실행 중 목표"
             activeCommandTargetMarker={stableActiveCommandMarkerPose}
+            activeFinalCommandTarget={stableActiveFinalCommandTarget}
+            activeFinalCommandTargetLabel="최종 관측 목표"
+            activeFinalCommandTargetMarker={stableActiveFinalCommandMarkerPose}
             map={stableMap}
             onMapClickFeedback={setNotice}
             onSelectAsset={handleAssetSelect}
@@ -1354,28 +1395,26 @@ export function MapControlPage() {
                     if (pendingTarget.type === 'preset') {
                       zoneMoveMutation.mutate(pendingTarget.preset)
                     } else if (pendingTarget.type === 'asset') {
-                      const firstStep = pendingTarget.plan.steps[0] ?? null
-                      if (!firstStep) {
-                        setNotice(`${pendingTarget.assetLabel} 안전 경로를 계산하지 못했습니다.`)
-                        return
-                      }
                       navigateMutation.mutate({
-                        currentTargetPose: firstStep.pose,
+                        requestTargetPose: pendingTarget.plan.finalObservationPose,
                         assetPlan: {
                           commandId: '',
                           assetId: pendingTarget.assetId,
                           assetLabel: pendingTarget.assetLabel,
                           inspectWaypointId: pendingTarget.inspectWaypointId,
                           inspectWaypointIds: pendingTarget.inspectWaypointIds,
-                          finalPose: pendingTarget.plan.inspectionPose,
-                          finalDisplayPose: pendingTarget.plan.inspectionDisplayPose,
+                          observationCandidates: pendingTarget.plan.observationCandidates,
+                          routeAnchorPose: pendingTarget.plan.routeAnchorPose,
+                          routeAnchorDisplayPose: pendingTarget.plan.routeAnchorDisplayPose,
+                          finalPose: pendingTarget.plan.finalObservationPose,
+                          finalDisplayPose: pendingTarget.plan.finalObservationDisplayPose,
                           steps: pendingTarget.plan.steps,
                           currentStepIndex: 0,
                         },
                       })
                     } else {
                       navigateMutation.mutate({
-                        currentTargetPose: pendingTarget.pose,
+                        requestTargetPose: pendingTarget.pose,
                         assetPlan: null,
                       })
                     }

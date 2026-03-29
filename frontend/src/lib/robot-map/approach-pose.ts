@@ -1,4 +1,4 @@
-import type { RobotTargetPose } from '@/lib/api/agribot'
+import type { RobotObservationGoalCandidate, RobotTargetPose } from '@/lib/api/agribot'
 import {
   parsePoseLabel,
   type SemanticAsset,
@@ -17,7 +17,10 @@ export type PlantObservationSelection = {
   navigationPose: RobotTargetPose
   displayPose: RobotTargetPose
   approachPose: RobotTargetPose | null
+  observationCandidates: RobotObservationGoalCandidate[]
 }
+
+export type PlantObservationSelectionStrategy = 'nearest' | 'harvest-primary'
 
 function clampToSceneBounds(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value))
@@ -121,6 +124,23 @@ function candidateDisplayPose(candidate: SemanticObservationCandidate) {
   return candidate.approachPose ?? candidate.navigationPose
 }
 
+function toRobotObservationGoalCandidate(candidate: SemanticObservationCandidate): RobotObservationGoalCandidate | null {
+  const inspectWaypointId = candidate.inspectWaypointId?.trim() ?? ''
+  const navigationPose = candidateNavigationPose(candidate)
+  const finalTargetPose = candidateDisplayPose(candidate)
+
+  if (!inspectWaypointId || !navigationPose || !finalTargetPose) {
+    return null
+  }
+
+  return {
+    inspectWaypointId,
+    inspectWaypointName: candidate.inspectWaypointName?.trim() || null,
+    navigationPose: toRobotTargetPose(navigationPose),
+    finalTargetPose: toRobotTargetPose(finalTargetPose),
+  }
+}
+
 function normalizeObservationCandidates(asset: SemanticAsset | null) {
   if (!asset) {
     return []
@@ -184,7 +204,12 @@ function selectObservationCandidate(
   targetAsset: SemanticAsset,
   candidates: SemanticObservationCandidate[],
   currentPose: { x: number, y: number } | null,
+  selectionStrategy: PlantObservationSelectionStrategy,
 ) {
+  if (selectionStrategy === 'harvest-primary') {
+    return candidates[0] ?? null
+  }
+
   return [...candidates].sort((leftCandidate, rightCandidate) => {
     const leftCost = observationCandidateCost(leftCandidate, {
       plantPosition: targetAsset.position,
@@ -212,15 +237,30 @@ function selectObservationCandidate(
 function buildFallbackObservationSelection(
   pose: RobotTargetPose,
   targetAsset: SemanticAsset | null,
+  observationCandidates: RobotObservationGoalCandidate[] = [],
 ): PlantObservationSelection {
+  const fallbackInspectWaypointId =
+    observationCandidates[0]?.inspectWaypointId
+    ?? targetAsset?.inspectWaypointId
+    ?? null
+
   return {
     targetAsset,
-    inspectWaypointId: targetAsset?.inspectWaypointId ?? null,
-    inspectWaypointIds: targetAsset?.inspectWaypointId ? [targetAsset.inspectWaypointId] : [],
-    inspectWaypointName: targetAsset?.inspectWaypointName ?? null,
+    inspectWaypointId: fallbackInspectWaypointId,
+    inspectWaypointIds:
+      observationCandidates.length > 0
+        ? observationCandidates.map((candidate) => candidate.inspectWaypointId)
+        : targetAsset?.inspectWaypointId
+          ? [targetAsset.inspectWaypointId]
+          : [],
+    inspectWaypointName:
+      observationCandidates[0]?.inspectWaypointName
+      ?? targetAsset?.inspectWaypointName
+      ?? null,
     navigationPose: pose,
     displayPose: targetAsset?.approachPose ?? pose,
     approachPose: targetAsset?.approachPose ?? null,
+    observationCandidates,
   }
 }
 
@@ -279,6 +319,7 @@ export function resolvePlantObservationSelection(
   fallbackScene: SemanticScene,
   fallbackPositionLabel: string,
   currentPose: { x: number, y: number } | null,
+  selectionStrategy: PlantObservationSelectionStrategy = 'nearest',
 ): PlantObservationSelection | null {
   const preferredAsset = preferredScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
   const fallbackAsset = fallbackScene.assets.find((asset) => asset.kind === 'plant' && asset.id === plantId)
@@ -290,7 +331,15 @@ export function resolvePlantObservationSelection(
 
   if (targetAsset && candidateSourceAsset) {
     const observationCandidates = normalizeObservationCandidates(candidateSourceAsset)
-    const selectedCandidate = selectObservationCandidate(targetAsset, observationCandidates, currentPose)
+    const robotObservationCandidates = observationCandidates
+      .map((candidate) => toRobotObservationGoalCandidate(candidate))
+      .filter((candidate): candidate is RobotObservationGoalCandidate => candidate !== null)
+    const selectedCandidate = selectObservationCandidate(
+      targetAsset,
+      observationCandidates,
+      currentPose,
+      selectionStrategy,
+    )
     if (selectedCandidate) {
       const navigationPose = candidateNavigationPose(selectedCandidate)
       const displayPose = candidateDisplayPose(selectedCandidate)
@@ -305,6 +354,7 @@ export function resolvePlantObservationSelection(
           approachPose: selectedCandidate.approachPose
             ? toRobotTargetPose(selectedCandidate.approachPose)
             : null,
+          observationCandidates: robotObservationCandidates,
         }
       }
     }
@@ -316,7 +366,7 @@ export function resolvePlantObservationSelection(
       ?? buildInspectionPoseFromScene(targetAsset.position, fallbackScene, currentPose)
 
     if (fallbackPose) {
-      return buildFallbackObservationSelection(fallbackPose, targetAsset)
+      return buildFallbackObservationSelection(fallbackPose, targetAsset, robotObservationCandidates)
     }
   }
 

@@ -1607,6 +1607,10 @@ button {
   background: #75d4e1;
 }
 
+.robot-facility-map__target--final .robot-facility-map__target-dot {
+  background: #88b04b;
+}
+
 .robot-facility-map__target-label {
   padding: 0.22rem 0.55rem;
   border-radius: 999px;

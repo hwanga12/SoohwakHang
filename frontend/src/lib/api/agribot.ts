@@ -86,6 +86,13 @@ export type RobotTargetPose = {
   frameId: string
 }
 
+export type RobotObservationGoalCandidate = {
+  inspectWaypointId: string
+  inspectWaypointName: string | null
+  navigationPose: RobotTargetPose | null
+  finalTargetPose: RobotTargetPose
+}
+
 export type RobotMapData = {
   source: DataSource
   mapId: string
@@ -110,6 +117,10 @@ export type RobotCommandStatus = {
   commandType: string
   preemptCurrentNavigation: boolean
   targetPose: RobotTargetPose | null
+  routeTargetPose: RobotTargetPose | null
+  finalTargetPose: RobotTargetPose | null
+  targetWaypointId: string | null
+  navigationPhase: '' | 'route_anchor' | 'final_observation'
   status: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
   message: string
   error: string
@@ -1040,6 +1051,11 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
   }
 
   const normalizedStatus = normalizeTaskStatus(record.status)
+  const rawNavigationPhase = readString(record.navigation_phase)
+  const navigationPhase =
+    rawNavigationPhase === 'route_anchor' || rawNavigationPhase === 'final_observation'
+      ? rawNavigationPhase
+      : ''
 
   return {
     source: toQuerySource(payload),
@@ -1051,6 +1067,14 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
     targetPose: record.target_pose
       ? readRobotTargetPose(record.target_pose, robotFallbackPose)
       : null,
+    routeTargetPose: record.route_target_pose
+      ? readRobotTargetPose(record.route_target_pose, robotFallbackPose)
+      : null,
+    finalTargetPose: record.final_target_pose
+      ? readRobotTargetPose(record.final_target_pose, robotFallbackPose)
+      : null,
+    targetWaypointId: readString(record.target_waypoint_id) || null,
+    navigationPhase,
     status: normalizedStatus,
     message: readString(record.message) || readString(record.note) || '명령 상태 정보가 준비되지 않았습니다.',
     error: readString(record.error),
@@ -1459,6 +1483,10 @@ const robotFallbackCommandStatus: RobotCommandStatus = {
   commandType: '',
   preemptCurrentNavigation: false,
   targetPose: null,
+  routeTargetPose: null,
+  finalTargetPose: null,
+  targetWaypointId: null,
+  navigationPhase: '',
   status: 'idle',
   message: '이동 명령 상태를 아직 받지 못했습니다.',
   error: '',
@@ -2928,6 +2956,7 @@ export async function sendRobotNavigateCommand(
   options?: {
     inspectWaypointId?: string | null
     inspectWaypointIds?: string[] | null
+    observationCandidates?: RobotObservationGoalCandidate[] | null
     plantId?: string | null
   },
 ) {
@@ -2944,11 +2973,42 @@ export async function sendRobotNavigateCommand(
         frame_id: targetPose.frameId,
       },
       payload:
-        options?.inspectWaypointId || options?.inspectWaypointIds?.length || options?.plantId
+        options?.inspectWaypointId
+        || options?.inspectWaypointIds?.length
+        || options?.observationCandidates?.length
+        || options?.plantId
           ? {
               ...(options.inspectWaypointId ? { inspect_waypoint_id: options.inspectWaypointId } : {}),
               ...(options.inspectWaypointIds?.length
                 ? { inspect_waypoint_ids: options.inspectWaypointIds }
+                : {}),
+              ...(options.observationCandidates?.length
+                ? {
+                    observation_candidates: options.observationCandidates.map((candidate) => ({
+                      inspect_waypoint_id: candidate.inspectWaypointId,
+                      ...(candidate.inspectWaypointName
+                        ? { inspect_waypoint_name: candidate.inspectWaypointName }
+                        : {}),
+                      ...(candidate.navigationPose
+                        ? {
+                            navigation_pose: {
+                              x: candidate.navigationPose.x,
+                              y: candidate.navigationPose.y,
+                              z: candidate.navigationPose.z,
+                              yaw: candidate.navigationPose.yaw,
+                              frame_id: candidate.navigationPose.frameId,
+                            },
+                          }
+                        : {}),
+                      final_target_pose: {
+                        x: candidate.finalTargetPose.x,
+                        y: candidate.finalTargetPose.y,
+                        z: candidate.finalTargetPose.z,
+                        yaw: candidate.finalTargetPose.yaw,
+                        frame_id: candidate.finalTargetPose.frameId,
+                      },
+                    })),
+                  }
                 : {}),
               ...(options.plantId ? { plant_id: options.plantId } : {}),
             }

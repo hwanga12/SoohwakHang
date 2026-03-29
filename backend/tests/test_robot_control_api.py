@@ -287,13 +287,26 @@ def test_read_layers_payload_exposes_safe_approach_pose_for_plants() -> None:
 
     assert plant_asset["position"]["x"] == pytest.approx(-6.0)
     assert plant_asset["position"]["y"] == pytest.approx(-6.0)
-    assert plant_asset["navigation_pose"]["x"] == pytest.approx(-8.0)
-    assert plant_asset["navigation_pose"]["y"] == pytest.approx(-6.0)
-    assert plant_asset["approach_pose"]["x"] == pytest.approx(-6.3)
-    assert plant_asset["approach_pose"]["y"] == pytest.approx(-6.0)
-    assert plant_asset["inspect_waypoint_id"] == "farm_01_lane_01_inspect_01"
-    assert payload["command_type"] == "pause_motion"
-    assert payload["request"]["accepted"] is True
+    observation_candidates = plant_asset["observation_candidates"]
+    observation_waypoint_ids = {
+        candidate["inspect_waypoint_id"]
+        for candidate in observation_candidates
+    }
+
+    assert observation_waypoint_ids == {
+        "farm_01_lane_01_inspect_01",
+        "farm_01_lane_02_inspect_06",
+    }
+    assert observation_candidates[0]["inspect_waypoint_id"] == "farm_01_lane_01_inspect_01"
+
+    left_candidate = next(
+        candidate for candidate in observation_candidates
+        if candidate["inspect_waypoint_id"] == "farm_01_lane_01_inspect_01"
+    )
+    assert left_candidate["navigation_pose"]["x"] == pytest.approx(-8.0)
+    assert left_candidate["navigation_pose"]["y"] == pytest.approx(-6.0)
+    assert left_candidate["approach_pose"]["x"] == pytest.approx(-6.3)
+    assert left_candidate["approach_pose"]["y"] == pytest.approx(-6.0)
 
 
 def test_read_layers_payload_exposes_dual_observation_candidates_for_center_tomato_plants() -> None:
@@ -310,6 +323,7 @@ def test_read_layers_payload_exposes_dual_observation_candidates_for_center_toma
         for candidate in observation_candidates
     }
 
+    assert observation_candidates[0]["inspect_waypoint_id"] == "farm_01_lane_03_inspect_05"
     assert "farm_01_lane_center_inspect_05" in observation_waypoint_ids
     assert "farm_01_lane_03_inspect_05" in observation_waypoint_ids
 
@@ -321,6 +335,18 @@ def test_read_layers_payload_exposes_dual_observation_candidates_for_center_toma
     assert center_candidate["navigation_pose"]["y"] == pytest.approx(4.0)
     assert center_candidate["approach_pose"]["x"] == pytest.approx(1.7)
     assert center_candidate["approach_pose"]["y"] == pytest.approx(4.0)
+
+
+def test_read_layers_payload_keeps_dual_observation_candidates_for_all_tomato_plants() -> None:
+    payload = read_layers_payload()
+
+    plant_assets = [
+        asset for asset in payload["assets"]
+        if asset["kind"] == "plant"
+    ]
+
+    assert len(plant_assets) == 24
+    assert all(len(asset["observation_candidates"]) == 2 for asset in plant_assets)
 
 
 def test_read_layers_payload_spreads_center_lane_display_markers_toward_each_crop() -> None:
@@ -371,6 +397,44 @@ def test_publish_navigate_command_keeps_all_observation_candidates_in_bridge_pay
                 "farm_01_lane_03_inspect_05",
                 "farm_01_lane_center_inspect_05",
             ],
+            "observation_candidates": [
+                {
+                    "inspect_waypoint_id": "farm_01_lane_03_inspect_05",
+                    "inspect_waypoint_name": "3번 라인 5번 관측점",
+                    "navigation_pose": {
+                        "x": 4.0,
+                        "y": 4.0,
+                        "z": 0.0,
+                        "yaw": 1.5708,
+                        "frame_id": "map",
+                    },
+                    "final_target_pose": {
+                        "x": 2.3,
+                        "y": 4.0,
+                        "z": 0.0,
+                        "yaw": -1.5708,
+                        "frame_id": "map",
+                    },
+                },
+                {
+                    "inspect_waypoint_id": "farm_01_lane_center_inspect_05",
+                    "inspect_waypoint_name": "중앙 5번 관측점",
+                    "navigation_pose": {
+                        "x": 0.0,
+                        "y": 4.0,
+                        "z": 0.0,
+                        "yaw": -1.5708,
+                        "frame_id": "map",
+                    },
+                    "final_target_pose": {
+                        "x": 1.7,
+                        "y": 4.0,
+                        "z": 0.0,
+                        "yaw": 1.5708,
+                        "frame_id": "map",
+                    },
+                },
+            ],
         },
     )
 
@@ -382,6 +446,44 @@ def test_publish_navigate_command_keeps_all_observation_candidates_in_bridge_pay
     assert command_payload["payload"]["inspect_waypoint_ids"] == [
         "farm_01_lane_03_inspect_05",
         "farm_01_lane_center_inspect_05",
+    ]
+    assert command_payload["payload"]["observation_candidates"] == [
+        {
+            "inspect_waypoint_id": "farm_01_lane_03_inspect_05",
+            "inspect_waypoint_name": "3번 라인 5번 관측점",
+            "navigation_pose": {
+                "x": 4.0,
+                "y": 4.0,
+                "z": 0.0,
+                "yaw": 1.5708,
+                "frame_id": "map",
+            },
+            "final_target_pose": {
+                "x": 2.3,
+                "y": 4.0,
+                "z": 0.0,
+                "yaw": -1.5708,
+                "frame_id": "map",
+            },
+        },
+        {
+            "inspect_waypoint_id": "farm_01_lane_center_inspect_05",
+            "inspect_waypoint_name": "중앙 5번 관측점",
+            "navigation_pose": {
+                "x": 0.0,
+                "y": 4.0,
+                "z": 0.0,
+                "yaw": -1.5708,
+                "frame_id": "map",
+            },
+            "final_target_pose": {
+                "x": 1.7,
+                "y": 4.0,
+                "z": 0.0,
+                "yaw": 1.5708,
+                "frame_id": "map",
+            },
+        },
     ]
 
 

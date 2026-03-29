@@ -217,13 +217,11 @@ def _build_route_lookup() -> tuple[list[dict[str, Any]], dict[str, float]]:
 
 def _sort_observation_candidate(
     candidate: tuple[int, float, dict[str, Any], dict[str, Any]],
-) -> tuple[float, float, float, str, str]:
+) -> tuple[float, float, str, str]:
     score, distance, route, waypoint = candidate
-    pose = waypoint["pose"]
     return (
         -score,
         distance,
-        abs(float(pose["x"])),
         str(route["route_id"]),
         str(waypoint["waypoint_id"]),
     )
@@ -275,6 +273,14 @@ def _find_observation_contexts(
             candidates.append((score, distance, route, waypoint))
 
     if candidates:
+        candidates.sort(
+            key=lambda item: (
+                -item[0],
+                item[1],
+                str(item[2].get("route_id", "")),
+                str(item[3].get("waypoint_id", "")),
+            )
+        )
         return _dedupe_observation_contexts(candidates)
 
     route_candidates: list[tuple[int, float, dict[str, Any], dict[str, Any]]] = []
@@ -302,6 +308,13 @@ def _find_observation_contexts(
         route_candidates.append((1, distance, route, inspect_waypoint))
 
     if route_candidates:
+        route_candidates.sort(
+            key=lambda item: (
+                item[1],
+                str(item[2].get("route_id", "")),
+                str(item[3].get("waypoint_id", "")),
+            )
+        )
         return _dedupe_observation_contexts(route_candidates)
 
     return []

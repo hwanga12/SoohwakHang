@@ -43,6 +43,7 @@ import {
   type PlantsPageData,
   type PlantRow,
   type RobotCommandStatus,
+  type RobotObservationGoalCandidate,
   type RobotTargetPose,
 } from '@/lib/api/agribot'
 import {
@@ -231,6 +232,7 @@ type DiagnoseCommandTracker = {
   plantName: string
   inspectWaypointId: string | null
   inspectWaypointIds: string[]
+  observationCandidates: RobotObservationGoalCandidate[]
   targetPose: RobotTargetPose
   targetDisplayPose: RobotTargetPose
   routeSteps: DiagnoseRouteStep[]
@@ -248,6 +250,7 @@ type DiagnoseDispatchInput = {
   plantName: string
   inspectWaypointId: string | null
   inspectWaypointIds: string[]
+  observationCandidates: RobotObservationGoalCandidate[]
   targetPose: RobotTargetPose
   targetDisplayPose: RobotTargetPose
   routeSteps: DiagnoseRouteStep[]
@@ -666,11 +669,15 @@ function buildDiagnoseRoutePlan(
     farmSemanticScene,
     fallbackPositionLabel,
     currentPose,
+    {
+      selectionStrategy: 'harvest-primary',
+      selectedCandidateOnly: true,
+    },
   )
 
   const routeSteps: DiagnoseRouteStep[] =
     plan?.steps.map((step) => ({
-      phase: (step.phase === 'inspection' ? 'inspection' : 'transit') as DiagnosePhase,
+      phase: (step.phase === 'final_observation' ? 'inspection' : 'transit') as DiagnosePhase,
       pose: step.pose,
       displayPose: step.displayPose,
     }))
@@ -682,6 +689,7 @@ function buildDiagnoseRoutePlan(
     inspectionDisplayPose: plan?.inspectionDisplayPose ?? targetPose,
     inspectWaypointId: plan?.inspectWaypointId ?? null,
     inspectWaypointIds: plan?.inspectWaypointIds ?? [],
+    observationCandidates: plan?.observationCandidates ?? [],
   }
 }
 
@@ -693,6 +701,17 @@ function describeDiagnosePhase(phase: DiagnosePhase) {
     default:
       return '관측 위치'
   }
+}
+
+function diagnosePhaseFromStatus(status: RobotCommandStatus, fallbackPhase: DiagnosePhase) {
+  if (status.navigationPhase === 'route_anchor') {
+    return 'transit' as const
+  }
+  if (status.navigationPhase === 'final_observation') {
+    return 'inspection' as const
+  }
+
+  return fallbackPhase
 }
 
 function canRestartDiagnosisWhilePaused(status: RobotCommandStatus) {
@@ -752,7 +771,7 @@ function buildDiagnoseUiState(
     activeDiagnoseCommand !== null && activeDiagnoseCommand.plantId === currentPlantId
   const phaseLabel =
     activeDiagnoseCommand !== null
-      ? describeDiagnosePhase(activeDiagnoseCommand.phase)
+      ? describeDiagnosePhase(diagnosePhaseFromStatus(latestCommandStatus, activeDiagnoseCommand.phase))
       : '관측 위치'
 
   if (trackingCurrentPlant) {
@@ -1033,11 +1052,12 @@ export function FarmCommandPage() {
     },
   })
   const diagnoseMutation = useMutation({
-    mutationFn: ({ currentTargetPose, inspectWaypointId, inspectWaypointIds, plantId }: DiagnoseDispatchInput) => sendRobotNavigateCommand(
-      currentTargetPose,
+    mutationFn: ({ targetPose, inspectWaypointId, inspectWaypointIds, observationCandidates, plantId }: DiagnoseDispatchInput) => sendRobotNavigateCommand(
+      targetPose,
       {
         inspectWaypointId,
         inspectWaypointIds,
+        observationCandidates,
         plantId,
       },
     ),
@@ -1049,6 +1069,7 @@ export function FarmCommandPage() {
         plantName: variables.plantName,
         inspectWaypointId: variables.inspectWaypointId,
         inspectWaypointIds: variables.inspectWaypointIds,
+        observationCandidates: variables.observationCandidates,
         targetPose: variables.targetPose,
         targetDisplayPose: variables.targetDisplayPose,
         routeSteps: variables.routeSteps,
@@ -1060,17 +1081,11 @@ export function FarmCommandPage() {
         requestedAt: Date.now(),
       })
       setObservedDiagnoseState(null)
-      setActivityState(
-        variables.phase === 'inspection'
-          ? '관측 위치 이동 중'
-          : '진단 이동 준비중',
-      )
+      setActivityState('안전 관측 경로 이동 중')
       setSelectedPlantId(variables.plantId)
       setSelectedAssetId(variables.plantId)
       setUiMessage(
-        variables.phase === 'inspection'
-          ? `${variables.plantName} 통로 관측 위치 이동 요청을 접수했습니다. /robot/commands/latest 가 pending/running으로 바뀌는지 확인합니다.`
-          : `${variables.plantName} 진단 이동 요청을 접수했습니다.`,
+        `${variables.plantName} 진단 이동 요청을 접수했습니다. executor가 안전 경유점과 최종 관측점을 순서대로 처리합니다.`,
       )
 
       await Promise.all([
@@ -1666,12 +1681,30 @@ export function FarmCommandPage() {
             y: stableRobotPose.y,
           }
         : null,
+      {
+        selectionStrategy: 'harvest-primary',
+        selectedCandidateOnly: true,
+      },
     )
   }, [selectedPlantDetail, stableLiveScene, stableMapScene, stableRobotPose])
   const selectedPlantTargetPose = selectedPlantNavigationPlan?.inspectionPose ?? null
   const diagnoseCommandActive =
     latestCommandStatus.status === 'pending' || latestCommandStatus.status === 'running'
   const mapPreviewPath = useMemo(() => {
+    if (
+      activeDiagnoseCommand !== null
+      && latestCommandStatus.routeTargetPose
+      && latestCommandStatus.finalTargetPose
+      && diagnoseCommandActive
+    ) {
+      return buildNavigationPreviewPath(
+        stableRobotPose,
+        latestCommandStatus.navigationPhase === 'route_anchor'
+          ? [latestCommandStatus.routeTargetPose, latestCommandStatus.finalTargetPose]
+          : [latestCommandStatus.finalTargetPose],
+      )
+    }
+
     if (activeDiagnoseCommand !== null) {
       return buildNavigationPreviewPath(
         stableRobotPose,
@@ -1696,34 +1729,73 @@ export function FarmCommandPage() {
     ),
     [activeDiagnoseCommand, stableMapScene.assets],
   )
+  const activeDiagnoseFinalTarget = useMemo(() => {
+    if (!diagnoseCommandActive) {
+      return null
+    }
+
+    return latestCommandStatus.finalTargetPose ?? activeDiagnoseCommand?.targetPose ?? selectedPlantTargetPose
+  }, [
+    activeDiagnoseCommand,
+    diagnoseCommandActive,
+    latestCommandStatus.finalTargetPose,
+    selectedPlantTargetPose,
+  ])
   const activeDiagnoseMarkerPose = useMemo(() => {
     if (!diagnoseCommandActive || !latestCommandStatus.targetPose) {
       return null
     }
 
+    if (latestCommandStatus.navigationPhase === 'final_observation') {
+      return (
+        resolveObservationCandidateDisplayPose(activeDiagnoseAsset, activeDiagnoseFinalTarget)
+        ?? activeDiagnoseCommand?.targetDisplayPose
+        ?? selectedPlantNavigationPlan?.inspectionDisplayPose
+        ?? activeDiagnoseFinalTarget
+        ?? latestCommandStatus.targetPose
+      )
+    }
+
+    return latestCommandStatus.routeTargetPose ?? latestCommandStatus.targetPose
+  }, [
+    activeDiagnoseAsset,
+    activeDiagnoseCommand,
+    activeDiagnoseFinalTarget,
+    diagnoseCommandActive,
+    latestCommandStatus.navigationPhase,
+    latestCommandStatus.routeTargetPose,
+    latestCommandStatus.targetPose,
+    selectedPlantNavigationPlan,
+  ])
+  const activeDiagnoseFinalMarkerPose = useMemo(() => {
+    if (!diagnoseCommandActive || !activeDiagnoseFinalTarget) {
+      return null
+    }
+
     return (
-      resolveObservationCandidateDisplayPose(activeDiagnoseAsset, latestCommandStatus.targetPose)
-      ?? activeDiagnoseCommand?.currentTargetDisplayPose
+      resolveObservationCandidateDisplayPose(activeDiagnoseAsset, activeDiagnoseFinalTarget)
+      ?? activeDiagnoseCommand?.targetDisplayPose
       ?? selectedPlantNavigationPlan?.inspectionDisplayPose
-      ?? latestCommandStatus.targetPose
+      ?? activeDiagnoseFinalTarget
     )
   }, [
     activeDiagnoseAsset,
     activeDiagnoseCommand,
+    activeDiagnoseFinalTarget,
     diagnoseCommandActive,
-    latestCommandStatus.targetPose,
     selectedPlantNavigationPlan,
   ])
   const stableActiveCommandTarget = useStableRobotPose(
     diagnoseCommandActive ? latestCommandStatus.targetPose : null,
   )
   const stableActiveDiagnoseMarkerPose = useStableRobotPose(activeDiagnoseMarkerPose)
-  const stablePendingDiagnosePose = useStableRobotPose(
-    activeDiagnoseCommand?.currentTargetPose ?? selectedPlantTargetPose,
+  const stableActiveDiagnoseFinalTarget = useStableRobotPose(
+    diagnoseCommandActive ? activeDiagnoseFinalTarget : null,
   )
+  const stableActiveDiagnoseFinalMarkerPose = useStableRobotPose(activeDiagnoseFinalMarkerPose)
+  const stablePendingDiagnosePose = useStableRobotPose(selectedPlantTargetPose)
   const stablePendingDiagnoseMarkerPose = useStableRobotPose(
-    activeDiagnoseCommand?.currentTargetDisplayPose
-    ?? selectedPlantNavigationPlan?.inspectionDisplayPose
+    selectedPlantNavigationPlan?.inspectionDisplayPose
     ?? selectedPlantTargetPose,
   )
   const diagnoseUiState = buildDiagnoseUiState(
@@ -1805,6 +1877,7 @@ export function FarmCommandPage() {
       plantName: input.plantName,
       inspectWaypointId: diagnoseRoute.inspectWaypointId,
       inspectWaypointIds: diagnoseRoute.inspectWaypointIds,
+      observationCandidates: diagnoseRoute.observationCandidates,
       targetPose: diagnoseRoute.inspectionPose,
       targetDisplayPose: diagnoseRoute.inspectionDisplayPose,
       routeSteps: diagnoseRoute.steps,
@@ -1943,6 +2016,10 @@ export function FarmCommandPage() {
             y: stableRobotPose.y,
           }
         : null,
+      {
+        selectionStrategy: 'harvest-primary',
+        selectedCandidateOnly: true,
+      },
     )
 
     if (inspectionPlan === null) {
@@ -2040,38 +2117,15 @@ export function FarmCommandPage() {
     }
 
     if (latestCommandStatus.status === 'running') {
-      setActivityState('진단 이동중')
+      setActivityState(
+        latestCommandStatus.navigationPhase === 'final_observation'
+          ? '최종 관측 접근 중'
+          : '안전 경유점 이동 중',
+      )
       return
     }
 
     if (latestCommandStatus.status === 'succeeded') {
-      const nextStep = activeDiagnoseCommand.routeSteps[activeDiagnoseCommand.currentStepIndex + 1]
-      if (nextStep) {
-        setActivityState(
-          nextStep.phase === 'inspection'
-            ? '관측 위치 재접근 중'
-            : '진단 경로 재접근 중',
-        )
-        setUiMessage(
-          `${activeDiagnoseCommand.plantName} ${describeDiagnosePhase(activeDiagnoseCommand.phase)}에 도착했습니다. ${describeDiagnosePhase(nextStep.phase)}로 이동합니다.`,
-        )
-        diagnoseMutation.mutate({
-          plantId: activeDiagnoseCommand.plantId,
-          fruitId: activeDiagnoseCommand.fruitId,
-          plantName: activeDiagnoseCommand.plantName,
-          inspectWaypointId: activeDiagnoseCommand.inspectWaypointId,
-          inspectWaypointIds: activeDiagnoseCommand.inspectWaypointIds,
-          targetPose: activeDiagnoseCommand.targetPose,
-          targetDisplayPose: activeDiagnoseCommand.targetDisplayPose,
-          routeSteps: activeDiagnoseCommand.routeSteps,
-          currentStepIndex: activeDiagnoseCommand.currentStepIndex + 1,
-          currentTargetPose: nextStep.pose,
-          currentTargetDisplayPose: nextStep.displayPose,
-          phase: nextStep.phase,
-        })
-        return
-      }
-
       const shouldRunDemoDiagnosis =
         activeDiagnoseCommand.plantId === DEMO_DIAGNOSIS_PLANT_ID
         && !triggeredDemoDiagnosisCommandIds[activeDiagnoseCommand.commandId]
@@ -2105,7 +2159,7 @@ export function FarmCommandPage() {
 
       setUiMessage(
         latestCommandStatus.message
-        || `${activeDiagnoseCommand.plantName} 목표 지점에 도착했습니다. 통로 관측 위치까지 이동을 완료했습니다.`,
+        || `${activeDiagnoseCommand.plantName} 목표 지점에 도착했습니다. 작물 관측 이동을 완료했습니다.`,
       )
       return
     }
@@ -2115,7 +2169,7 @@ export function FarmCommandPage() {
       setUiMessage(
         latestCommandStatus.message
         || (
-          `${activeDiagnoseCommand.plantName} ${describeDiagnosePhase(activeDiagnoseCommand.phase)} 이동이 실패했습니다.`
+          `${activeDiagnoseCommand.plantName} ${describeDiagnosePhase(diagnosePhaseFromStatus(latestCommandStatus, activeDiagnoseCommand.phase))} 이동이 실패했습니다.`
         ),
       )
       return
@@ -2126,13 +2180,12 @@ export function FarmCommandPage() {
       setUiMessage(
         latestCommandStatus.message
         || (
-          `${activeDiagnoseCommand.plantName} ${describeDiagnosePhase(activeDiagnoseCommand.phase)} 이동이 취소되었습니다.`
+          `${activeDiagnoseCommand.plantName} ${describeDiagnosePhase(diagnosePhaseFromStatus(latestCommandStatus, activeDiagnoseCommand.phase))} 이동이 취소되었습니다.`
         ),
       )
     }
   }, [
     activeDiagnoseCommand,
-    diagnoseMutation,
     demoDiagnosisMutation,
     latestCommandStatus,
     observedDiagnoseState,
@@ -2312,6 +2365,9 @@ export function FarmCommandPage() {
             activeCommandTarget={stableActiveCommandTarget}
             activeCommandTargetLabel="실행 중 목표"
             activeCommandTargetMarker={stableActiveDiagnoseMarkerPose}
+            activeFinalCommandTarget={stableActiveDiagnoseFinalTarget}
+            activeFinalCommandTargetLabel="최종 관측 목표"
+            activeFinalCommandTargetMarker={stableActiveDiagnoseFinalMarkerPose}
             onSelectAsset={handleSelectAsset}
             onSelectGuide={handleGuideMove}
             pendingTarget={stablePendingDiagnosePose}

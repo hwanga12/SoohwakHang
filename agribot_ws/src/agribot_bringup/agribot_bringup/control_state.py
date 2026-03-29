@@ -31,6 +31,11 @@ class ResumeContextType(str, Enum):
     PATROL = 'patrol'
 
 
+class ManualNavigationPhase(str, Enum):
+    ROUTE_ANCHOR = 'route_anchor'
+    FINAL_OBSERVATION = 'final_observation'
+
+
 @dataclass(slots=True, frozen=True)
 class ResumeContext:
     context_type: ResumeContextType
@@ -40,6 +45,9 @@ class ResumeContext:
     target_pose: dict[str, Any] | None = None
     target_waypoint_id: str | None = None
     home_waypoint_id: str | None = None
+    route_target_pose: dict[str, Any] | None = None
+    final_target_pose: dict[str, Any] | None = None
+    navigation_phase: str | None = None
     patrol_snapshot: dict[str, Any] | None = None
 
     def as_payload(self) -> dict[str, Any]:
@@ -51,6 +59,9 @@ class ResumeContext:
             'target_pose': self.target_pose,
             'target_waypoint_id': self.target_waypoint_id,
             'home_waypoint_id': self.home_waypoint_id,
+            'route_target_pose': self.route_target_pose,
+            'final_target_pose': self.final_target_pose,
+            'navigation_phase': self.navigation_phase,
             'patrol_snapshot': self.patrol_snapshot,
         }
 
@@ -74,6 +85,22 @@ class ResumeContext:
             home_waypoint_id=(
                 str(payload.get('home_waypoint_id')).strip()
                 if payload.get('home_waypoint_id') is not None
+                else None
+            ),
+            route_target_pose=(
+                payload.get('route_target_pose')
+                if isinstance(payload.get('route_target_pose'), dict)
+                else None
+            ),
+            final_target_pose=(
+                payload.get('final_target_pose')
+                if isinstance(payload.get('final_target_pose'), dict)
+                else None
+            ),
+            navigation_phase=(
+                str(payload.get('navigation_phase')).strip()
+                if str(payload.get('navigation_phase')).strip()
+                in {item.value for item in ManualNavigationPhase}
                 else None
             ),
             patrol_snapshot=(

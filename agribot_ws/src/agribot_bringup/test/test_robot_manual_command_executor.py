@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from agribot_bringup.control_state import ControlMode
+from agribot_bringup.control_state import ControlMode, ManualNavigationPhase
 from agribot_bringup.robot_manual_command_executor import (
     ActiveCommandContext,
     CommandPose,
@@ -200,6 +200,68 @@ def test_parse_manual_command_payload_keeps_candidate_inspect_waypoint_ids_for_p
         'farm_01_lane_03_inspect_05',
         'farm_01_lane_center_inspect_05',
     )
+
+
+def test_parse_manual_command_payload_keeps_observation_candidates_for_dual_stage_crop_navigation() -> None:
+    command = parse_manual_command_payload(
+        {
+            'command_id': 'cmd-nav-plant-03',
+            'command_type': 'navigate_to_pose',
+            'robot_id': 'AGR-02',
+            'requested_by': 'frontend-operator',
+            'target_pose': {
+                'x': 1.7,
+                'y': 4.0,
+                'yaw': 1.5708,
+                'frame_id': 'map',
+            },
+            'payload': {
+                'plant_id': 'farm01_plant_19',
+                'inspect_waypoint_id': 'farm_01_lane_center_inspect_05',
+                'observation_candidates': [
+                    {
+                        'inspect_waypoint_id': 'farm_01_lane_center_inspect_05',
+                        'inspect_waypoint_name': '중앙 5번 관측점',
+                        'navigation_pose': {
+                            'x': 0.0,
+                            'y': 4.0,
+                            'yaw': -1.5708,
+                            'frame_id': 'map',
+                        },
+                        'final_target_pose': {
+                            'x': 1.7,
+                            'y': 4.0,
+                            'yaw': 1.5708,
+                            'frame_id': 'map',
+                        },
+                    },
+                    {
+                        'inspect_waypoint_id': 'farm_01_lane_03_inspect_05',
+                        'inspect_waypoint_name': '3번 라인 5번 관측점',
+                        'navigation_pose': {
+                            'x': 4.0,
+                            'y': 4.0,
+                            'yaw': 1.5708,
+                            'frame_id': 'map',
+                        },
+                        'final_target_pose': {
+                            'x': 2.3,
+                            'y': 4.0,
+                            'yaw': -1.5708,
+                            'frame_id': 'map',
+                        },
+                    },
+                ],
+            },
+        }
+    )
+
+    assert command.plant_id == 'farm01_plant_19'
+    assert len(command.observation_candidates) == 2
+    assert command.observation_candidates[0].inspect_waypoint_id == 'farm_01_lane_center_inspect_05'
+    assert command.observation_candidates[0].final_target_pose.x == 1.7
+    assert command.observation_candidates[1].navigation_pose is not None
+    assert command.observation_candidates[1].navigation_pose.x == 4.0
 
 
 def test_parse_manual_command_payload_defaults_non_navigation_preempt_to_false() -> None:
@@ -490,6 +552,55 @@ def test_manual_navigation_emergency_stop_scenario_captures_resume_context() -> 
     assert resume_context.home_waypoint_id == 'farm_01_home'
     assert resume_context.target_pose is not None
     assert resume_context.target_pose['frame_id'] == 'map'
+
+
+def test_build_manual_resume_context_preserves_dual_stage_navigation_targets() -> None:
+    context = ActiveCommandContext(
+        command=ManualCommand(
+            command_id='cmd-nav-dual-stage',
+            command_type='navigate_to_pose',
+            robot_id='AGR-02',
+            requested_by='frontend-operator',
+            target_pose=None,
+            home_waypoint_id=None,
+            preempt_current_navigation=True,
+        ),
+        received_at='2026-03-29T00:00:00+00:00',
+        started_at='2026-03-29T00:00:01+00:00',
+        target_pose=CommandPose(
+            x=0.0,
+            y=2.0,
+            z=0.0,
+            yaw=-1.5708,
+            frame_id='map',
+        ),
+        route_target_pose=CommandPose(
+            x=0.0,
+            y=2.0,
+            z=0.0,
+            yaw=-1.5708,
+            frame_id='map',
+        ),
+        final_target_pose=CommandPose(
+            x=-1.7,
+            y=2.0,
+            z=0.0,
+            yaw=1.5708,
+            frame_id='map',
+        ),
+        target_waypoint_id='farm_01_lane_center_inspect_04',
+        navigation_phase=ManualNavigationPhase.ROUTE_ANCHOR,
+    )
+
+    resume_context = build_manual_resume_context(context)
+
+    assert resume_context is not None
+    assert resume_context.target_waypoint_id == 'farm_01_lane_center_inspect_04'
+    assert resume_context.route_target_pose is not None
+    assert resume_context.final_target_pose is not None
+    assert resume_context.route_target_pose['x'] == 0.0
+    assert resume_context.final_target_pose['x'] == -1.7
+    assert resume_context.navigation_phase == ManualNavigationPhase.ROUTE_ANCHOR.value
 
 
 def test_failed_resume_motion_restores_paused_manual_navigation_context() -> None:

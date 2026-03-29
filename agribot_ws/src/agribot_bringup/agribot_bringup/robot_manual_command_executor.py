@@ -31,6 +31,7 @@ from agribot_navigation.patrol_config import (
 from .control_state import (
     ControlMode,
     ControlStateSnapshot,
+    ManualNavigationPhase,
     MotionActivity,
     ResumeContext,
     ResumeContextType,
@@ -135,6 +136,14 @@ class CommandPose:
 
 
 @dataclass(frozen=True)
+class ObservationGoalCandidate:
+    inspect_waypoint_id: str
+    inspect_waypoint_name: str | None
+    final_target_pose: CommandPose
+    navigation_pose: CommandPose | None = None
+
+
+@dataclass(frozen=True)
 class ManualCommand:
     command_id: str
     command_type: str
@@ -144,6 +153,7 @@ class ManualCommand:
     plant_id: str | None = None
     inspect_waypoint_id: str | None = None
     inspect_waypoint_ids: tuple[str, ...] = ()
+    observation_candidates: tuple[ObservationGoalCandidate, ...] = ()
     home_waypoint_id: str | None = None
     preempt_current_navigation: bool = False
 
@@ -154,7 +164,10 @@ class ActiveCommandContext:
     received_at: str
     started_at: str | None = None
     target_pose: CommandPose | None = None
+    route_target_pose: CommandPose | None = None
+    final_target_pose: CommandPose | None = None
     target_waypoint_id: str | None = None
+    navigation_phase: ManualNavigationPhase | None = None
     home_waypoint_id: str | None = None
 
 
@@ -218,6 +231,54 @@ def _extract_string_list(payload: dict[str, Any], key: str) -> tuple[str, ...]:
         for item in raw_value
         if (normalized := str(item).strip())
     )
+
+
+def _extract_observation_candidates(
+    payload: dict[str, Any],
+    default_frame: str,
+) -> tuple[ObservationGoalCandidate, ...]:
+    raw_value = payload.get('observation_candidates')
+    if raw_value is None:
+        return ()
+    if not isinstance(raw_value, list):
+        raise ValueError('observation_candidates 는 배열이어야 합니다.')
+
+    candidates: list[ObservationGoalCandidate] = []
+    seen_waypoint_ids: set[str] = set()
+    for index, item in enumerate(raw_value):
+        if not isinstance(item, dict):
+            raise ValueError(f'observation_candidates[{index}] 는 JSON object여야 합니다.')
+
+        inspect_waypoint_id = str(item.get('inspect_waypoint_id', '')).strip()
+        if not inspect_waypoint_id:
+            raise ValueError(f'observation_candidates[{index}].inspect_waypoint_id 가 필요합니다.')
+        if inspect_waypoint_id in seen_waypoint_ids:
+            continue
+
+        final_target_pose = item.get('final_target_pose')
+        if not isinstance(final_target_pose, dict):
+            raise ValueError(f'observation_candidates[{index}].final_target_pose 가 필요합니다.')
+
+        navigation_pose = item.get('navigation_pose')
+        candidates.append(
+            ObservationGoalCandidate(
+                inspect_waypoint_id=inspect_waypoint_id,
+                inspect_waypoint_name=(
+                    str(item.get('inspect_waypoint_name')).strip()
+                    if item.get('inspect_waypoint_name') is not None
+                    else None
+                ) or None,
+                final_target_pose=_coerce_pose(final_target_pose, default_frame),
+                navigation_pose=(
+                    _coerce_pose(navigation_pose, default_frame)
+                    if isinstance(navigation_pose, dict)
+                    else None
+                ),
+            )
+        )
+        seen_waypoint_ids.add(inspect_waypoint_id)
+
+    return tuple(candidates)
 
 
 def _coerce_pose(payload: dict[str, Any], default_frame: str) -> CommandPose:
@@ -454,6 +515,10 @@ def parse_manual_command_payload(
         raw_payload,
         'inspect_waypoint_ids',
     )
+    observation_candidates = _extract_observation_candidates(payload, default_frame) or _extract_observation_candidates(
+        raw_payload,
+        default_frame,
+    )
 
     return ManualCommand(
         command_id=command_id,
@@ -464,6 +529,7 @@ def parse_manual_command_payload(
         plant_id=plant_id or None,
         inspect_waypoint_id=inspect_waypoint_id or None,
         inspect_waypoint_ids=inspect_waypoint_ids,
+        observation_candidates=observation_candidates,
         home_waypoint_id=home_waypoint_id or None,
         preempt_current_navigation=preempt_current_navigation,
     )
@@ -510,6 +576,17 @@ def build_manual_resume_context(
         target_pose=context.target_pose.as_status_payload(),
         target_waypoint_id=context.target_waypoint_id,
         home_waypoint_id=context.home_waypoint_id,
+        route_target_pose=(
+            context.route_target_pose.as_status_payload()
+            if context.route_target_pose is not None
+            else None
+        ),
+        final_target_pose=(
+            context.final_target_pose.as_status_payload()
+            if context.final_target_pose is not None
+            else None
+        ),
+        navigation_phase=context.navigation_phase.value if context.navigation_phase is not None else None,
     )
 
 
@@ -600,6 +677,16 @@ def is_pose_within_xy_tolerance(
         float(target_pose.x) - current_pose.x,
         float(target_pose.y) - current_pose.y,
     ) <= xy_tolerance_m
+
+
+def pose_distance_xy(
+    left: CommandPose | Pose2D | None,
+    right: CommandPose | Pose2D | None,
+) -> float:
+    if left is None or right is None:
+        return float('inf')
+
+    return math.hypot(float(left.x) - float(right.x), float(left.y) - float(right.y))
 
 
 def read_runtime_pose_snapshot(
@@ -695,6 +782,9 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('start_occupied_recovery_time_allowance_sec', 4.0)
         self.declare_parameter('start_occupied_recovery_limit', 1)
         self.declare_parameter('goal_soft_complete_xy_tolerance_m', 0.55)
+        self.declare_parameter('final_observation_stage_trigger_distance_m', 0.08)
+        self.declare_parameter('final_observation_soft_complete_xy_tolerance_m', 0.4)
+        self.declare_parameter('route_anchor_fallback_xy_tolerance_m', 0.65)
         self.declare_parameter('simulation_pose_reset_recovery_enabled', True)
         self.declare_parameter('simulation_pose_reset_retry_limit', 1)
         self.declare_parameter('simulation_pose_reset_retry_delay_sec', 0.8)
@@ -758,6 +848,18 @@ class RobotManualCommandExecutor(Node):
         self._goal_soft_complete_xy_tolerance_m = max(
             0.0,
             float(self.get_parameter('goal_soft_complete_xy_tolerance_m').value),
+        )
+        self._final_observation_stage_trigger_distance_m = max(
+            0.0,
+            float(self.get_parameter('final_observation_stage_trigger_distance_m').value),
+        )
+        self._final_observation_soft_complete_xy_tolerance_m = max(
+            0.0,
+            float(self.get_parameter('final_observation_soft_complete_xy_tolerance_m').value),
+        )
+        self._route_anchor_fallback_xy_tolerance_m = max(
+            0.0,
+            float(self.get_parameter('route_anchor_fallback_xy_tolerance_m').value),
         )
         self._simulation_pose_reset_recovery_enabled = bool(
             self.get_parameter('simulation_pose_reset_recovery_enabled').value
@@ -1279,6 +1381,7 @@ class RobotManualCommandExecutor(Node):
             command=command,
             received_at=_iso_now(),
             target_pose=command.target_pose,
+            final_target_pose=command.target_pose,
             target_waypoint_id=command.inspect_waypoint_id or command.home_waypoint_id,
             home_waypoint_id=command.home_waypoint_id,
         )
@@ -1678,6 +1781,25 @@ class RobotManualCommandExecutor(Node):
         context.home_waypoint_id = resume_context.home_waypoint_id
         context.target_waypoint_id = resume_context.target_waypoint_id or resume_context.home_waypoint_id
         context.target_pose = _coerce_pose(resume_context.target_pose, self._map_frame)
+        context.route_target_pose = (
+            _coerce_pose(resume_context.route_target_pose, self._map_frame)
+            if isinstance(resume_context.route_target_pose, dict)
+            else (
+                context.target_pose
+                if resume_context.navigation_phase == ManualNavigationPhase.ROUTE_ANCHOR.value
+                else None
+            )
+        )
+        context.final_target_pose = (
+            _coerce_pose(resume_context.final_target_pose, self._map_frame)
+            if isinstance(resume_context.final_target_pose, dict)
+            else context.target_pose
+        )
+        context.navigation_phase = (
+            ManualNavigationPhase(resume_context.navigation_phase)
+            if resume_context.navigation_phase in {item.value for item in ManualNavigationPhase}
+            else ManualNavigationPhase.FINAL_OBSERVATION
+        )
         self._resume_release_pending = True
         if self._schedule_resume_release_recovery(context):
             return
@@ -1685,6 +1807,7 @@ class RobotManualCommandExecutor(Node):
             context,
             target_pose=context.target_pose,
             label='저장된 수동 이동 재개',
+            preserve_navigation_plan=True,
         )
 
     def _call_patrol_service_and_wait(
@@ -1729,33 +1852,81 @@ class RobotManualCommandExecutor(Node):
             )
         )
 
-    def _resolve_navigation_target_pose(
+    def _observation_candidate_waypoint_ids(
+        self,
+        context: ActiveCommandContext,
+    ) -> tuple[str, ...]:
+        candidate_ids = [
+            candidate.inspect_waypoint_id
+            for candidate in context.command.observation_candidates
+            if candidate.inspect_waypoint_id in self._plan.waypoints
+        ]
+        if candidate_ids:
+            return tuple(dict.fromkeys(candidate_ids))
+
+        if context.command.inspect_waypoint_ids:
+            return tuple(
+                dict.fromkeys(
+                    waypoint_id
+                    for waypoint_id in context.command.inspect_waypoint_ids
+                    if waypoint_id in self._plan.waypoints
+                )
+            )
+
+        if context.command.inspect_waypoint_id and context.command.inspect_waypoint_id in self._plan.waypoints:
+            return (context.command.inspect_waypoint_id,)
+
+        return ()
+
+    def _selected_observation_candidate(
+        self,
+        context: ActiveCommandContext,
+        selected_waypoint_id: str | None,
+    ) -> ObservationGoalCandidate | None:
+        if not selected_waypoint_id:
+            return None
+
+        for candidate in context.command.observation_candidates:
+            if candidate.inspect_waypoint_id == selected_waypoint_id:
+                return candidate
+        return None
+
+    def _configure_navigation_targets(
         self,
         context: ActiveCommandContext,
         requested_target_pose: CommandPose,
-    ) -> CommandPose:
+    ) -> None:
         current_pose = read_runtime_pose_snapshot(
             self._runtime_dir,
             expected_frame=self._map_frame,
         )
-        candidate_waypoint_ids = (
-            context.command.inspect_waypoint_ids
-            or ((context.command.inspect_waypoint_id,) if context.command.inspect_waypoint_id else ())
-        )
+        candidate_waypoint_ids = self._observation_candidate_waypoint_ids(context)
         selected_waypoint_id = select_best_target_waypoint_id(
             self._plan,
             current_pose=current_pose,
             candidate_waypoint_ids=candidate_waypoint_ids,
             preferred_waypoint_id=context.command.inspect_waypoint_id,
         )
-        if not selected_waypoint_id:
-            return requested_target_pose
+        selected_waypoint = self._plan.waypoints.get(selected_waypoint_id) if selected_waypoint_id else None
+        selected_candidate = self._selected_observation_candidate(context, selected_waypoint_id)
 
-        selected_waypoint = self._plan.waypoints.get(selected_waypoint_id)
-        if selected_waypoint is None:
-            return requested_target_pose
+        context.final_target_pose = (
+            selected_candidate.final_target_pose
+            if selected_candidate is not None
+            else requested_target_pose
+        )
+        context.route_target_pose = (
+            self._command_pose_from_pose2d(selected_waypoint.pose)
+            if selected_waypoint is not None
+            else None
+        )
+        context.target_waypoint_id = (
+            selected_waypoint_id
+            or context.command.inspect_waypoint_id
+            or context.home_waypoint_id
+        )
 
-        if context.target_waypoint_id != selected_waypoint_id:
+        if selected_waypoint_id and context.command.inspect_waypoint_id != selected_waypoint_id:
             self.get_logger().info(
                 '식물 관측 후보 중 현재 위치에서 가장 효율적인 waypoint를 선택했습니다. '
                 f'plant_id={context.command.plant_id or "-"}, '
@@ -1763,8 +1934,49 @@ class RobotManualCommandExecutor(Node):
                 f'preferred={context.command.inspect_waypoint_id or "-"}'
             )
 
-        context.target_waypoint_id = selected_waypoint_id
-        return self._command_pose_from_pose2d(selected_waypoint.pose)
+        if self._is_two_stage_observation(context):
+            context.navigation_phase = ManualNavigationPhase.ROUTE_ANCHOR
+            context.target_pose = context.route_target_pose
+            return
+
+        context.navigation_phase = ManualNavigationPhase.FINAL_OBSERVATION
+        context.target_pose = context.final_target_pose
+
+    def _is_two_stage_observation(self, context: ActiveCommandContext) -> bool:
+        return (
+            context.route_target_pose is not None
+            and context.final_target_pose is not None
+            and pose_distance_xy(context.route_target_pose, context.final_target_pose)
+            > self._final_observation_stage_trigger_distance_m
+        )
+
+    def _dispatch_current_navigation_stage(
+        self,
+        context: ActiveCommandContext,
+        *,
+        label: str,
+        is_retry: bool,
+    ) -> None:
+        if (
+            context.navigation_phase is ManualNavigationPhase.FINAL_OBSERVATION
+            and self._is_two_stage_observation(context)
+            and context.final_target_pose is not None
+        ):
+            self._dispatch_final_observation_goal(
+                context,
+                target_pose=context.final_target_pose,
+                label=label,
+                is_retry=is_retry,
+            )
+            return
+
+        active_target_pose = context.target_pose or context.final_target_pose
+        self._dispatch_navigation_goal(
+            context,
+            target_pose=active_target_pose,
+            label=label,
+            is_retry=is_retry,
+        )
 
     def _start_navigation_command(
         self,
@@ -1772,6 +1984,7 @@ class RobotManualCommandExecutor(Node):
         *,
         target_pose: CommandPose | None,
         label: str,
+        preserve_navigation_plan: bool = False,
     ) -> None:
         if target_pose is None:
             self._finish_active_command(
@@ -1794,19 +2007,18 @@ class RobotManualCommandExecutor(Node):
         self._start_occupied_recovery_count = 0
         self._simulation_pose_reset_recovery_count = 0
         self._cancel_simulation_pose_reset_retry_timer()
-        context.target_pose = self._resolve_navigation_target_pose(context, target_pose)
-        context.target_waypoint_id = (
-            context.target_waypoint_id
-            or context.command.inspect_waypoint_id
-            or context.home_waypoint_id
-        )
+        if preserve_navigation_plan:
+            context.target_pose = target_pose
+            context.final_target_pose = context.final_target_pose or target_pose
+            context.navigation_phase = context.navigation_phase or ManualNavigationPhase.FINAL_OBSERVATION
+        else:
+            self._configure_navigation_targets(context, target_pose)
         self._update_control_state()
         if context.command.preempt_current_navigation:
             self._prepare_navigation_preemption(context, label=label)
             return
-        self._dispatch_navigation_goal(
+        self._dispatch_current_navigation_stage(
             context,
-            target_pose=context.target_pose,
             label=label,
             is_retry=False,
         )
@@ -1821,9 +2033,8 @@ class RobotManualCommandExecutor(Node):
             self.get_logger().warning(
                 '순찰 중지 서비스를 찾지 못해 stop 확인 없이 새 이동 명령을 실행합니다.'
             )
-            self._dispatch_navigation_goal(
+            self._dispatch_current_navigation_stage(
                 context,
-                target_pose=context.target_pose,
                 label=label,
                 is_retry=False,
             )
@@ -1873,9 +2084,8 @@ class RobotManualCommandExecutor(Node):
             response = future.result()
         except Exception as exc:
             self.get_logger().warning(f'순찰 중지 선행 호출에 실패해 바로 이동을 시도합니다: {exc}')
-            self._dispatch_navigation_goal(
+            self._dispatch_current_navigation_stage(
                 context,
-                target_pose=context.target_pose,
                 label=label,
                 is_retry=False,
             )
@@ -1887,9 +2097,8 @@ class RobotManualCommandExecutor(Node):
                 '새 이동 명령은 계속 실행합니다.'
             )
 
-        self._dispatch_navigation_goal(
+        self._dispatch_current_navigation_stage(
             context,
-            target_pose=context.target_pose,
             label=label,
             is_retry=False,
         )
@@ -1963,6 +2172,43 @@ class RobotManualCommandExecutor(Node):
 
         self._write_status(self._build_status_payload(context, 'running', message))
         self._goal_send_future = self._navigate_through_client.send_goal_async(goal)
+        self._goal_send_future.add_done_callback(self._handle_navigation_goal_response)
+
+    def _dispatch_final_observation_goal(
+        self,
+        context: ActiveCommandContext,
+        *,
+        target_pose: CommandPose,
+        label: str,
+        is_retry: bool,
+    ) -> None:
+        if not self._navigate_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
+            self._finish_active_command(
+                'failed',
+                f'NavigateToPose action server를 찾지 못했습니다: {self._action_name}',
+                error='navigate_action_unavailable',
+            )
+            return
+
+        context.target_pose = target_pose
+        context.navigation_phase = ManualNavigationPhase.FINAL_OBSERVATION
+        if context.started_at is None:
+            context.started_at = _iso_now()
+
+        goal = NavigateToPose.Goal()
+        goal.pose = self._build_pose_stamped(target_pose.as_pose2d())
+        goal.behavior_tree = ''
+
+        if is_retry:
+            message = (
+                f'{label} 최종 관측 접근을 재시도 중입니다. '
+                f'({self._goal_reject_retry_count}/{self._goal_reject_retry_limit})'
+            )
+        else:
+            message = f'{label} 최종 관측 위치로 접근 중입니다.'
+
+        self._write_status(self._build_status_payload(context, 'running', message))
+        self._goal_send_future = self._navigate_client.send_goal_async(goal)
         self._goal_send_future.add_done_callback(self._handle_navigation_goal_response)
 
     def _dispatch_navigation_goal(
@@ -2086,10 +2332,39 @@ class RobotManualCommandExecutor(Node):
 
         status = result.status
         nav_result = result.result
+        active_context = self._active_context
+        in_final_observation_stage = (
+            active_context is not None
+            and active_context.navigation_phase is ManualNavigationPhase.FINAL_OBSERVATION
+            and self._is_two_stage_observation(active_context)
+        )
 
         if status == GoalStatus.STATUS_SUCCEEDED:
             self._start_occupied_recovery_count = 0
-            self._finish_active_command('succeeded', '이동 명령이 완료되었습니다.')
+            if (
+                active_context is not None
+                and active_context.navigation_phase is ManualNavigationPhase.ROUTE_ANCHOR
+                and self._is_two_stage_observation(active_context)
+                and active_context.final_target_pose is not None
+            ):
+                active_context.navigation_phase = ManualNavigationPhase.FINAL_OBSERVATION
+                active_context.target_pose = active_context.final_target_pose
+                self._dispatch_current_navigation_stage(
+                    active_context,
+                    label=describe_manual_navigation_label(
+                        active_context.command.command_type,
+                        active_context.home_waypoint_id,
+                    ),
+                    is_retry=False,
+                )
+                return
+
+            success_message = (
+                '최종 관측 위치까지 이동을 완료했습니다.'
+                if in_final_observation_stage
+                else '이동 명령이 완료되었습니다.'
+            )
+            self._finish_active_command('succeeded', success_message)
             return
 
         if status == GoalStatus.STATUS_CANCELED:
@@ -2107,17 +2382,42 @@ class RobotManualCommandExecutor(Node):
         if should_treat_failed_navigation_as_success(
             self._runtime_dir,
             expected_frame=self._map_frame,
-            target_pose=self._active_context.target_pose if self._active_context is not None else None,
-            xy_tolerance_m=self._goal_soft_complete_xy_tolerance_m,
+            target_pose=active_context.target_pose if active_context is not None else None,
+            xy_tolerance_m=(
+                self._final_observation_soft_complete_xy_tolerance_m
+                if in_final_observation_stage
+                else self._goal_soft_complete_xy_tolerance_m
+            ),
         ):
             self._start_occupied_recovery_count = 0
             self._finish_active_command(
                 'succeeded',
-                '목표 좌표 근처의 안전 허용 오차 안으로 들어와 이동을 완료한 것으로 처리했습니다.',
+                (
+                    '최종 관측 위치 근처의 허용 오차 안으로 들어와 작물 앞 접근을 완료한 것으로 처리했습니다.'
+                    if in_final_observation_stage
+                    else '목표 좌표 근처의 안전 허용 오차 안으로 들어와 이동을 완료한 것으로 처리했습니다.'
+                ),
             )
             return
 
-        if _navigation_result_indicates_start_occupied(nav_result):
+        if in_final_observation_stage and active_context is not None:
+            current_pose = read_runtime_pose_snapshot(
+                self._runtime_dir,
+                expected_frame=self._map_frame,
+            )
+            if is_pose_within_xy_tolerance(
+                current_pose,
+                active_context.route_target_pose,
+                xy_tolerance_m=self._route_anchor_fallback_xy_tolerance_m,
+            ):
+                self._finish_active_command(
+                    'succeeded',
+                    '안전 관측 경유점까지는 도착했지만 울타리 근접 구간 충돌 위험으로 최종 작물 접근은 생략했습니다.',
+                    result='anchor_only',
+                )
+                return
+
+        if not in_final_observation_stage and _navigation_result_indicates_start_occupied(nav_result):
             if self._schedule_simulation_pose_reset_recovery():
                 return
             if self._schedule_start_occupied_recovery():
@@ -2262,9 +2562,8 @@ class RobotManualCommandExecutor(Node):
         context = self._active_context
         if context is None or context.target_pose is None:
             return
-        self._dispatch_navigation_goal(
+        self._dispatch_current_navigation_stage(
             context,
-            target_pose=context.target_pose,
             label='저장된 수동 이동 재개',
             is_retry=True,
         )
@@ -2346,9 +2645,8 @@ class RobotManualCommandExecutor(Node):
             context.command.command_type,
             context.home_waypoint_id,
         )
-        self._dispatch_navigation_goal(
+        self._dispatch_current_navigation_stage(
             context,
-            target_pose=context.target_pose,
             label=retry_label,
             is_retry=True,
         )
@@ -2472,9 +2770,8 @@ class RobotManualCommandExecutor(Node):
         context = self._active_context
         if context is None or context.target_pose is None:
             return
-        self._dispatch_navigation_goal(
+        self._dispatch_current_navigation_stage(
             context,
-            target_pose=context.target_pose,
             label=describe_manual_navigation_label(
                 context.command.command_type,
                 context.home_waypoint_id,
@@ -2697,6 +2994,18 @@ class RobotManualCommandExecutor(Node):
                 if context.target_pose is not None
                 else None
             ),
+            route_target_pose=(
+                context.route_target_pose.as_status_payload()
+                if context.route_target_pose is not None
+                else None
+            ),
+            final_target_pose=(
+                context.final_target_pose.as_status_payload()
+                if context.final_target_pose is not None
+                else None
+            ),
+            target_waypoint_id=context.target_waypoint_id,
+            navigation_phase=context.navigation_phase.value if context.navigation_phase is not None else None,
             home_waypoint_id=context.home_waypoint_id,
             control_state=self._control_state.as_payload(),
             received_at=context.received_at,
@@ -2776,9 +3085,8 @@ class RobotManualCommandExecutor(Node):
         context = self._active_context
         if context is None or context.target_pose is None:
             return
-        self._dispatch_navigation_goal(
+        self._dispatch_current_navigation_stage(
             context,
-            target_pose=context.target_pose,
             label=describe_manual_navigation_label(
                 context.command.command_type,
                 context.home_waypoint_id,

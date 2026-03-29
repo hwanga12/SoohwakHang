@@ -1,8 +1,13 @@
-import type { RobotTargetPose } from '@/lib/api/agribot'
-import { resolvePlantObservationSelection } from '@/lib/robot-map/approach-pose'
+import type { RobotObservationGoalCandidate, RobotTargetPose } from '@/lib/api/agribot'
+import {
+  resolvePlantObservationSelection,
+  type PlantObservationSelectionStrategy,
+} from '@/lib/robot-map/approach-pose'
 import type { SemanticScene } from '@/lib/robot-map/farm-semantic-map'
 
-export type PlantNavigationStepPhase = 'inspection'
+const FINAL_OBSERVATION_STAGE_TRIGGER_DISTANCE_M = 0.08
+
+export type PlantNavigationStepPhase = 'route_anchor' | 'final_observation'
 
 export type PlantNavigationStep = {
   phase: PlantNavigationStepPhase
@@ -11,12 +16,26 @@ export type PlantNavigationStep = {
 }
 
 export type PlantNavigationPlan = {
+  routeAnchorPose: RobotTargetPose
+  routeAnchorDisplayPose: RobotTargetPose
+  finalObservationPose: RobotTargetPose
+  finalObservationDisplayPose: RobotTargetPose
   inspectionPose: RobotTargetPose
   inspectionDisplayPose: RobotTargetPose
   inspectWaypointId: string | null
   inspectWaypointIds: string[]
   inspectWaypointName: string | null
+  observationCandidates: RobotObservationGoalCandidate[]
   steps: PlantNavigationStep[]
+}
+
+export type PlantNavigationPlanOptions = {
+  selectionStrategy?: PlantObservationSelectionStrategy
+  selectedCandidateOnly?: boolean
+}
+
+function poseDistance(left: RobotTargetPose, right: RobotTargetPose) {
+  return Math.hypot(left.x - right.x, left.y - right.y)
 }
 
 export function buildPlantInspectionNavigationPlan(
@@ -25,29 +44,73 @@ export function buildPlantInspectionNavigationPlan(
   fallbackScene: SemanticScene,
   fallbackPositionLabel: string,
   currentPose: { x: number, y: number } | null,
+  options?: PlantNavigationPlanOptions,
 ): PlantNavigationPlan | null {
+  const selectionStrategy = options?.selectionStrategy ?? 'nearest'
   const observationSelection = resolvePlantObservationSelection(
     plantId,
     preferredScene,
     fallbackScene,
     fallbackPositionLabel,
     currentPose,
+    selectionStrategy,
   )
 
   if (!observationSelection) {
     return null
   }
 
+  const routeAnchorPose = observationSelection.navigationPose
+  const routeAnchorDisplayPose = observationSelection.navigationPose
+  const finalObservationPose = observationSelection.approachPose ?? observationSelection.displayPose
+  const finalObservationDisplayPose = observationSelection.displayPose
+  const needsTwoStageApproach =
+    poseDistance(routeAnchorPose, finalObservationPose) > FINAL_OBSERVATION_STAGE_TRIGGER_DISTANCE_M
+  const selectedCandidate =
+    observationSelection.inspectWaypointId !== null
+      ? observationSelection.observationCandidates.find(
+          (candidate) => candidate.inspectWaypointId === observationSelection.inspectWaypointId,
+        ) ?? null
+      : null
+  const exportedObservationCandidates =
+    options?.selectedCandidateOnly && selectedCandidate
+      ? [selectedCandidate]
+      : observationSelection.observationCandidates
+  const exportedInspectWaypointIds =
+    options?.selectedCandidateOnly && observationSelection.inspectWaypointId
+      ? [observationSelection.inspectWaypointId]
+      : observationSelection.inspectWaypointIds
+
   return {
-    inspectionPose: observationSelection.navigationPose,
-    inspectionDisplayPose: observationSelection.displayPose,
+    routeAnchorPose,
+    routeAnchorDisplayPose,
+    finalObservationPose,
+    finalObservationDisplayPose,
+    inspectionPose: finalObservationPose,
+    inspectionDisplayPose: finalObservationDisplayPose,
     inspectWaypointId: observationSelection.inspectWaypointId,
-    inspectWaypointIds: observationSelection.inspectWaypointIds,
+    inspectWaypointIds: exportedInspectWaypointIds,
     inspectWaypointName: observationSelection.inspectWaypointName,
-    steps: [{
-      phase: 'inspection',
-      pose: observationSelection.navigationPose,
-      displayPose: observationSelection.displayPose,
-    }],
+    observationCandidates: exportedObservationCandidates,
+    steps: needsTwoStageApproach
+      ? [
+          {
+            phase: 'route_anchor',
+            pose: routeAnchorPose,
+            displayPose: routeAnchorDisplayPose,
+          },
+          {
+            phase: 'final_observation',
+            pose: finalObservationPose,
+            displayPose: finalObservationDisplayPose,
+          },
+        ]
+      : [
+          {
+            phase: 'final_observation',
+            pose: finalObservationPose,
+            displayPose: finalObservationDisplayPose,
+          },
+        ],
   }
 }

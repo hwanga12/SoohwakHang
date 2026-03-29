@@ -32,8 +32,11 @@ type RobotFacilityMapProps = {
   pendingTargetMarker?: RobotTargetPose | null
   activeCommandTarget?: RobotTargetPose | null
   activeCommandTargetMarker?: RobotTargetPose | null
+  activeFinalCommandTarget?: RobotTargetPose | null
+  activeFinalCommandTargetMarker?: RobotTargetPose | null
   pendingTargetLabel?: string
   activeCommandTargetLabel?: string
+  activeFinalCommandTargetLabel?: string
   previewPath?: NavigationPreviewPoint[] | null
   zoom: number
   onSelectAsset: (assetId: string) => void
@@ -338,6 +341,9 @@ function areRobotFacilityMapPropsEqual(
     && areRobotPosesEqual(previous.pendingTargetMarker, next.pendingTargetMarker)
     && areRobotPosesEqual(previous.activeCommandTarget, next.activeCommandTarget)
     && areRobotPosesEqual(previous.activeCommandTargetMarker, next.activeCommandTargetMarker)
+    && areRobotPosesEqual(previous.activeFinalCommandTarget, next.activeFinalCommandTarget)
+    && areRobotPosesEqual(previous.activeFinalCommandTargetMarker, next.activeFinalCommandTargetMarker)
+    && previous.activeFinalCommandTargetLabel === next.activeFinalCommandTargetLabel
   )
 }
 
@@ -351,8 +357,11 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
   pendingTargetMarker = null,
   activeCommandTarget = null,
   activeCommandTargetMarker = null,
+  activeFinalCommandTarget = null,
+  activeFinalCommandTargetMarker = null,
   pendingTargetLabel = '선택한 후보',
   activeCommandTargetLabel = '실행 중 목표',
+  activeFinalCommandTargetLabel = '최종 관측 목표',
   previewPath = null,
   zoom,
   onSelectAsset,
@@ -381,6 +390,15 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
   const visiblePendingTarget = showPendingTarget ? pendingTarget : null
   const visiblePendingTargetMarker = showPendingTarget ? (pendingTargetMarker ?? pendingTarget) : null
   const visibleActiveCommandTargetMarker = activeCommandTargetMarker ?? activeCommandTarget
+  const showFinalCommandTarget = (
+    activeFinalCommandTarget !== null
+    && !areRobotPosesEqual(activeFinalCommandTarget, activeCommandTarget)
+  )
+  const visibleActiveFinalCommandTargetMarker = (
+    showFinalCommandTarget
+      ? (activeFinalCommandTargetMarker ?? activeFinalCommandTarget)
+      : null
+  )
 
   useEffect(() => {
     let timeoutId = 0
@@ -671,6 +689,21 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
               </div>
             )
           })() : null}
+
+          {showFinalCommandTarget && visibleActiveFinalCommandTargetMarker ? (
+            <div
+              className="robot-facility-map__target robot-facility-map__target--final"
+              style={toOverlayPercent(
+                scene,
+                map,
+                visibleActiveFinalCommandTargetMarker.x,
+                visibleActiveFinalCommandTargetMarker.y,
+              )}
+            >
+              <span className="robot-facility-map__target-dot" />
+              <span className="robot-facility-map__target-label">{activeFinalCommandTargetLabel}</span>
+            </div>
+          ) : null}
 
           {visiblePendingTarget && visiblePendingTargetMarker ? (
             <div
