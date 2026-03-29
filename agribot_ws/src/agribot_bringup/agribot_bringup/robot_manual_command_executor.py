@@ -12,7 +12,7 @@ from typing import Any
 
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped
-from nav2_msgs.action import BackUp, NavigateThroughPoses, NavigateToPose
+from nav2_msgs.action import BackUp, ComputePathToPose, NavigateThroughPoses, NavigateToPose
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.duration import Duration
@@ -751,6 +751,22 @@ def should_treat_failed_navigation_as_success(
     )
 
 
+def should_complete_route_anchor_only(
+    *,
+    current_pose: Pose2D | None,
+    route_target_pose: CommandPose | None,
+    final_path_available: bool,
+    xy_tolerance_m: float,
+) -> bool:
+    if final_path_available:
+        return False
+    return is_pose_within_xy_tolerance(
+        current_pose,
+        route_target_pose,
+        xy_tolerance_m=xy_tolerance_m,
+    )
+
+
 def should_release_orphaned_active_command(
     active_context: ActiveCommandContext | None,
     last_status_payload: dict[str, Any] | None,
@@ -780,6 +796,7 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('map_frame', DEFAULT_FRAME_ID)
         self.declare_parameter('navigate_to_pose_action', 'navigate_to_pose')
         self.declare_parameter('navigate_through_poses_action', 'navigate_through_poses')
+        self.declare_parameter('compute_path_to_pose_action', 'compute_path_to_pose')
         self.declare_parameter('patrol_status_topic', '/patrol/status')
         self.declare_parameter('patrol_stop_service', '/patrol/stop')
         self.declare_parameter('patrol_resume_service', '/patrol/resume')
@@ -826,6 +843,7 @@ class RobotManualCommandExecutor(Node):
         self._map_frame = str(self.get_parameter('map_frame').value)
         self._action_name = str(self.get_parameter('navigate_to_pose_action').value)
         self._batch_action_name = str(self.get_parameter('navigate_through_poses_action').value)
+        self._path_probe_action_name = str(self.get_parameter('compute_path_to_pose_action').value)
         self._backup_action_name = str(self.get_parameter('backup_action').value)
         self._patrol_status_topic = str(self.get_parameter('patrol_status_topic').value)
         self._control_state_topic = str(self.get_parameter('control_state_topic').value)
@@ -912,6 +930,11 @@ class RobotManualCommandExecutor(Node):
             NavigateThroughPoses,
             self._batch_action_name,
         )
+        self._compute_path_client = ActionClient(
+            self,
+            ComputePathToPose,
+            self._path_probe_action_name,
+        )
         self._backup_client = ActionClient(self, BackUp, self._backup_action_name)
         self._patrol_stop_client = self.create_client(
             Trigger,
@@ -947,6 +970,9 @@ class RobotManualCommandExecutor(Node):
         self._goal_cancel_future = None
         self._goal_retry_timer = None
         self._goal_reject_retry_count = 0
+        self._path_probe_send_future = None
+        self._path_probe_result_future = None
+        self._active_path_probe_handle = None
         self._recovery_send_future = None
         self._recovery_result_future = None
         self._recovery_cancel_future = None
@@ -1313,6 +1339,9 @@ class RobotManualCommandExecutor(Node):
                 self._goal_result_future,
                 self._active_goal_handle,
                 self._goal_cancel_future,
+                self._path_probe_send_future,
+                self._path_probe_result_future,
+                self._active_path_probe_handle,
                 self._service_future,
                 self._recovery_send_future,
                 self._recovery_result_future,
@@ -1346,6 +1375,9 @@ class RobotManualCommandExecutor(Node):
         self._goal_send_future = None
         self._goal_result_future = None
         self._goal_cancel_future = None
+        self._path_probe_send_future = None
+        self._path_probe_result_future = None
+        self._active_path_probe_handle = None
         self._service_future = None
         self._recovery_send_future = None
         self._recovery_result_future = None
@@ -2196,6 +2228,156 @@ class RobotManualCommandExecutor(Node):
         self._goal_send_future = self._navigate_through_client.send_goal_async(goal)
         self._goal_send_future.add_done_callback(self._handle_navigation_goal_response)
 
+    def _probe_final_observation_path(
+        self,
+        context: ActiveCommandContext,
+        *,
+        label: str,
+        is_retry: bool,
+    ) -> None:
+        if context.final_target_pose is None:
+            self._finish_active_command(
+                'failed',
+                '최종 관측 위치가 없어 작물 앞 접근을 이어갈 수 없습니다.',
+                error='missing_final_target_pose',
+            )
+            return
+
+        if not self._compute_path_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
+            self.get_logger().warning(
+                f'ComputePathToPose action server를 찾지 못해 {label} 최종 접근 경로 탐색을 건너뜁니다.'
+            )
+            self._dispatch_final_observation_goal(
+                context,
+                target_pose=context.final_target_pose,
+                label=label,
+                is_retry=is_retry,
+            )
+            return
+
+        probe_goal = ComputePathToPose.Goal()
+        probe_goal.goal = self._build_pose_stamped(context.final_target_pose.as_pose2d())
+        probe_goal.planner_id = ''
+        probe_goal.use_start = False
+
+        self._write_status(
+            self._build_status_payload(
+                context,
+                'running',
+                f'{label} 최종 관측 경로 가능 여부를 확인 중입니다.',
+            )
+        )
+        self._path_probe_send_future = self._compute_path_client.send_goal_async(probe_goal)
+        self._path_probe_send_future.add_done_callback(
+            lambda future, dispatch_label=label, retry_flag=is_retry: self._handle_final_observation_probe_goal_response(
+                future,
+                label=dispatch_label,
+                is_retry=retry_flag,
+            )
+        )
+
+    def _handle_final_observation_probe_goal_response(
+        self,
+        future: Any,
+        *,
+        label: str,
+        is_retry: bool,
+    ) -> None:
+        self._path_probe_send_future = None
+        try:
+            goal_handle = future.result()
+        except Exception as exc:
+            self.get_logger().warning(
+                f'최종 관측 경로 확인 goal 전송에 실패해 직접 접근을 시도합니다: {exc}'
+            )
+            context = self._active_context
+            if context is not None and context.final_target_pose is not None:
+                self._dispatch_final_observation_goal(
+                    context,
+                    target_pose=context.final_target_pose,
+                    label=label,
+                    is_retry=is_retry,
+                )
+            return
+
+        if not goal_handle.accepted:
+            self.get_logger().warning(
+                '최종 관측 경로 확인 goal이 거부되어 직접 접근을 시도합니다.'
+            )
+            context = self._active_context
+            if context is not None and context.final_target_pose is not None:
+                self._dispatch_final_observation_goal(
+                    context,
+                    target_pose=context.final_target_pose,
+                    label=label,
+                    is_retry=is_retry,
+                )
+            return
+
+        self._active_path_probe_handle = goal_handle
+        self._path_probe_result_future = goal_handle.get_result_async()
+        self._path_probe_result_future.add_done_callback(
+            lambda result_future, dispatch_label=label, retry_flag=is_retry: self._handle_final_observation_probe_result(
+                result_future,
+                label=dispatch_label,
+                is_retry=retry_flag,
+            )
+        )
+
+    def _handle_final_observation_probe_result(
+        self,
+        future: Any,
+        *,
+        label: str,
+        is_retry: bool,
+    ) -> None:
+        self._active_path_probe_handle = None
+        self._path_probe_result_future = None
+        context = self._active_context
+        if context is None or context.final_target_pose is None:
+            return
+
+        final_path_available = False
+        try:
+            result = future.result()
+            path_payload = getattr(result.result, 'path', None)
+            final_path_available = bool(path_payload and getattr(path_payload, 'poses', None))
+        except Exception as exc:
+            self.get_logger().warning(
+                f'최종 관측 경로 확인 결과를 받지 못해 직접 접근을 시도합니다: {exc}'
+            )
+            self._dispatch_final_observation_goal(
+                context,
+                target_pose=context.final_target_pose,
+                label=label,
+                is_retry=is_retry,
+            )
+            return
+
+        if should_complete_route_anchor_only(
+            current_pose=read_runtime_pose_snapshot(
+                self._runtime_dir,
+                expected_frame=self._map_frame,
+                max_age_sec=self._runtime_pose_snapshot_max_age_sec,
+            ),
+            route_target_pose=context.route_target_pose,
+            final_path_available=final_path_available,
+            xy_tolerance_m=self._route_anchor_fallback_xy_tolerance_m,
+        ):
+            self._finish_active_command(
+                'succeeded',
+                '안전 관측 경유점까지는 도착했지만 울타리 근접 구간 경로가 없어 최종 작물 접근은 생략했습니다.',
+                result='anchor_only',
+            )
+            return
+
+        self._dispatch_final_observation_goal(
+            context,
+            target_pose=context.final_target_pose,
+            label=label,
+            is_retry=is_retry,
+        )
+
     def _dispatch_final_observation_goal(
         self,
         context: ActiveCommandContext,
@@ -2369,9 +2551,7 @@ class RobotManualCommandExecutor(Node):
                 and self._is_two_stage_observation(active_context)
                 and active_context.final_target_pose is not None
             ):
-                active_context.navigation_phase = ManualNavigationPhase.FINAL_OBSERVATION
-                active_context.target_pose = active_context.final_target_pose
-                self._dispatch_current_navigation_stage(
+                self._probe_final_observation_path(
                     active_context,
                     label=describe_manual_navigation_label(
                         active_context.command.command_type,
@@ -2429,9 +2609,10 @@ class RobotManualCommandExecutor(Node):
                 expected_frame=self._map_frame,
                 max_age_sec=self._runtime_pose_snapshot_max_age_sec,
             )
-            if is_pose_within_xy_tolerance(
-                current_pose,
-                active_context.route_target_pose,
+            if should_complete_route_anchor_only(
+                current_pose=current_pose,
+                route_target_pose=active_context.route_target_pose,
+                final_path_available=False,
                 xy_tolerance_m=self._route_anchor_fallback_xy_tolerance_m,
             ):
                 self._finish_active_command(
@@ -2976,6 +3157,9 @@ class RobotManualCommandExecutor(Node):
         self._goal_send_future = None
         self._goal_result_future = None
         self._goal_cancel_future = None
+        self._path_probe_send_future = None
+        self._path_probe_result_future = None
+        self._active_path_probe_handle = None
         self._service_future = None
         self._recovery_send_future = None
         self._recovery_result_future = None
@@ -3138,6 +3322,7 @@ class RobotManualCommandExecutor(Node):
         self._pending_context = None
         self._navigate_client.destroy()
         self._navigate_through_client.destroy()
+        self._compute_path_client.destroy()
         self._backup_client.destroy()
         return super().destroy_node()
 

@@ -29,6 +29,7 @@ from agribot_bringup.robot_manual_command_executor import (
     resolve_preempt_current_navigation,
     resolve_return_home_target,
     should_block_command_for_control_mode,
+    should_complete_route_anchor_only,
     should_retry_goal_rejection,
 )
 from agribot_bringup.manual_navigation_routing import (
@@ -36,7 +37,7 @@ from agribot_bringup.manual_navigation_routing import (
     select_best_target_waypoint_id,
     select_start_waypoint_id,
 )
-from agribot_navigation.patrol_config import get_default_patrol_waypoints_path, load_patrol_plan
+from agribot_navigation.patrol_config import Pose2D, get_default_patrol_waypoints_path, load_patrol_plan
 
 
 def test_parse_manual_command_payload_extracts_nested_target_pose() -> None:
@@ -433,6 +434,24 @@ def test_should_treat_failed_navigation_as_success_when_runtime_pose_is_near_tar
         ),
         xy_tolerance_m=0.55,
     ) is True
+
+
+def test_should_complete_route_anchor_only_when_final_path_is_blocked_but_anchor_is_reached() -> None:
+    current_pose = Pose2D(x=0.08, y=5.61, z=0.0, yaw=1.57)
+    route_target_pose = CommandPose(x=0.0, y=6.0, z=0.0, yaw=1.57, frame_id='map')
+
+    assert should_complete_route_anchor_only(
+        current_pose=current_pose,
+        route_target_pose=route_target_pose,
+        final_path_available=False,
+        xy_tolerance_m=0.65,
+    ) is True
+    assert should_complete_route_anchor_only(
+        current_pose=current_pose,
+        route_target_pose=route_target_pose,
+        final_path_available=True,
+        xy_tolerance_m=0.65,
+    ) is False
 
 
 def test_should_not_treat_failed_navigation_as_success_when_runtime_pose_is_far(

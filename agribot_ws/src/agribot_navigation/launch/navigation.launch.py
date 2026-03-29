@@ -335,6 +335,9 @@ def generate_launch_description():
             'patrol_waypoints_file': LaunchConfiguration('patrol_waypoints_file'),
             'crop_instances_file': LaunchConfiguration('crop_instances_file'),
             'return_mode_override': LaunchConfiguration('harvest_return_mode'),
+            'harvest_navigation_target_mode': 'inspect_waypoint',
+            'harvest_inspect_waypoint_fallback_enabled': True,
+            'harvest_demo_recovery_enabled': False,
         }],
         condition=IfCondition(LaunchConfiguration('use_harvest_route')),
     )

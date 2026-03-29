@@ -50,6 +50,7 @@ from .harvest_runtime_store import (
     harvest_event_record_path,
     harvest_failure_alert_path,
     harvest_latest_event_path,
+    reset_harvest_runtime_session,
     runtime_dir_from_env,
     write_json_atomic,
 )
@@ -136,7 +137,7 @@ class HarvestRouteNode(Node):
         self.declare_parameter('harvest_basket_slot_forward_spacing_m', 0.0)
         self.declare_parameter('harvest_basket_overflow_stack_z_m', 0.035)
         self.declare_parameter('harvest_inspect_waypoint_fallback_enabled', True)
-        self.declare_parameter('harvest_demo_recovery_enabled', True)
+        self.declare_parameter('harvest_demo_recovery_enabled', False)
         self.declare_parameter('harvest_navigation_target_mode', 'inspect_waypoint')
         self.declare_parameter('harvest_goal_soft_tolerance_m', 0.4)
 
@@ -283,6 +284,10 @@ class HarvestRouteNode(Node):
         self.get_logger().info(
             'Loaded harvest routing metadata with '
             f'{len(self._catalog.tomatoes)} tomatoes from {self._crop_catalog_path}.'
+        )
+        reset_harvest_runtime_session(self._runtime_dir)
+        self.get_logger().info(
+            f'이전 harvest runtime session 흔적을 정리했습니다: {self._runtime_dir}'
         )
         self._publish_basket_state()
         self._write_idle_execution_status()
