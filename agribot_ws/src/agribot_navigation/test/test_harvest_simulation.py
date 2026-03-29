@@ -1,6 +1,7 @@
 """수확 데모 좌표 계산이 로봇 heading과 바구니 슬롯 규칙을 올바르게 반영하는지 검증한다."""
 
 import math
+import pytest
 
 from agribot_navigation.harvest_simulation import (
     HarvestAnimationConfig,
@@ -39,7 +40,7 @@ def test_compute_basket_pose_caps_visual_slots_to_two_and_stacks_overflow() -> N
     assert third_pose.x == second_pose.x
     assert third_pose.y == second_pose.y
     assert third_pose.z > second_pose.z
-    assert first_pose.z == second_pose.z == 0.455
+    assert first_pose.z == second_pose.z == 0.26
 
 
 def test_compute_basket_pose_default_height_keeps_tomato_above_placeholder_floor() -> None:
@@ -47,7 +48,9 @@ def test_compute_basket_pose_default_height_keeps_tomato_above_placeholder_floor
 
     basket_pose = compute_basket_pose(pose, HarvestAnimationConfig(), basket_slot_index=0)
 
-    assert basket_pose == WorldPose(x=-2.14, y=3.975, z=0.455)
+    assert basket_pose.x == pytest.approx(-1.86)
+    assert basket_pose.y == pytest.approx(3.975)
+    assert basket_pose.z == pytest.approx(0.26)
 
 
 def test_build_gz_pose_request_formats_pose_for_set_pose_service() -> None:
@@ -68,7 +71,7 @@ def test_compute_carry_pose_uses_animation_config_defaults() -> None:
 
     carry_pose = compute_carry_pose(pose, HarvestAnimationConfig())
 
-    assert carry_pose == WorldPose(x=-1.76, y=4.0, z=0.46)
+    assert carry_pose == WorldPose(x=-2.24, y=4.0, z=0.46)
 
 
 def test_compute_grasp_pose_places_tomato_near_gripper_fingers() -> None:
@@ -76,4 +79,4 @@ def test_compute_grasp_pose_places_tomato_near_gripper_fingers() -> None:
 
     grasp_pose = compute_grasp_pose(pose, HarvestAnimationConfig())
 
-    assert grasp_pose == WorldPose(x=-1.69, y=4.0, z=0.54)
+    assert grasp_pose == WorldPose(x=-2.31, y=4.0, z=0.54)

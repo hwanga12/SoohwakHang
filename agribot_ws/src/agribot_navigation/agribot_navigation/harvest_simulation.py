@@ -17,17 +17,17 @@ class WorldPose:
 
 @dataclass(frozen=True)
 class HarvestAnimationConfig:
-    grasp_forward_m: float = 0.31
+    grasp_forward_m: float = -0.31
     grasp_lateral_m: float = 0.0
     grasp_z_m: float = 0.54
-    carry_forward_m: float = 0.24
+    carry_forward_m: float = -0.24
     carry_lateral_m: float = 0.0
     carry_z_m: float = 0.46
-    basket_forward_m: float = -0.14
+    basket_forward_m: float = 0.14
     basket_lateral_m: float = 0.0
-    # Keep the fruit slightly above the placeholder basket floor so it stays
-    # visible after the stow animation instead of sinking into the geometry.
-    basket_z_m: float = 0.455
+    # The basket floor sits near z=0.23 in world coordinates when base_link is
+    # on the ground, so keep the tomato center just above it.
+    basket_z_m: float = 0.26
     basket_slot_count: int = 2
     basket_slot_lateral_spacing_m: float = 0.05
     basket_slot_forward_spacing_m: float = 0.0
