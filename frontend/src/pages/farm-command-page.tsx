@@ -1906,7 +1906,7 @@ export function FarmCommandPage() {
       ? [
           { label: '장치', value: selectedAsset.label },
           { label: '장치 상태', value: '정상 작동' },
-          { label: '가능 작업', value: '물주기 / 영양제 주기' },
+          { label: '가능 작업', value: '물 주기 / 약 주기' },
           {
             label: '작업 상태',
             value: selectedActionRecord?.label ?? '대기',
@@ -2273,11 +2273,11 @@ export function FarmCommandPage() {
       onSuccess: () => {
         rememberAction(
           selectedAsset.id,
-          '물주기 요청 등록',
-          `${selectedAsset.label} 물주기 명령을 IoT 제어 파이프라인에 전달했습니다.`,
+          '물 주기 요청 등록',
+          `${selectedAsset.label} 물 주기 명령을 IoT 제어 파이프라인에 전달했습니다.`,
           'healthy',
         )
-        setUiMessage(`${selectedAsset.label} 물주기 명령을 전달했습니다.`)
+        setUiMessage(`${selectedAsset.label} 물 주기 명령을 전달했습니다.`)
       },
     })
   }
@@ -2287,7 +2287,7 @@ export function FarmCommandPage() {
       return
     }
 
-    setActivityState('영양제 주기')
+    setActivityState('약 주기')
     setUiMessage(null)
     nutrientMutation.mutate({
       deviceId: selectedAsset.id,
@@ -2296,11 +2296,11 @@ export function FarmCommandPage() {
       onSuccess: () => {
         rememberAction(
           selectedAsset.id,
-          '영양제 요청 등록',
-          `${selectedAsset.label} 영양제 분사 명령을 IoT 제어 파이프라인에 전달했습니다.`,
+          '약 주기 요청 등록',
+          `${selectedAsset.label} 약 주기 분사 명령을 IoT 제어 파이프라인에 전달했습니다.`,
           'accent',
         )
-        setUiMessage(`${selectedAsset.label} 영양제 분사 명령을 전달했습니다.`)
+        setUiMessage(`${selectedAsset.label} 약 주기 분사 명령을 전달했습니다.`)
       },
     })
   }
@@ -2417,7 +2417,7 @@ export function FarmCommandPage() {
             <div className="farm-map-tip-row">
               <span className="chip">이랑 클릭 이동</span>
               <span className="chip">식물 선택 후 진단하기</span>
-              <span className="chip">급수 헤드 선택 시 물주기·영양제</span>
+              <span className="chip">급수 헤드 선택 시 물 주기·약 주기</span>
             </div>
           </div>
           <div className="farm-weather-card">
@@ -2763,7 +2763,7 @@ export function FarmCommandPage() {
                     }}
                     type="button"
                   >
-                    {wateringMutation.isPending ? '물 주는 중...' : '물주기'}
+                    {wateringMutation.isPending ? '물 주는 중...' : '물 주기'}
                   </button>
                   <button
                     className="action-button action-button--soft"
@@ -2774,7 +2774,7 @@ export function FarmCommandPage() {
                     }}
                     type="button"
                   >
-                    {nutrientMutation.isPending ? '약 주는 중...' : '약주기'}
+                    {nutrientMutation.isPending ? '약 주는 중...' : '약 주기'}
                   </button>
                 </div>
               </div>

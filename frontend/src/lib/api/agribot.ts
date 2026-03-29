@@ -3394,14 +3394,14 @@ export async function triggerSprinklerWatering({
         body: {
           zone_id: zoneId,
           device_id: deviceId,
-          target_value: 3.0,
+          target_value: 5.0,
           value_unit: 'sec',
           requested_by: 'frontend-operator',
           request_source: 'farm_command_sprinkler_modal',
         },
       },
     ],
-    `${deviceId} 스프링클러 물주기 요청을 보냈습니다.`,
+    `${deviceId} 스프링클러 물 주기 요청을 보냈습니다.`,
   )
 }
 
@@ -3419,7 +3419,7 @@ export async function triggerSprinklerNutrient({
         body: {
           zone_id: zoneId,
           device_id: deviceId,
-          target_value: 2.5,
+          target_value: 5.0,
           value_unit: 'sec',
           requested_by: 'frontend-operator',
           request_source: 'farm_command_sprinkler_modal',
@@ -3427,6 +3427,6 @@ export async function triggerSprinklerNutrient({
         },
       },
     ],
-    `${deviceId} 스프링클러 영양제 주기 요청을 보냈습니다.`,
+    `${deviceId} 스프링클러 약 주기 요청을 보냈습니다.`,
   )
 }
