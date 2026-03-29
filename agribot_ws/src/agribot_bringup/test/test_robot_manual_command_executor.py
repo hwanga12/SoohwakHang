@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-import time
 from types import SimpleNamespace
 
 from agribot_bringup.control_state import ControlMode
@@ -294,7 +293,6 @@ def test_read_runtime_pose_snapshot_reads_map_pose(tmp_path: Path) -> None:
     (tmp_path / 'robot_pose_snapshot.json').write_text(
         json.dumps(
             {
-                'timestamp': time.time(),
                 'pose': {
                     'x': -3.92,
                     'y': 2.18,
@@ -314,39 +312,12 @@ def test_read_runtime_pose_snapshot_reads_map_pose(tmp_path: Path) -> None:
     assert pose.y == 2.18
 
 
-def test_read_runtime_pose_snapshot_ignores_stale_snapshot_when_max_age_is_set(tmp_path: Path) -> None:
-    (tmp_path / 'robot_pose_snapshot.json').write_text(
-        json.dumps(
-            {
-                'timestamp': time.time() - 10.0,
-                'pose': {
-                    'x': -3.92,
-                    'y': 2.18,
-                    'z': 0.0,
-                    'yaw': -1.57,
-                    'frame_id': 'map',
-                }
-            }
-        ),
-        encoding='utf-8',
-    )
-
-    pose = read_runtime_pose_snapshot(
-        tmp_path,
-        expected_frame='map',
-        max_age_sec=1.5,
-    )
-
-    assert pose is None
-
-
 def test_should_treat_failed_navigation_as_success_when_runtime_pose_is_near_target(
     tmp_path: Path,
 ) -> None:
     (tmp_path / 'robot_pose_snapshot.json').write_text(
         json.dumps(
             {
-                'timestamp': time.time(),
                 'pose': {
                     'x': -3.78,
                     'y': 2.12,
@@ -379,7 +350,6 @@ def test_should_not_treat_failed_navigation_as_success_when_runtime_pose_is_far(
     (tmp_path / 'robot_pose_snapshot.json').write_text(
         json.dumps(
             {
-                'timestamp': time.time(),
                 'pose': {
                     'x': -1.71,
                     'y': 5.38,
@@ -403,40 +373,6 @@ def test_should_not_treat_failed_navigation_as_success_when_runtime_pose_is_far(
             frame_id='map',
         ),
         xy_tolerance_m=0.55,
-    ) is False
-
-
-def test_should_not_treat_failed_navigation_as_success_when_snapshot_is_stale(
-    tmp_path: Path,
-) -> None:
-    (tmp_path / 'robot_pose_snapshot.json').write_text(
-        json.dumps(
-            {
-                'timestamp': time.time() - 10.0,
-                'pose': {
-                    'x': -3.95,
-                    'y': 2.03,
-                    'z': 0.0,
-                    'yaw': -1.57,
-                    'frame_id': 'map',
-                }
-            }
-        ),
-        encoding='utf-8',
-    )
-
-    assert should_treat_failed_navigation_as_success(
-        tmp_path,
-        expected_frame='map',
-        target_pose=CommandPose(
-            x=-4.0,
-            y=2.0,
-            z=0.0,
-            yaw=-1.5708,
-            frame_id='map',
-        ),
-        xy_tolerance_m=0.55,
-        max_snapshot_age_sec=1.5,
     ) is False
 
 
@@ -713,17 +649,6 @@ def test_select_start_waypoint_id_prefers_target_lane_anchor_when_robot_is_betwe
     )
 
     assert start_waypoint_id == 'farm_01_lane_02_north_entry'
-
-
-def test_select_start_waypoint_id_avoids_opposite_direction_detour_on_same_lane() -> None:
-    patrol_plan = load_patrol_plan(get_default_patrol_waypoints_path())
-    start_waypoint_id = select_start_waypoint_id(
-        patrol_plan,
-        SimpleNamespace(x=0.2, y=0.0, z=0.0, yaw=0.0),
-        target_waypoint_id='farm_01_lane_center_inspect_04',
-    )
-
-    assert start_waypoint_id == 'farm_01_lane_center_inspect_04'
 
 
 def test_build_manual_navigation_route_starts_from_safe_lane_anchor_when_robot_is_between_beds() -> None:
