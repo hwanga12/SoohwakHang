@@ -204,35 +204,56 @@ def test_handle_goal_response_uses_fallback_return_waypoint_when_return_goal_is_
     assert warnings
 
 
-def test_finish_harvest_dwell_keeps_harvested_tomato_visible_in_basket_when_slot_is_available() -> None:
+def test_finish_harvest_dwell_stages_basket_slot_preview_when_slot_is_available() -> None:
     node = object.__new__(HarvestRouteNode)
     published_positions: list[float] = []
     return_calls: list[bool] = []
+    sync_forces: list[bool] = []
     node._cancel_harvest_timer = lambda: None
     node._publish_arm_position = published_positions.append
     node._harvest_arm_ready_position = 0.0
     node._loaded_tomato_ids = []
     node._animation_config = HarvestAnimationConfig(basket_slot_count=2)
     node._finalize_harvested_tomato_visual = lambda: True
+    node._sync_basket_visual_slots = lambda *, force=False: sync_forces.append(force)
     node._start_return_navigation = lambda use_fallback: return_calls.append(use_fallback)
 
     HarvestRouteNode._finish_harvest_dwell(node)
 
     assert published_positions == [0.0]
+    assert node._basket_visual_preview_count == 1
+    assert sync_forces == [True]
     assert return_calls == [False]
 
 
-def test_finalize_harvested_tomato_visual_hides_overflow_tomato_when_basket_slots_are_full() -> None:
+def test_finalize_harvested_tomato_visual_always_hides_actual_harvested_tomato() -> None:
     node = object.__new__(HarvestRouteNode)
     hidden = {'called': False}
-    node._loaded_tomato_ids = ['farm01_plant_01_tomato_01', 'farm01_plant_02_tomato_01']
-    node._animation_config = HarvestAnimationConfig(basket_slot_count=2)
     node._hide_harvested_tomato_visual = lambda: hidden.__setitem__('called', True) or True
 
     finalized = HarvestRouteNode._finalize_harvested_tomato_visual(node)
 
     assert finalized is True
     assert hidden['called'] is True
+
+
+def test_build_basket_visual_sync_targets_shows_only_loaded_slots_and_hides_rest() -> None:
+    node = object.__new__(HarvestRouteNode)
+    node._animation_config = HarvestAnimationConfig(basket_slot_count=2)
+    node._basket_visual_slot_names = (
+        'agribot_harvest_basket_slot_01',
+        'agribot_harvest_basket_slot_02',
+    )
+    node._basket_visual_preview_count = 1
+
+    targets = HarvestRouteNode._build_basket_visual_sync_targets(
+        node,
+        Pose2D(x=0.0, y=0.0, z=0.0, yaw=0.0),
+    )
+
+    assert [name for name, _ in targets] == list(node._basket_visual_slot_names)
+    assert targets[0][1].x == node._animation_config.basket_forward_m
+    assert targets[1][1].x == node._animation_config.hidden_x_m
 
 
 def test_start_approach_navigation_uses_safe_inspect_waypoint_target_in_default_mode() -> None:

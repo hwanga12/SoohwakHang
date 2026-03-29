@@ -12,8 +12,9 @@ from typing import Any
 import uuid
 
 from action_msgs.msg import GoalStatus
+from ament_index_python.packages import get_package_share_directory
 from agribot_interfaces.msg import CropStatus
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import Pose, PoseStamped
 from nav_msgs.msg import Odometry
 from nav2_msgs.action import NavigateToPose
 import rclpy
@@ -21,6 +22,8 @@ from rclpy.action import ActionClient
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.timer import Timer
+from ros_gz_interfaces.msg import Entity
+from ros_gz_interfaces.srv import SetEntityPose
 from std_msgs.msg import Float64, String
 from std_srvs.srv import Trigger
 
@@ -72,6 +75,15 @@ def _normalize_angle(angle: float) -> float:
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _get_default_basket_visual_model_sdf_path() -> Path:
+    return (
+        Path(get_package_share_directory('agribot_description'))
+        / 'models'
+        / 'tomato'
+        / 'model.sdf'
+    )
 
 
 def _poses_are_effectively_same(
@@ -144,6 +156,10 @@ class HarvestRouteNode(Node):
         self.declare_parameter('harvest_demo_recovery_enabled', False)
         self.declare_parameter('harvest_navigation_target_mode', 'inspect_waypoint')
         self.declare_parameter('harvest_goal_soft_tolerance_m', 0.4)
+        self.declare_parameter(
+            'harvest_basket_visual_model_sdf',
+            str(_get_default_basket_visual_model_sdf_path()),
+        )
 
         self._plan = self._load_patrol_plan()
         self._catalog = self._load_crop_catalog()
@@ -215,6 +231,9 @@ class HarvestRouteNode(Node):
             hidden_y_m=float(self.get_parameter('harvest_hidden_y_m').value),
             hidden_z_m=float(self.get_parameter('harvest_hidden_z_m').value),
         )
+        self._basket_visual_model_sdf = Path(
+            str(self.get_parameter('harvest_basket_visual_model_sdf').value)
+        ).expanduser()
 
         crop_status_topic = str(self.get_parameter('crop_status_topic').value)
         harvest_request_topic = str(self.get_parameter('harvest_request_topic').value)
@@ -255,6 +274,10 @@ class HarvestRouteNode(Node):
         self._status_pub = self.create_publisher(String, status_topic, 10)
         self._arm_command_pub = self.create_publisher(Float64, harvest_arm_command_topic, 10)
         self._status_timer = self.create_timer(1.0, self._on_status_timer)
+        self._set_entity_pose_client = self.create_client(
+            SetEntityPose,
+            f'/world/{self._gazebo_world_name}/set_pose',
+        )
 
         self._sequence_state = 'idle'
         self._sequence_message = 'Harvest route node is ready.'
@@ -282,6 +305,14 @@ class HarvestRouteNode(Node):
         self._last_harvested_tomato_id = ''
         self._using_inspect_waypoint_approach = False
         self._using_demo_harvest_recovery = False
+        self._basket_visual_slot_names = tuple(
+            f'agribot_harvest_basket_slot_{slot_index + 1:02d}'
+            for slot_index in range(max(0, int(self._animation_config.basket_slot_count)))
+        )
+        self._basket_visual_slots_spawned = False
+        self._basket_visual_sync_inflight = 0
+        self._basket_visual_last_sync_pose: Pose2D | None = None
+        self._basket_visual_preview_count = 0
         self._ready_tomato_ids = {
             tomato.tomato_id
             for tomato in self._catalog.tomatoes.values()
@@ -312,6 +343,7 @@ class HarvestRouteNode(Node):
             z=float(msg.pose.pose.position.z),
             yaw=yaw,
         )
+        self._sync_basket_visual_slots()
 
     def _load_patrol_plan(self) -> PatrolPlan:
         self._patrol_plan_path = Path(
@@ -978,6 +1010,8 @@ class HarvestRouteNode(Node):
         self._publish_arm_position(self._harvest_arm_ready_position)
         if not self._finalize_harvested_tomato_visual():
             return
+        self._basket_visual_preview_count = len(self._loaded_tomato_ids) + 1
+        self._sync_basket_visual_slots(force=True)
         self._start_return_navigation(use_fallback=False)
 
     def _finish_sequence_after_return(self) -> None:
@@ -1129,16 +1163,177 @@ class HarvestRouteNode(Node):
             failure_reason='수확이 끝난 뒤 토마토 visual을 월드 밖으로 숨기지 못했습니다.',
         )
 
-    def _should_keep_harvested_tomato_visible_in_basket(self) -> bool:
-        slot_count = max(0, int(self._animation_config.basket_slot_count))
-        if slot_count <= 0:
-            return False
-        return len(self._loaded_tomato_ids) < slot_count
-
     def _finalize_harvested_tomato_visual(self) -> bool:
-        if self._should_keep_harvested_tomato_visible_in_basket():
-            return True
         return self._hide_harvested_tomato_visual()
+
+    def _active_basket_visual_count(self) -> int:
+        slot_count = len(getattr(self, '_basket_visual_slot_names', ()))
+        if slot_count <= 0:
+            return 0
+        return min(
+            slot_count,
+            max(
+                0,
+                int(getattr(self, '_basket_visual_preview_count', len(getattr(self, '_loaded_tomato_ids', [])))),
+            ),
+        )
+
+    def _basket_visual_hidden_pose(self, slot_index: int) -> WorldPose:
+        hidden_pose = compute_hidden_pose(
+            Pose2D(x=0.0, y=0.0, z=0.0, yaw=0.0),
+            self._animation_config,
+        )
+        return WorldPose(
+            x=hidden_pose.x,
+            y=hidden_pose.y,
+            z=hidden_pose.z - (slot_index * 0.1),
+        )
+
+    def _build_basket_visual_sync_targets(self, robot_pose: Pose2D) -> list[tuple[str, WorldPose]]:
+        visible_count = self._active_basket_visual_count()
+        slot_targets: list[tuple[str, WorldPose]] = []
+        for slot_index, slot_name in enumerate(getattr(self, '_basket_visual_slot_names', ())):
+            if slot_index < visible_count:
+                slot_pose = compute_basket_pose(
+                    robot_pose,
+                    self._animation_config,
+                    basket_slot_index=slot_index,
+                )
+            else:
+                slot_pose = self._basket_visual_hidden_pose(slot_index)
+            slot_targets.append((slot_name, slot_pose))
+        return slot_targets
+
+    def _ensure_basket_visual_slots_spawned(self) -> bool:
+        if getattr(self, '_basket_visual_slots_spawned', False):
+            return True
+        slot_names = getattr(self, '_basket_visual_slot_names', ())
+        if not slot_names:
+            self._basket_visual_slots_spawned = True
+            return True
+        if not self._basket_visual_model_sdf.is_file():
+            self.get_logger().warning(
+                '바구니 전용 토마토 visual 모델 파일을 찾지 못해 적재 슬롯 연출을 비활성화합니다: '
+                f'{self._basket_visual_model_sdf}'
+            )
+            return False
+
+        all_ready = True
+        for slot_index, slot_name in enumerate(slot_names):
+            if not self._spawn_basket_visual_slot(slot_name, self._basket_visual_hidden_pose(slot_index)):
+                all_ready = False
+        self._basket_visual_slots_spawned = all_ready
+        return all_ready
+
+    def _spawn_basket_visual_slot(self, slot_name: str, initial_pose: WorldPose) -> bool:
+        command_env = os.environ.copy()
+        if self._gazebo_partition:
+            command_env['GZ_PARTITION'] = self._gazebo_partition
+
+        request = (
+            f'name: "{slot_name}", '
+            'allow_renaming: false, '
+            f'sdf_filename: "{self._basket_visual_model_sdf}", '
+            f'pose: {{position: {{x: {initial_pose.x:.6f}, y: {initial_pose.y:.6f}, z: {initial_pose.z:.6f}}}, '
+            'orientation: {x: 0.000000, y: 0.000000, z: 0.000000, w: 1.000000}}}, '
+            'relative_to: "world"'
+        )
+        try:
+            completed = subprocess.run(
+                [
+                    self._gz_executable,
+                    'service',
+                    '-s',
+                    f'/world/{self._gazebo_world_name}/create',
+                    '--reqtype',
+                    'gz.msgs.EntityFactory',
+                    '--reptype',
+                    'gz.msgs.Boolean',
+                    '--timeout',
+                    str(self._gazebo_command_timeout_ms),
+                    '--req',
+                    request,
+                ],
+                check=False,
+                capture_output=True,
+                env=command_env,
+                text=True,
+            )
+        except FileNotFoundError:
+            self.get_logger().warning(
+                f'Gazebo CLI "{self._gz_executable}"를 찾지 못해 바구니 토마토 슬롯을 만들지 못했습니다.'
+            )
+            return False
+
+        combined_output = f'{completed.stdout}\n{completed.stderr}'.strip().lower()
+        if completed.returncode == 0 and 'data: false' not in combined_output:
+            return True
+        if 'already exists' in combined_output or 'entity already exists' in combined_output:
+            return True
+
+        # 이미 존재하는 경우 Gazebo 응답 문구가 일정하지 않을 수 있어서,
+        # 후속 pose 이동이 성공하면 슬롯 생성이 끝난 것으로 간주한다.
+        return self._set_gazebo_entity_pose(slot_name, initial_pose)
+
+    def _dispatch_basket_visual_slot_pose(self, entity_name: str, pose: WorldPose) -> bool:
+        set_entity_pose_client = getattr(self, '_set_entity_pose_client', None)
+        if set_entity_pose_client is not None and set_entity_pose_client.wait_for_service(timeout_sec=0.0):
+            request = SetEntityPose.Request()
+            request.entity = Entity(name=entity_name, type=Entity.MODEL)
+            request.pose = Pose()
+            request.pose.position.x = float(pose.x)
+            request.pose.position.y = float(pose.y)
+            request.pose.position.z = float(pose.z)
+            request.pose.orientation.w = 1.0
+            future = set_entity_pose_client.call_async(request)
+            self._basket_visual_sync_inflight += 1
+            future.add_done_callback(self._handle_basket_visual_pose_result)
+            return True
+        return self._set_gazebo_entity_pose(entity_name, pose)
+
+    def _handle_basket_visual_pose_result(self, future) -> None:
+        self._basket_visual_sync_inflight = max(0, self._basket_visual_sync_inflight - 1)
+        try:
+            response = future.result()
+        except Exception as exc:
+            self.get_logger().warning(
+                f'바구니 토마토 visual pose 갱신 응답을 처리하지 못했습니다: {exc}'
+            )
+            return
+        if not response.success:
+            self.get_logger().warning('바구니 토마토 visual pose 갱신이 Gazebo에서 거부되었습니다.')
+
+    def _sync_basket_visual_slots(self, *, force: bool = False) -> None:
+        latest_robot_pose = getattr(self, '_latest_robot_pose', None)
+        if latest_robot_pose is None:
+            return
+        if not self._ensure_basket_visual_slots_spawned():
+            return
+        if not force and self._basket_visual_sync_inflight > 0:
+            return
+        current_pose = latest_robot_pose
+        visible_count = self._active_basket_visual_count()
+        if not force and self._basket_visual_last_sync_pose is not None:
+            pose_changed = (
+                math.hypot(
+                    current_pose.x - self._basket_visual_last_sync_pose.x,
+                    current_pose.y - self._basket_visual_last_sync_pose.y,
+                ) >= 0.03
+                or abs(_normalize_angle(current_pose.yaw - self._basket_visual_last_sync_pose.yaw)) >= math.radians(4.0)
+            )
+            last_visible_count = getattr(self, '_basket_visual_last_visible_count', -1)
+            if not pose_changed and last_visible_count == visible_count:
+                return
+
+        for slot_name, slot_pose in self._build_basket_visual_sync_targets(current_pose):
+            self._dispatch_basket_visual_slot_pose(slot_name, slot_pose)
+        self._basket_visual_last_sync_pose = Pose2D(
+            x=current_pose.x,
+            y=current_pose.y,
+            z=current_pose.z,
+            yaw=current_pose.yaw,
+        )
+        self._basket_visual_last_visible_count = visible_count
 
     def _set_gazebo_entity_pose(self, entity_name: str, pose: WorldPose) -> bool:
         command_env = os.environ.copy()
@@ -1340,6 +1535,8 @@ class HarvestRouteNode(Node):
             if self._active_plan.tomato_id not in self._loaded_tomato_ids:
                 self._loaded_tomato_ids.append(self._active_plan.tomato_id)
             self._last_harvested_tomato_id = self._active_plan.tomato_id
+        self._basket_visual_preview_count = len(self._loaded_tomato_ids)
+        self._sync_basket_visual_slots(force=True)
         self._publish_harvest_event(success=True)
         self._publish_basket_state()
         self._publish_execution_status(
@@ -1367,6 +1564,8 @@ class HarvestRouteNode(Node):
         self._cancel_alignment_timer()
         self._cancel_harvest_timer()
         self._reset_visual_harvest_state()
+        self._basket_visual_preview_count = len(self._loaded_tomato_ids)
+        self._sync_basket_visual_slots(force=True)
         active_tomato_id = (
             self._active_request.tomato_id
             if self._active_request is not None
