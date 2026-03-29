@@ -12,6 +12,7 @@ CONNECTOR_BAND_SELECTION_TOLERANCE_M = 0.9
 LANE_SELECTION_TOLERANCE_M = 1.1
 POSE_MATCH_TOLERANCE_M = 0.4
 CURRENT_POSE_SKIP_TOLERANCE_M = 0.55
+LANE_DIRECTION_SELECTION_TOLERANCE_M = 0.35
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,13 @@ def select_start_waypoint_id(
             if target_lane_id and plan.waypoints[waypoint_id].lane_id == target_lane_id
         ]
         lane_pool = preferred_lane_candidates or lane_candidates
+        directional_lane_pool = _filter_lane_candidates_for_target_direction(
+            plan,
+            lane_pool,
+            current_pose=current_pose,
+            target_waypoint=target_waypoint,
+        )
+        lane_pool = directional_lane_pool or lane_pool
         return min(
             lane_pool,
             key=lambda waypoint_id: (
@@ -354,6 +362,36 @@ def _best_connector_candidate(
             abs(plan.waypoints[waypoint_id].pose.x - target_pose.x) if target_pose is not None else 0.0,
         ),
     )
+
+
+def _filter_lane_candidates_for_target_direction(
+    plan: PatrolPlan,
+    candidate_ids: list[str],
+    *,
+    current_pose: Pose2D,
+    target_waypoint: object | None,
+) -> list[str]:
+    if not candidate_ids or target_waypoint is None:
+        return candidate_ids
+
+    delta_y = target_waypoint.pose.y - current_pose.y
+    if abs(delta_y) <= LANE_DIRECTION_SELECTION_TOLERANCE_M:
+        return candidate_ids
+
+    if delta_y > 0.0:
+        forward_candidates = [
+            waypoint_id
+            for waypoint_id in candidate_ids
+            if plan.waypoints[waypoint_id].pose.y >= current_pose.y - LANE_DIRECTION_SELECTION_TOLERANCE_M
+        ]
+    else:
+        forward_candidates = [
+            waypoint_id
+            for waypoint_id in candidate_ids
+            if plan.waypoints[waypoint_id].pose.y <= current_pose.y + LANE_DIRECTION_SELECTION_TOLERANCE_M
+        ]
+
+    return forward_candidates or candidate_ids
 
 
 def _select_target_route_anchor_waypoint_id(
