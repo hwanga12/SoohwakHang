@@ -609,6 +609,11 @@ def test_missions_harvest_endpoint_writes_runtime_bridge_request() -> None:
             plant_id="farm01_plant_03",
             fruit_id="farm01_plant_03_tomato_01",
             requested_by="frontend-operator",
+            inspect_waypoint_id="farm_01_lane_center_inspect_05",
+            inspect_waypoint_ids=[
+                "farm_01_lane_center_inspect_05",
+                "farm_01_lane_02_inspect_02",
+            ],
         )
     )
 
@@ -619,6 +624,11 @@ def test_missions_harvest_endpoint_writes_runtime_bridge_request() -> None:
     assert payload["request_type"] == "harvest_target"
     assert request_payload["plant_id"] == "farm01_plant_03"
     assert request_payload["tomato_id"] == "farm01_plant_03_tomato_01"
+    assert request_payload["inspect_waypoint_id"] == "farm_01_lane_center_inspect_05"
+    assert request_payload["inspect_waypoint_ids"] == [
+        "farm_01_lane_center_inspect_05",
+        "farm_01_lane_02_inspect_02",
+    ]
 
 
 def test_get_mission_status_endpoint_reads_record_file() -> None:

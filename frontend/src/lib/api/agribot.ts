@@ -3273,9 +3273,13 @@ export async function sendRobotZoneMove(zoneId: string) {
 export async function requestHarvestMission({
   plantId,
   fruitId,
+  inspectWaypointId,
+  inspectWaypointIds,
 }: {
   plantId: string
   fruitId: string
+  inspectWaypointId?: string | null
+  inspectWaypointIds?: string[] | null
 }) {
   try {
     const response = await apiClient.post('/missions/harvest', {
@@ -3283,6 +3287,8 @@ export async function requestHarvestMission({
       plant_id: plantId,
       fruit_id: fruitId,
       requested_by: 'frontend-operator',
+      ...(inspectWaypointId ? { inspect_waypoint_id: inspectWaypointId } : {}),
+      ...(inspectWaypointIds?.length ? { inspect_waypoint_ids: inspectWaypointIds } : {}),
     })
     markRouteVerified('POST', '/missions/harvest')
     return parseMissionDispatch(response.data, `${fruitId} 수확 요청을 접수했습니다.`)

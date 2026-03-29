@@ -26,6 +26,11 @@ def test_parse_harvest_route_request_accepts_json_mission_payload() -> None:
                 'fruit_id': 'farm01_plant_03_tomato_01',
                 'requested_by': 'frontend-operator',
                 'trigger': 'mission_bridge',
+                'inspect_waypoint_id': 'farm_01_lane_center_inspect_05',
+                'inspect_waypoint_ids': [
+                    'farm_01_lane_center_inspect_05',
+                    'farm_01_lane_02_inspect_02',
+                ],
             }
         )
     )
@@ -36,6 +41,11 @@ def test_parse_harvest_route_request_accepts_json_mission_payload() -> None:
         mission_id='mission-harvest-003',
         requested_by='frontend-operator',
         trigger='mission_bridge',
+        inspect_waypoint_id='farm_01_lane_center_inspect_05',
+        inspect_waypoint_ids=(
+            'farm_01_lane_center_inspect_05',
+            'farm_01_lane_02_inspect_02',
+        ),
     )
 
 

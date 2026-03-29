@@ -383,6 +383,10 @@ class HarvestRouteNode(Node):
             return
 
         preferred_return_waypoint_id = self._preferred_return_waypoint_id()
+        preferred_inspect_waypoint_id = (
+            request.inspect_waypoint_id
+            or (request.inspect_waypoint_ids[0] if request.inspect_waypoint_ids else None)
+        )
         return_mode = self._return_mode_override or None
         try:
             self._active_plan = compute_harvest_route(
@@ -391,6 +395,7 @@ class HarvestRouteNode(Node):
                 tomato_id,
                 return_mode=return_mode,
                 preferred_return_waypoint_id=preferred_return_waypoint_id,
+                preferred_inspect_waypoint_id=preferred_inspect_waypoint_id,
                 current_pose=self._latest_robot_pose,
             )
         except ValueError as exc:
@@ -409,6 +414,8 @@ class HarvestRouteNode(Node):
             mission_id=request.mission_id or f'harvest-route-{uuid.uuid4()}',
             requested_by=request.requested_by,
             trigger=request.trigger,
+            inspect_waypoint_id=request.inspect_waypoint_id,
+            inspect_waypoint_ids=request.inspect_waypoint_ids,
         )
         self.get_logger().info(
             f'Harvest route planned for {tomato_id} via {self._active_plan.inspect_waypoint_id} '

@@ -62,6 +62,8 @@ class HarvestReq(BaseModel):
     plant_id: str
     fruit_id: str
     requested_by: str
+    inspect_waypoint_id: Optional[str] = Field(default=None)
+    inspect_waypoint_ids: List[str] = Field(default_factory=list)
 
 
 def _raise_mission_http_error(exc: Exception) -> None:
@@ -324,6 +326,8 @@ def harvest_mission(req: HarvestReq):
         plant_id=req.plant_id,
         fruit_id=req.fruit_id,
         requested_by=req.requested_by,
+        inspect_waypoint_id=req.inspect_waypoint_id,
+        inspect_waypoint_ids=req.inspect_waypoint_ids,
     )
     _upsert_mission_row(
         mission_id=str(payload["mission_id"]),

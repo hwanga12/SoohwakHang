@@ -439,6 +439,7 @@ def compute_harvest_route(
     *,
     return_mode: str | None = None,
     preferred_return_waypoint_id: str | None = None,
+    preferred_inspect_waypoint_id: str | None = None,
     current_pose: Pose2D | None = None,
 ) -> HarvestRoutePlan:
     if plan.zone_id != catalog.zone_id:
@@ -450,11 +451,14 @@ def compute_harvest_route(
         raise ValueError(f'Unknown tomato_id: {tomato_id}')
 
     tomato = catalog.tomatoes[tomato_id]
+    effective_preferred_inspect_waypoint_id = (
+        preferred_inspect_waypoint_id or preferred_return_waypoint_id
+    )
     context = _find_observation_context(
         plan,
         catalog,
         tomato_id,
-        preferred_inspect_waypoint_id=preferred_return_waypoint_id,
+        preferred_inspect_waypoint_id=effective_preferred_inspect_waypoint_id,
         current_pose=current_pose,
     )
     requested_return_mode = return_mode or plan.harvest_routing.default_return_mode

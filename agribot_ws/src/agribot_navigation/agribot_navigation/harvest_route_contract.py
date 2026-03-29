@@ -14,6 +14,8 @@ class HarvestRouteRequest:
     mission_id: str = ''
     requested_by: str = ''
     trigger: str = 'manual_request'
+    inspect_waypoint_id: str = ''
+    inspect_waypoint_ids: tuple[str, ...] = ()
 
 
 def _normalize_text(value: Any) -> str:
@@ -62,4 +64,10 @@ def parse_harvest_route_request(
         mission_id=_normalize_text(raw_payload.get('mission_id')),
         requested_by=_normalize_text(raw_payload.get('requested_by')),
         trigger=_normalize_text(raw_payload.get('trigger')) or default_trigger,
+        inspect_waypoint_id=_normalize_text(raw_payload.get('inspect_waypoint_id')),
+        inspect_waypoint_ids=tuple(
+            str(item).strip()
+            for item in raw_payload.get('inspect_waypoint_ids', [])
+            if str(item).strip()
+        ),
     )

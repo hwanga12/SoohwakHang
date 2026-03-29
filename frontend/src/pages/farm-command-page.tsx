@@ -105,6 +105,8 @@ type HarvestMissionInput = {
   plantId: string
   fruitId: string
   plantName: string
+  inspectWaypointId?: string | null
+  inspectWaypointIds?: string[]
 }
 
 type PatrolMissionInput = {
@@ -1145,7 +1147,13 @@ export function FarmCommandPage() {
     },
   })
   const harvestMutation = useMutation({
-    mutationFn: ({ plantId, fruitId }: HarvestMissionInput) => requestHarvestMission({ plantId, fruitId }),
+    mutationFn: ({ plantId, fruitId, inspectWaypointId, inspectWaypointIds }: HarvestMissionInput) =>
+      requestHarvestMission({
+        plantId,
+        fruitId,
+        inspectWaypointId,
+        inspectWaypointIds,
+      }),
     onSuccess: async (dispatch: MissionDispatch, variables) => {
       setActiveHarvestMission({
         missionId: dispatch.missionId,
@@ -2142,6 +2150,8 @@ export function FarmCommandPage() {
       plantId: targetPlant.id,
       fruitId: targetPlant.targetId,
       plantName: targetPlant.name,
+      inspectWaypointId: selectedPlantNavigationPlan?.inspectWaypointId ?? null,
+      inspectWaypointIds: selectedPlantNavigationPlan?.inspectWaypointIds ?? [],
     })
   }
 

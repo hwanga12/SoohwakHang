@@ -63,6 +63,8 @@ def test_publish_harvest_target_mission_writes_plant_and_fruit_ids() -> None:
         fruit_id="farm01_plant_03_tomato_01",
         requested_by="frontend-operator",
         mission_id="mission-harvest-001",
+        inspect_waypoint_id="farm_01_lane_center_inspect_05",
+        inspect_waypoint_ids=["farm_01_lane_center_inspect_05", "farm_01_lane_02_inspect_02"],
     )
 
     request_payload = json.loads(mission_request_file_path().read_text(encoding="utf-8"))
@@ -72,6 +74,11 @@ def test_publish_harvest_target_mission_writes_plant_and_fruit_ids() -> None:
     assert request_payload["plant_id"] == "farm01_plant_03"
     assert request_payload["fruit_id"] == "farm01_plant_03_tomato_01"
     assert request_payload["tomato_id"] == "farm01_plant_03_tomato_01"
+    assert request_payload["inspect_waypoint_id"] == "farm_01_lane_center_inspect_05"
+    assert request_payload["inspect_waypoint_ids"] == [
+        "farm_01_lane_center_inspect_05",
+        "farm_01_lane_02_inspect_02",
+    ]
 
 
 def test_publish_operator_mission_rejects_when_latest_mission_is_running() -> None:
