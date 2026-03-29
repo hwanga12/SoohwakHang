@@ -59,6 +59,13 @@ from .runtime_snapshot_service import (
 )
 
 TERMINAL_STATUSES = {'succeeded', 'failed', 'canceled'}
+FINAL_OBSERVATION_INTERMEDIATE_TARGET_FRACTIONS = (
+    0.92,
+    0.84,
+    0.76,
+    0.68,
+    0.60,
+)
 SUPPORTED_COMMAND_TYPES = {
     'emergency_stop',
     'navigate_to_pose',
@@ -706,6 +713,58 @@ def pose_distance_xy(
     return math.hypot(float(left.x) - float(right.x), float(left.y) - float(right.y))
 
 
+def interpolate_command_pose(
+    start_pose: CommandPose,
+    end_pose: CommandPose,
+    *,
+    fraction: float,
+) -> CommandPose:
+    clamped_fraction = max(0.0, min(1.0, fraction))
+    interpolated_yaw = math.atan2(
+        math.sin(start_pose.yaw + (end_pose.yaw - start_pose.yaw) * clamped_fraction),
+        math.cos(start_pose.yaw + (end_pose.yaw - start_pose.yaw) * clamped_fraction),
+    )
+    return CommandPose(
+        x=start_pose.x + ((end_pose.x - start_pose.x) * clamped_fraction),
+        y=start_pose.y + ((end_pose.y - start_pose.y) * clamped_fraction),
+        z=start_pose.z + ((end_pose.z - start_pose.z) * clamped_fraction),
+        yaw=interpolated_yaw,
+        frame_id=end_pose.frame_id,
+    )
+
+
+def build_intermediate_final_observation_targets(
+    route_target_pose: CommandPose | None,
+    final_target_pose: CommandPose | None,
+    *,
+    fractions: tuple[float, ...] = FINAL_OBSERVATION_INTERMEDIATE_TARGET_FRACTIONS,
+    min_spacing_m: float = 0.12,
+) -> tuple[CommandPose, ...]:
+    if route_target_pose is None or final_target_pose is None:
+        return ()
+
+    total_distance = pose_distance_xy(route_target_pose, final_target_pose)
+    if not math.isfinite(total_distance) or total_distance <= min_spacing_m:
+        return ()
+
+    targets: list[CommandPose] = []
+    for fraction in fractions:
+        candidate = interpolate_command_pose(
+            route_target_pose,
+            final_target_pose,
+            fraction=fraction,
+        )
+        if pose_distance_xy(candidate, route_target_pose) <= min_spacing_m:
+            continue
+        if pose_distance_xy(candidate, final_target_pose) <= min_spacing_m:
+            continue
+        if targets and pose_distance_xy(candidate, targets[-1]) <= min_spacing_m:
+            continue
+        targets.append(candidate)
+
+    return tuple(targets)
+
+
 def read_runtime_pose_snapshot(
     runtime_dir: Path,
     *,
@@ -1014,6 +1073,8 @@ class RobotManualCommandExecutor(Node):
         self._path_probe_send_future = None
         self._path_probe_result_future = None
         self._active_path_probe_handle = None
+        self._active_path_probe_target_pose: CommandPose | None = None
+        self._pending_final_observation_probe_targets: deque[CommandPose] = deque()
         self._recovery_send_future = None
         self._recovery_result_future = None
         self._recovery_cancel_future = None
@@ -1419,6 +1480,8 @@ class RobotManualCommandExecutor(Node):
         self._path_probe_send_future = None
         self._path_probe_result_future = None
         self._active_path_probe_handle = None
+        self._active_path_probe_target_pose = None
+        self._pending_final_observation_probe_targets.clear()
         self._service_future = None
         self._recovery_send_future = None
         self._recovery_result_future = None
@@ -2331,17 +2394,79 @@ class RobotManualCommandExecutor(Node):
                 is_retry=is_retry,
             )
             return
+        self._pending_final_observation_probe_targets = deque(
+            (
+                context.final_target_pose,
+                *build_intermediate_final_observation_targets(
+                    context.route_target_pose,
+                    context.final_target_pose,
+                ),
+            )
+        )
+        self._dispatch_next_final_observation_path_probe(
+            context,
+            label=label,
+            is_retry=is_retry,
+        )
 
+    def _dispatch_next_final_observation_path_probe(
+        self,
+        context: ActiveCommandContext,
+        *,
+        label: str,
+        is_retry: bool,
+    ) -> None:
+        if context is not self._active_context:
+            return
+
+        if not self._pending_final_observation_probe_targets:
+            if should_complete_route_anchor_only(
+                current_pose=read_runtime_pose_snapshot(
+                    self._runtime_dir,
+                    expected_frame=self._map_frame,
+                    max_age_sec=self._runtime_pose_snapshot_max_age_sec,
+                ),
+                route_target_pose=context.route_target_pose,
+                final_path_available=False,
+                xy_tolerance_m=self._route_anchor_fallback_xy_tolerance_m,
+            ):
+                self._finish_active_command(
+                    'succeeded',
+                    '안전 관측 경유점까지는 도착했고, 울타리 방향으로 더 들어갈 수 있는 근접 경로도 찾지 못해 현재 위치에서 접근을 마쳤습니다.',
+                    result='anchor_only',
+                )
+                return
+            self._dispatch_final_observation_goal(
+                context,
+                target_pose=context.final_target_pose,
+                label=label,
+                is_retry=is_retry,
+            )
+            return
+
+        probe_target_pose = self._pending_final_observation_probe_targets.popleft()
+        self._active_path_probe_target_pose = probe_target_pose
         probe_goal = ComputePathToPose.Goal()
-        probe_goal.goal = self._build_pose_stamped(context.final_target_pose.as_pose2d())
+        probe_goal.goal = self._build_pose_stamped(probe_target_pose.as_pose2d())
         probe_goal.planner_id = ''
         probe_goal.use_start = False
 
+        is_primary_probe = (
+            pose_distance_xy(probe_target_pose, context.final_target_pose) <= 0.05
+        )
+        status_message = (
+            f'{label} 최종 관측 경로 가능 여부를 확인 중입니다.'
+            if is_primary_probe
+            else (
+                f'{label} 울타리 쪽으로 더 가까운 대체 관측 지점을 탐색 중입니다. '
+                f'(x={probe_target_pose.x:.2f}, y={probe_target_pose.y:.2f})'
+            )
+        )
         self._write_status(
             self._build_status_payload(
                 context,
                 'running',
-                f'{label} 최종 관측 경로 가능 여부를 확인 중입니다.',
+                status_message,
             )
         )
         self._path_probe_send_future = self._compute_path_client.send_goal_async(probe_goal)
@@ -2365,13 +2490,12 @@ class RobotManualCommandExecutor(Node):
             goal_handle = future.result()
         except Exception as exc:
             self.get_logger().warning(
-                f'최종 관측 경로 확인 goal 전송에 실패해 직접 접근을 시도합니다: {exc}'
+                f'최종 관측 경로 확인 goal 전송에 실패했습니다. 다음 대체 지점이 있으면 이어서 확인합니다: {exc}'
             )
             context = self._active_context
             if context is not None and context.final_target_pose is not None:
-                self._dispatch_final_observation_goal(
+                self._dispatch_next_final_observation_path_probe(
                     context,
-                    target_pose=context.final_target_pose,
                     label=label,
                     is_retry=is_retry,
                 )
@@ -2379,13 +2503,12 @@ class RobotManualCommandExecutor(Node):
 
         if not goal_handle.accepted:
             self.get_logger().warning(
-                '최종 관측 경로 확인 goal이 거부되어 직접 접근을 시도합니다.'
+                '최종 관측 경로 확인 goal이 거부됐습니다. 다음 대체 지점이 있으면 이어서 확인합니다.'
             )
             context = self._active_context
             if context is not None and context.final_target_pose is not None:
-                self._dispatch_final_observation_goal(
+                self._dispatch_next_final_observation_path_probe(
                     context,
-                    target_pose=context.final_target_pose,
                     label=label,
                     is_retry=is_retry,
                 )
@@ -2412,7 +2535,11 @@ class RobotManualCommandExecutor(Node):
         self._path_probe_result_future = None
         context = self._active_context
         if context is None or context.final_target_pose is None:
+            self._active_path_probe_target_pose = None
             return
+
+        probe_target_pose = self._active_path_probe_target_pose or context.final_target_pose
+        self._active_path_probe_target_pose = None
 
         final_path_available = False
         try:
@@ -2421,36 +2548,26 @@ class RobotManualCommandExecutor(Node):
             final_path_available = bool(path_payload and getattr(path_payload, 'poses', None))
         except Exception as exc:
             self.get_logger().warning(
-                f'최종 관측 경로 확인 결과를 받지 못해 직접 접근을 시도합니다: {exc}'
+                f'최종 관측 경로 확인 결과를 받지 못했습니다. 다음 대체 지점이 있으면 이어서 확인합니다: {exc}'
             )
-            self._dispatch_final_observation_goal(
+            self._dispatch_next_final_observation_path_probe(
                 context,
-                target_pose=context.final_target_pose,
                 label=label,
                 is_retry=is_retry,
             )
             return
 
-        if should_complete_route_anchor_only(
-            current_pose=read_runtime_pose_snapshot(
-                self._runtime_dir,
-                expected_frame=self._map_frame,
-                max_age_sec=self._runtime_pose_snapshot_max_age_sec,
-            ),
-            route_target_pose=context.route_target_pose,
-            final_path_available=final_path_available,
-            xy_tolerance_m=self._route_anchor_fallback_xy_tolerance_m,
-        ):
-            self._finish_active_command(
-                'succeeded',
-                '안전 관측 경유점까지는 도착했지만 울타리 근접 구간 경로가 없어 최종 작물 접근은 생략했습니다.',
-                result='anchor_only',
+        if not final_path_available:
+            self._dispatch_next_final_observation_path_probe(
+                context,
+                label=label,
+                is_retry=is_retry,
             )
             return
 
         self._dispatch_final_observation_goal(
             context,
-            target_pose=context.final_target_pose,
+            target_pose=probe_target_pose,
             label=label,
             is_retry=is_retry,
         )
@@ -2508,6 +2625,8 @@ class RobotManualCommandExecutor(Node):
             )
             return
 
+        self._active_path_probe_target_pose = None
+        self._pending_final_observation_probe_targets.clear()
         context.target_pose = target_pose
         context.navigation_phase = ManualNavigationPhase.FINAL_OBSERVATION
         if context.started_at is None:
@@ -2656,6 +2775,13 @@ class RobotManualCommandExecutor(Node):
             and active_context.navigation_phase is ManualNavigationPhase.FINAL_OBSERVATION
             and self._is_two_stage_observation(active_context)
         )
+        using_adjusted_final_observation_target = (
+            in_final_observation_stage
+            and active_context is not None
+            and active_context.target_pose is not None
+            and active_context.final_target_pose is not None
+            and pose_distance_xy(active_context.target_pose, active_context.final_target_pose) > 0.05
+        )
 
         if status == GoalStatus.STATUS_SUCCEEDED:
             self._start_occupied_recovery_count = 0
@@ -2695,7 +2821,9 @@ class RobotManualCommandExecutor(Node):
                 return
 
             success_message = (
-                '최종 관측 위치까지 이동을 완료했습니다.'
+                '울타리 쪽으로 갈 수 있는 최대 근접 관측 위치까지 이동을 완료했습니다.'
+                if using_adjusted_final_observation_target
+                else '최종 관측 위치까지 이동을 완료했습니다.'
                 if in_final_observation_stage
                 else '이동 명령이 완료되었습니다.'
             )
@@ -2729,7 +2857,9 @@ class RobotManualCommandExecutor(Node):
             self._finish_active_command(
                 'succeeded',
                 (
-                    '최종 관측 위치 근처의 허용 오차 안으로 들어와 작물 앞 접근을 완료한 것으로 처리했습니다.'
+                    '울타리 쪽 근접 관측 위치 허용 오차 안으로 들어와 작물 앞 접근을 완료한 것으로 처리했습니다.'
+                    if using_adjusted_final_observation_target
+                    else '최종 관측 위치 근처의 허용 오차 안으로 들어와 작물 앞 접근을 완료한 것으로 처리했습니다.'
                     if in_final_observation_stage
                     else '목표 좌표 근처의 안전 허용 오차 안으로 들어와 이동을 완료한 것으로 처리했습니다.'
                 ),
@@ -3407,6 +3537,8 @@ class RobotManualCommandExecutor(Node):
         self._path_probe_send_future = None
         self._path_probe_result_future = None
         self._active_path_probe_handle = None
+        self._active_path_probe_target_pose = None
+        self._pending_final_observation_probe_targets.clear()
         self._service_future = None
         self._recovery_send_future = None
         self._recovery_result_future = None

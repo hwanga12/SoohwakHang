@@ -32,7 +32,11 @@ harvest_routing:
     harvest_lane_center: 0.0
   align_standoff_from_crop_m: 0.65
   map_display_standoff_from_crop_m: 0.3
+  map_display_standoff_from_crop_m_by_lane_side:
+    harvest_lane_center: 0.15
   map_display_max_lateral_offset_from_inspect_m: 1.7
+  map_display_max_lateral_offset_from_inspect_m_by_lane_side:
+    harvest_lane_center: 1.85
   return_modes:
     default: resume_patrol
     fallback: home

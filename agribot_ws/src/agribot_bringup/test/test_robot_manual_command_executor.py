@@ -11,6 +11,7 @@ from agribot_bringup.robot_manual_command_executor import (
     _navigation_failure_message,
     _navigation_result_indicates_transient_tf_error,
     _navigation_result_indicates_start_occupied,
+    build_intermediate_final_observation_targets,
     ManualCommand,
     PatrolStatusSnapshot,
     build_manual_resume_context,
@@ -476,6 +477,30 @@ def test_should_complete_route_anchor_only_when_final_path_is_blocked_but_anchor
         final_path_available=True,
         xy_tolerance_m=0.65,
     ) is False
+
+
+def test_build_intermediate_final_observation_targets_prefers_farthest_reachable_candidates_first() -> None:
+    route_target_pose = CommandPose(x=0.0, y=4.0, z=0.0, yaw=1.5708, frame_id='map')
+    final_target_pose = CommandPose(x=1.85, y=4.0, z=0.0, yaw=0.0, frame_id='map')
+
+    candidates = build_intermediate_final_observation_targets(
+        route_target_pose,
+        final_target_pose,
+    )
+
+    assert [round(candidate.x, 3) for candidate in candidates] == [1.702, 1.554, 1.406, 1.258, 1.11]
+    assert all(candidate.y == 4.0 for candidate in candidates)
+    assert all(0.0 < candidate.x < 1.85 for candidate in candidates)
+
+
+def test_build_intermediate_final_observation_targets_skips_tiny_adjustments() -> None:
+    route_target_pose = CommandPose(x=0.0, y=4.0, z=0.0, yaw=1.5708, frame_id='map')
+    final_target_pose = CommandPose(x=0.09, y=4.0, z=0.0, yaw=0.0, frame_id='map')
+
+    assert build_intermediate_final_observation_targets(
+        route_target_pose,
+        final_target_pose,
+    ) == ()
 
 
 def test_should_not_treat_failed_navigation_as_success_when_runtime_pose_is_far(

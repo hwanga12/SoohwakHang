@@ -53,10 +53,10 @@ def test_world_declares_frontend_aligned_gazebo_camera() -> None:
 def test_tomato_model_uses_gazebo_mesh_and_half_scale_collision_volume() -> None:
     tomato_root = _parse_xml(TOMATO_MODEL_PATH)
 
-    assert tomato_root.findtext('./model/link/visual/geometry/mesh/uri') == 'meshes/tomato_gazebo.obj'
+    assert tomato_root.findtext('./model/link/visual/geometry/mesh/uri') == 'meshes/tomato.glb'
     assert tomato_root.findtext('./model/link/visual/geometry/mesh/scale') == '0.03 0.03 0.03'
-    assert tomato_root.findtext('./model/link/visual/material/ambient') == '0.55 0.08 0.06 1'
-    assert tomato_root.findtext('./model/link/visual/material/diffuse') == '0.86 0.16 0.10 1'
+    assert tomato_root.findtext('./model/link/visual/material/ambient') == '0.8 0.0 0.0 1'
+    assert tomato_root.findtext('./model/link/visual/material/diffuse') == '1.0 0.0 0.0 1'
     assert tomato_root.findtext('./model/link/collision/pose') == '0 0 -0.002 0 0 0'
     assert tomato_root.findtext('./model/link/collision/geometry/sphere/radius') == '0.001'
 
@@ -88,15 +88,15 @@ def test_harvest_arm_pose_and_basket_collision_surfaces_match() -> None:
     )
     assert (
         agribot_root.find("./model/link[@name='harvest_arm_link']").findtext('pose')
-        == '0.04 0 0.29 0 0.15 0'
+        == '0.04 0 0.48 -3.1416 0 0'
     )
     assert (
         agribot_urdf_root.find("./joint[@name='harvest_arm_joint']").find('origin').attrib['xyz']
-        == '0.04 0 0.29'
+        == '0.04 0 0.48'
     )
     assert (
         agribot_urdf_root.find("./joint[@name='harvest_arm_joint']").find('origin').attrib['rpy']
-        == '0 0.15 0'
+        == '-3.1416 0 0'
     )
     assert (
         agribot_root.find("./model/link[@name='harvest_arm_link']/visual[@name='arm_mesh_visual']")
@@ -118,9 +118,9 @@ def test_harvest_arm_pose_and_basket_collision_surfaces_match() -> None:
     right_gripper_pose = agribot_root.findtext(
         "./model/link[@name='harvest_arm_link']/collision[@name='gripper_right_collision']/pose"
     )
-    assert wrist_collision_pose == '0.25 0 0.22 0 0 0'
-    assert left_gripper_pose == '0.29 0.028 0.27 0 0 0'
-    assert right_gripper_pose == '0.29 -0.028 0.27 0 0 0'
+    assert wrist_collision_pose == '0.25 0 0.22 3.1416 0 0'
+    assert left_gripper_pose == '0.29 0.028 0.27 3.1416 0 0'
+    assert right_gripper_pose == '0.29 -0.028 0.27 3.1416 0 0'
 
     basket_collision_names = {
         collision.attrib['name']

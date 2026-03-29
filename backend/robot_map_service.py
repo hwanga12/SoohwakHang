@@ -186,6 +186,7 @@ def _build_route_lookup() -> tuple[list[dict[str, Any]], dict[str, float]]:
         routes.append(
             {
                 "route_id": str(item.get("route_id", "")),
+                "lane_side": str(item.get("lane_side", "")),
                 "entry_pose_id": str(item.get("entry_pose_id", "")),
                 "inspect_pose_ids": inspect_pose_ids,
                 "turn_pose_id": str(item.get("turn_pose_id", "")),
@@ -198,6 +199,15 @@ def _build_route_lookup() -> tuple[list[dict[str, Any]], dict[str, float]]:
     harvest_routing = payload.get("harvest_routing", {})
     if not isinstance(harvest_routing, dict):
         harvest_routing = {}
+    standoff_by_lane_side = harvest_routing.get("map_display_standoff_from_crop_m_by_lane_side", {})
+    if not isinstance(standoff_by_lane_side, dict):
+        standoff_by_lane_side = {}
+    approach_limit_by_lane_side = harvest_routing.get(
+        "map_display_max_lateral_offset_from_inspect_m_by_lane_side",
+        {},
+    )
+    if not isinstance(approach_limit_by_lane_side, dict):
+        approach_limit_by_lane_side = {}
     routing_config = {
         "approach_margin_from_bed_edge_m": float(
             harvest_routing.get("approach_margin_from_bed_edge_m", 0.45)
@@ -211,6 +221,16 @@ def _build_route_lookup() -> tuple[list[dict[str, Any]], dict[str, float]]:
         "map_display_max_lateral_offset_from_inspect_m": float(
             harvest_routing.get("map_display_max_lateral_offset_from_inspect_m", 1.70)
         ),
+        "map_display_standoff_from_crop_m_by_lane_side": {
+            str(key): float(value)
+            for key, value in standoff_by_lane_side.items()
+            if str(key).strip()
+        },
+        "map_display_max_lateral_offset_from_inspect_m_by_lane_side": {
+            str(key): float(value)
+            for key, value in approach_limit_by_lane_side.items()
+            if str(key).strip()
+        },
     }
     return (routes, routing_config)
 
@@ -352,7 +372,16 @@ def _compute_approach_pose(
     # Frontend world-map markers should sit closer to the observed crop than the
     # safe aisle-center navigation target so left/right intent is visually clear.
     standoff_margin = routing_config["map_display_standoff_from_crop_m"]
+    lane_side = str(route.get("lane_side", "")).strip()
+    standoff_margin = routing_config.get(
+        "map_display_standoff_from_crop_m_by_lane_side",
+        {},
+    ).get(lane_side, standoff_margin)
     approach_limit = routing_config["map_display_max_lateral_offset_from_inspect_m"]
+    approach_limit = routing_config.get(
+        "map_display_max_lateral_offset_from_inspect_m_by_lane_side",
+        {},
+    ).get(lane_side, approach_limit)
     min_route_x, max_route_x, min_route_y, max_route_y = _route_bounds(route, waypoint_lookup)
 
     inspect_pose = inspect_waypoint["pose"]
