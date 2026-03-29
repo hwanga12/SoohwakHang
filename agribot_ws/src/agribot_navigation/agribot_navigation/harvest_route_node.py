@@ -131,7 +131,7 @@ class HarvestRouteNode(Node):
         self.declare_parameter('harvest_carry_z_m', 0.46)
         self.declare_parameter('harvest_basket_forward_m', -0.14)
         self.declare_parameter('harvest_basket_lateral_m', 0.0)
-        self.declare_parameter('harvest_basket_z_m', 0.42)
+        self.declare_parameter('harvest_basket_z_m', 0.455)
         self.declare_parameter('harvest_visual_basket_slot_count', 2)
         self.declare_parameter('harvest_basket_slot_lateral_spacing_m', 0.05)
         self.declare_parameter('harvest_basket_slot_forward_spacing_m', 0.0)

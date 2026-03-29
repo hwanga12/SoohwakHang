@@ -39,6 +39,15 @@ def test_compute_basket_pose_caps_visual_slots_to_two_and_stacks_overflow() -> N
     assert third_pose.x == second_pose.x
     assert third_pose.y == second_pose.y
     assert third_pose.z > second_pose.z
+    assert first_pose.z == second_pose.z == 0.455
+
+
+def test_compute_basket_pose_default_height_keeps_tomato_above_placeholder_floor() -> None:
+    pose = Pose2D(x=-2.0, y=4.0, z=0.0, yaw=0.0)
+
+    basket_pose = compute_basket_pose(pose, HarvestAnimationConfig(), basket_slot_index=0)
+
+    assert basket_pose == WorldPose(x=-2.14, y=3.975, z=0.455)
 
 
 def test_build_gz_pose_request_formats_pose_for_set_pose_service() -> None:

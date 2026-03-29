@@ -25,7 +25,9 @@ class HarvestAnimationConfig:
     carry_z_m: float = 0.46
     basket_forward_m: float = -0.14
     basket_lateral_m: float = 0.0
-    basket_z_m: float = 0.42
+    # Keep the fruit slightly above the placeholder basket floor so it stays
+    # visible after the stow animation instead of sinking into the geometry.
+    basket_z_m: float = 0.455
     basket_slot_count: int = 2
     basket_slot_lateral_spacing_m: float = 0.05
     basket_slot_forward_spacing_m: float = 0.0

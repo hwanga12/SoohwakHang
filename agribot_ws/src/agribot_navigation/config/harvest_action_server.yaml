@@ -41,7 +41,7 @@ harvest_action_server:
     harvest_carry_z_m: 0.46
     harvest_basket_forward_m: -0.14
     harvest_basket_lateral_m: 0.0
-    harvest_basket_z_m: 0.42
+    harvest_basket_z_m: 0.455
     harvest_visual_basket_slot_count: 2
     harvest_basket_slot_lateral_spacing_m: 0.05
     harvest_basket_slot_forward_spacing_m: 0.0
