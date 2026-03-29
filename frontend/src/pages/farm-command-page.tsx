@@ -1695,29 +1695,32 @@ export function FarmCommandPage() {
     selectedPlantLiveCamera.imageUrl,
     selectedPlantLiveCamera.isStale,
   ])
+  const selectedPlantMatchedObservationImage =
+    selectedPlantLiveCamera.plantId === selectedPlantDetail?.id
+      ? selectedPlantLiveCamera.observationImageUrl
+      : ''
   const selectedPlantPreviewImage =
-    selectedPlantLiveCameraImage
+    selectedPlantMatchedObservationImage
     || selectedPlantObservation?.imageUrl
     || selectedPlantDetail?.latestImageUrl
+    || selectedPlantLiveCameraImage
     || ''
   const selectedPlantPreviewLabel =
-    selectedPlantLiveCameraImage
-      ? selectedPlantLiveCamera.plantId === selectedPlantDetail?.id
-        ? '실시간 가제보 카메라'
-        : '실시간 로봇 카메라'
+    selectedPlantMatchedObservationImage
+      ? '방금 촬영된 작물 이미지'
       : selectedPlantObservation?.displayLabel
         || selectedPlantDetail?.latestDisplayLabel
-        || '발표용 이미지'
+        || (selectedPlantLiveCameraImage ? '실시간 로봇 카메라' : '발표용 이미지')
   const selectedPlantPreviewNote =
-    selectedPlantLiveCameraImage
-      ? selectedPlantLiveCamera.plantId === selectedPlantDetail?.id
-        ? '현재 선택한 식물 방향에서 갱신된 Gazebo 카메라 화면입니다.'
-        : '현재 로봇이 보는 Gazebo 카메라 전체 화면입니다. 자동 인식이 성공하면 식물 스냅샷으로도 이어집니다.'
+    selectedPlantMatchedObservationImage
+      ? '선택한 식물에 대해 가장 최근에 저장된 자동 관측 이미지입니다.'
       : selectedPlantObservation !== null
         ? '최근 자동 관측으로 저장된 식물 스냅샷입니다.'
         : selectedPlantDetail?.latestImageUrl
           ? '최근 저장된 식물 이미지입니다.'
-          : '백엔드 live 이미지가 없으면 시연용 기본 이미지를 표시합니다.'
+          : selectedPlantLiveCameraImage
+            ? '현재 로봇이 보는 Gazebo 카메라 전체 화면입니다. 식물별 관측 이미지가 생기면 그 사진을 먼저 보여줍니다.'
+            : '백엔드 live 이미지가 없으면 시연용 기본 이미지를 표시합니다.'
   const currentActivity = currentMissionActivity ?? activityState ?? robot.missionState
   const selectedPlantNavigationPlan = useMemo(() => {
     if (!selectedPlantDetail) {
