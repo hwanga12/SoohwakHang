@@ -867,7 +867,13 @@ class HarvestRouteNode(Node):
         reference_pose = self._resolve_animation_reference_pose()
         if reference_pose is not None:
             grasp_pose = compute_grasp_pose(reference_pose, self._animation_config)
-            self._set_gazebo_entity_pose(tomato.world_model_name, grasp_pose)
+            if not self._require_visual_pose_update(
+                tomato.world_model_name,
+                grasp_pose,
+                stage='grasp',
+                failure_reason='그리퍼 집기 연출을 Gazebo에 반영하지 못했습니다.',
+            ):
+                return
 
         self._set_state(
             'harvesting',
@@ -897,7 +903,13 @@ class HarvestRouteNode(Node):
         reference_pose = self._resolve_animation_reference_pose()
         if reference_pose is not None:
             carry_pose = compute_carry_pose(reference_pose, self._animation_config)
-            self._set_gazebo_entity_pose(tomato.world_model_name, carry_pose)
+            if not self._require_visual_pose_update(
+                tomato.world_model_name,
+                carry_pose,
+                stage='carry',
+                failure_reason='집어 올린 토마토를 바구니 쪽으로 옮기는 연출을 Gazebo에 반영하지 못했습니다.',
+            ):
+                return
 
         self._publish_arm_position(self._harvest_arm_lift_position)
         self._set_state(
@@ -932,7 +944,13 @@ class HarvestRouteNode(Node):
                 self._animation_config,
                 basket_slot_index=len(self._completed_tomato_ids),
             )
-            self._set_gazebo_entity_pose(tomato.world_model_name, basket_pose)
+            if not self._require_visual_pose_update(
+                tomato.world_model_name,
+                basket_pose,
+                stage='basket',
+                failure_reason='토마토를 뒤 바구니 슬롯으로 옮기는 연출을 Gazebo에 반영하지 못했습니다.',
+            ):
+                return
 
         self._publish_arm_position(self._harvest_arm_ready_position)
         self._set_state(
@@ -951,7 +969,8 @@ class HarvestRouteNode(Node):
     def _finish_harvest_dwell(self) -> None:
         self._cancel_harvest_timer()
         self._publish_arm_position(self._harvest_arm_ready_position)
-        self._hide_harvested_tomato_visual()
+        if not self._hide_harvested_tomato_visual():
+            return
         self._start_return_navigation(use_fallback=False)
 
     def _finish_sequence_after_return(self) -> None:
@@ -1070,20 +1089,37 @@ class HarvestRouteNode(Node):
     def _publish_arm_position(self, position: float) -> None:
         self._arm_command_pub.publish(Float64(data=float(position)))
 
-    def _hide_harvested_tomato_visual(self) -> None:
+    def _require_visual_pose_update(
+        self,
+        entity_name: str,
+        pose: WorldPose,
+        *,
+        stage: str,
+        failure_reason: str,
+    ) -> bool:
+        if self._set_gazebo_entity_pose(entity_name, pose):
+            return True
+        self._set_error(
+            f'{failure_reason} ({entity_name}, stage={stage})'
+        )
+        return False
+
+    def _hide_harvested_tomato_visual(self) -> bool:
         if self._active_plan is None:
-            return
+            return True
 
         tomato = self._catalog.tomatoes.get(self._active_plan.tomato_id)
         if tomato is None:
             self.get_logger().warning(
                 f'No tomato metadata found while hiding harvested target {self._active_plan.tomato_id}.'
             )
-            return
+            return True
 
-        self._set_gazebo_entity_pose(
+        return self._require_visual_pose_update(
             tomato.world_model_name,
             compute_hidden_pose(tomato.pose, self._animation_config),
+            stage='hide',
+            failure_reason='수확이 끝난 뒤 토마토 visual을 월드 밖으로 숨기지 못했습니다.',
         )
 
     def _set_gazebo_entity_pose(self, entity_name: str, pose: WorldPose) -> bool:

@@ -2648,9 +2648,20 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
     '/harvests': toQuerySource(harvestsPayload),
   }
   const live = Object.values(querySources).some((source) => source === 'live')
+  const statsSource = querySources['/harvests/stats']
+  const harvestsSource = querySources['/harvests']
+  const useStatsFallback = statsSource !== 'live'
+  const useHarvestsFallback = harvestsSource !== 'live'
   const stats = readRecord(statsPayload)
   const rows = asArray(harvestsPayload)
-  const metrics = [...harvestFallback.metrics]
+  const metrics = useStatsFallback
+    ? [...harvestFallback.metrics]
+    : [
+        { label: '오늘 수확', value: '0개', meta: '실시간 수확 기록 대기 중', tone: 'accent' as const },
+        { label: '적재율', value: '0개 적재', meta: '바구니 상태를 기다리는 중', tone: 'warning' as const },
+        { label: '성공률', value: '0.0%', meta: '실시간 수확 결과 대기 중', tone: 'accent' as const },
+        { label: '실패 건수', value: '0건', meta: '실시간 실패 기록 대기 중', tone: 'danger' as const },
+      ]
 
   metrics[0] = {
     ...metrics[0],
@@ -2727,24 +2738,34 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
     basketState:
       readString(stats?.basket_state)
       || readString(stats?.basket_fill_rate)
-      || harvestFallback.basketState,
-    nextSwap: readString(stats?.next_swap_eta) || harvestFallback.nextSwap,
-    basketCount: readNumber(stats?.basket_count, harvestFallback.basketCount),
-    remainingReadyCount: readNumber(stats?.remaining_ready_count, harvestFallback.remainingReadyCount),
+      || (useStatsFallback ? harvestFallback.basketState : '바구니 적재 0개'),
+    nextSwap:
+      readString(stats?.next_swap_eta)
+      || (useStatsFallback ? harvestFallback.nextSwap : 'ready 0개 남음'),
+    basketCount: readNumber(stats?.basket_count, useStatsFallback ? harvestFallback.basketCount : 0),
+    remainingReadyCount: readNumber(
+      stats?.remaining_ready_count,
+      useStatsFallback ? harvestFallback.remainingReadyCount : 0,
+    ),
     lastHarvestedFruitId:
       readString(stats?.last_harvested_fruit_id)
-      || harvestFallback.lastHarvestedFruitId,
-    missionStatus: normalizeTaskStatus(stats?.mission_status),
-    currentPhase: readString(stats?.current_phase) || harvestFallback.currentPhase,
-    activeMissionId: readString(stats?.active_mission_id) || harvestFallback.activeMissionId,
-    activeTargetId: readString(stats?.active_target_id) || harvestFallback.activeTargetId,
-    detailMessage: readString(stats?.detail_message) || harvestFallback.detailMessage,
+      || (useStatsFallback ? harvestFallback.lastHarvestedFruitId : ''),
+    missionStatus: useStatsFallback
+      ? normalizeTaskStatus(stats?.mission_status || harvestFallback.missionStatus)
+      : normalizeTaskStatus(stats?.mission_status),
+    currentPhase: readString(stats?.current_phase) || (useStatsFallback ? harvestFallback.currentPhase : ''),
+    activeMissionId:
+      readString(stats?.active_mission_id) || (useStatsFallback ? harvestFallback.activeMissionId : ''),
+    activeTargetId:
+      readString(stats?.active_target_id) || (useStatsFallback ? harvestFallback.activeTargetId : ''),
+    detailMessage:
+      readString(stats?.detail_message) || (useStatsFallback ? harvestFallback.detailMessage : ''),
     loadedFruitIds:
       readStringArray(stats?.loaded_fruit_ids).length > 0
         ? readStringArray(stats?.loaded_fruit_ids)
-        : harvestFallback.loadedFruitIds,
+        : (useStatsFallback ? harvestFallback.loadedFruitIds : []),
     metrics,
-    batches: batches.length > 0 ? batches : harvestFallback.batches,
+    batches: batches.length > 0 ? batches : (useHarvestsFallback ? harvestFallback.batches : []),
   }
 }
 

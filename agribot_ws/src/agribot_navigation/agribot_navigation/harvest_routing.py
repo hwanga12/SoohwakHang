@@ -169,6 +169,15 @@ def _clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(value, maximum))
 
 
+def _approach_limit_for_route(plan: PatrolPlan, route: PatrolRoute) -> float:
+    override = plan.harvest_routing.max_lateral_offset_from_inspect_m_by_lane_side.get(
+        route.lane_side,
+    )
+    if override is None:
+        return plan.harvest_routing.max_lateral_offset_from_inspect_m
+    return max(0.0, float(override))
+
+
 def _normalize_vector(delta_x: float, delta_y: float) -> tuple[float, float] | None:
     magnitude = math.hypot(delta_x, delta_y)
     if magnitude <= 1e-6:
@@ -298,7 +307,7 @@ def _compute_approach_pose(
     tomato: TomatoInstance,
 ) -> Pose2D:
     standoff_margin = plan.harvest_routing.approach_margin_from_bed_edge_m
-    approach_limit = plan.harvest_routing.max_lateral_offset_from_inspect_m
+    approach_limit = _approach_limit_for_route(plan, route)
     min_route_x, max_route_x, min_route_y, max_route_y = _route_bounds(plan, route)
 
     delta_x = tomato.pose.x - inspect_waypoint.pose.x
@@ -344,7 +353,7 @@ def _compute_align_pose(
     approach_pose: Pose2D,
 ) -> Pose2D:
     align_standoff = plan.harvest_routing.align_standoff_from_crop_m
-    approach_limit = plan.harvest_routing.max_lateral_offset_from_inspect_m
+    approach_limit = _approach_limit_for_route(plan, route)
     min_route_x, max_route_x, min_route_y, max_route_y = _route_bounds(plan, route)
 
     entry_pose = plan.waypoints[route.entry_pose_id].pose

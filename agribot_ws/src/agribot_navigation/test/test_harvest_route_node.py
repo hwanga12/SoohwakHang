@@ -226,7 +226,11 @@ def test_finish_harvest_dwell_hides_harvested_tomato_before_return() -> None:
         hidden_y_m=999.0,
         hidden_z_m=-10.0,
     )
-    node._set_gazebo_entity_pose = lambda entity_name, pose: pose_updates.append((entity_name, pose))
+    def _record_pose_update(entity_name, pose):
+        pose_updates.append((entity_name, pose))
+        return True
+
+    node._set_gazebo_entity_pose = _record_pose_update
     node._start_return_navigation = lambda use_fallback: return_calls.append(use_fallback)
     node.get_logger = lambda: SimpleNamespace(warning=lambda _: None)
 
@@ -277,3 +281,56 @@ def test_start_return_navigation_finishes_immediately_when_robot_is_already_near
     HarvestRouteNode._start_return_navigation(node, use_fallback=False)
 
     assert finished['called'] is True
+
+
+def test_continue_harvest_to_basket_fails_when_visual_update_is_rejected() -> None:
+    node = object.__new__(HarvestRouteNode)
+    node._cancel_harvest_timer = lambda: None
+    node._active_plan = SimpleNamespace(tomato_id='farm01_plant_01_tomato_01')
+    node._catalog = SimpleNamespace(
+        tomatoes={
+            'farm01_plant_01_tomato_01': SimpleNamespace(
+                world_model_name='farm01_plant_01_tomato_01',
+                pose=Pose2D(x=-6.0, y=-6.0, z=0.82, yaw=0.0),
+            )
+        }
+    )
+    node._completed_tomato_ids = []
+    node._animation_config = HarvestAnimationConfig()
+    node._harvest_arm_ready_position = 0.0
+    node._harvest_stow_sec = 1.2
+    errors: list[str] = []
+    scheduled: list[tuple[float, object]] = []
+    published_positions: list[float] = []
+    node._resolve_animation_reference_pose = lambda: Pose2D(x=0.0, y=0.0, z=0.0, yaw=0.0)
+    node._set_gazebo_entity_pose = lambda entity_name, pose: False
+    node._set_error = errors.append
+    node._schedule_harvest_timer = lambda duration_sec, callback: scheduled.append((duration_sec, callback))
+    node._publish_arm_position = published_positions.append
+    node._set_state = lambda state, message: None
+    node._publish_execution_status = lambda **kwargs: None
+
+    HarvestRouteNode._continue_harvest_to_basket(node)
+
+    assert published_positions == []
+    assert scheduled == []
+    assert errors == [
+        '토마토를 뒤 바구니 슬롯으로 옮기는 연출을 Gazebo에 반영하지 못했습니다. '
+        '(farm01_plant_01_tomato_01, stage=basket)'
+    ]
+
+
+def test_finish_harvest_dwell_stops_when_hiding_visual_fails() -> None:
+    node = object.__new__(HarvestRouteNode)
+    published_positions: list[float] = []
+    return_calls: list[bool] = []
+    node._cancel_harvest_timer = lambda: None
+    node._publish_arm_position = published_positions.append
+    node._harvest_arm_ready_position = 0.0
+    node._hide_harvested_tomato_visual = lambda: False
+    node._start_return_navigation = lambda use_fallback: return_calls.append(use_fallback)
+
+    HarvestRouteNode._finish_harvest_dwell(node)
+
+    assert published_positions == [0.0]
+    assert return_calls == []

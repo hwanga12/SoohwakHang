@@ -143,9 +143,31 @@ def test_compute_harvest_route_prefers_observation_candidate_closest_to_current_
 
     assert route_plan.route_id == 'farm_01_harvest_lane_center'
     assert route_plan.inspect_waypoint_id == 'farm_01_lane_center_inspect_06'
-    assert route_plan.approach_pose.x == pytest.approx(1.25, abs=1e-6)
+    assert route_plan.approach_pose.x == pytest.approx(0.0, abs=1e-6)
     assert route_plan.approach_pose.y == pytest.approx(6.0, abs=1e-6)
     assert route_plan.approach_pose.yaw == pytest.approx(0.0, abs=1e-6)
+    assert route_plan.align_pose.x == pytest.approx(0.0, abs=1e-6)
+    assert route_plan.align_pose.y == pytest.approx(6.0, abs=1e-6)
+    assert route_plan.align_pose.yaw == pytest.approx(0.0, abs=1e-6)
+
+
+def test_compute_harvest_route_keeps_center_lane_targets_on_safe_inspect_corridor() -> None:
+    patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
+    crop_catalog = load_crop_catalog(CROP_INSTANCES)
+
+    route_plan = compute_harvest_route(
+        patrol_plan,
+        crop_catalog,
+        'farm01_plant_11_tomato_01',
+        current_pose=Pose2D(x=0.0, y=0.0, z=0.0, yaw=0.0),
+    )
+
+    assert route_plan.route_id == 'farm_01_harvest_lane_center'
+    assert route_plan.inspect_waypoint_id == 'farm_01_lane_center_inspect_03'
+    assert route_plan.approach_pose.x == pytest.approx(0.0, abs=1e-6)
+    assert route_plan.approach_pose.y == pytest.approx(-2.0, abs=1e-6)
+    assert route_plan.align_pose.x == pytest.approx(0.0, abs=1e-6)
+    assert route_plan.align_pose.y == pytest.approx(-2.0, abs=1e-6)
 
 
 def test_compute_harvest_route_switches_to_left_edge_candidate_when_robot_starts_left() -> None:
