@@ -27,8 +27,8 @@
       <geometry>
         <cylinder radius="0.06" length="0.03"/>
       </geometry>
-      <material name="dark_grey">
-        <color rgba="0.2 0.2 0.2 1.0"/>
+      <material name="dark_grey_translucent">
+        <color rgba="0.2 0.2 0.2 0.75"/>
       </material>
     </visual>
     <collision>
@@ -55,7 +55,7 @@
       <geometry>
         <cylinder radius="0.06" length="0.03"/>
       </geometry>
-      <material name="dark_grey"/>
+      <material name="dark_grey_translucent"/>
     </visual>
     <collision>
       <geometry>
@@ -78,11 +78,12 @@
   <!-- ==================== CASTER WHEEL ==================== -->
   <link name="caster">
     <visual>
+      <origin xyz="0 0 0" rpy="-1.5708 0 0"/>
       <geometry>
-        <sphere radius="0.03"/>
+        <cylinder radius="0.028" length="0.018"/>
       </geometry>
-      <material name="grey">
-        <color rgba="0.5 0.5 0.5 1.0"/>
+      <material name="grey_translucent">
+        <color rgba="0.22 0.22 0.22 0.75"/>
       </material>
     </visual>
     <collision>
@@ -108,8 +109,8 @@
       <geometry>
         <box size="0.03 0.06 0.03"/>
       </geometry>
-      <material name="blue">
-        <color rgba="0.0 0.0 0.8 1.0"/>
+      <material name="blue_translucent">
+        <color rgba="0.0 0.0 0.6 0.75"/>
       </material>
     </visual>
   </link>
