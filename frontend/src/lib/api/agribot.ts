@@ -305,6 +305,20 @@ export type PlantObservationFeed = {
   items: PlantObservationEntry[]
 }
 
+export type LiveCameraSnapshot = {
+  source: DataSource
+  available: boolean
+  isStale: boolean
+  capturedAt: string
+  imageUrl: string
+  plantId: string | null
+  fruitId: string | null
+  observationId: string | null
+  observationImageUrl: string
+  detectionLabel: string
+  detectionConfidence: number | null
+}
+
 export type DeviceCard = {
   id: string
   icon: string
@@ -1658,6 +1672,20 @@ export const emptyPlantObservationFeed: PlantObservationFeed = {
   items: [],
 }
 
+export const emptyLiveCameraSnapshot: LiveCameraSnapshot = {
+  source: 'fallback',
+  available: false,
+  isStale: true,
+  capturedAt: '',
+  imageUrl: '',
+  plantId: null,
+  fruitId: null,
+  observationId: null,
+  observationImageUrl: '',
+  detectionLabel: '',
+  detectionConfidence: null,
+}
+
 export const environmentFallback: EnvironmentPageData = {
   source: 'fallback',
   debug: {
@@ -2367,6 +2395,25 @@ export async function getPlantObservations(plantId: string): Promise<PlantObserv
     plantId: readString(record?.plant_id) || plantId,
     plantName: readString(record?.plant_name) || '',
     items: parsedItems,
+  }
+}
+
+export async function getLiveCameraSnapshot(): Promise<LiveCameraSnapshot> {
+  const payload = await safeGet('/camera/latest')
+  const record = readRecord(payload)
+
+  return {
+    source: toQuerySource(payload),
+    available: readBoolean(record?.available),
+    isStale: readBoolean(record?.is_stale, true),
+    capturedAt: readString(record?.captured_at),
+    imageUrl: resolveApiMediaUrl(readString(record?.image_url)),
+    plantId: readString(record?.plant_id) || null,
+    fruitId: readString(record?.fruit_id) || null,
+    observationId: readString(record?.observation_id) || null,
+    observationImageUrl: resolveApiMediaUrl(readString(record?.observation_image_url)),
+    detectionLabel: readString(record?.detection_label),
+    detectionConfidence: readOptionalNumber(record?.detection_confidence),
   }
 }
 

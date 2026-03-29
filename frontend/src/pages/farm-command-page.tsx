@@ -10,11 +10,13 @@ import {
 } from '@/components/robot-facility-map'
 import {
   dashboardFallback,
+  emptyLiveCameraSnapshot,
   emptyPlantObservationFeed,
   environmentFallback,
   getDashboardPageData,
   getEnvironmentPageData,
   getHarvestPageData,
+  getLiveCameraSnapshot,
   getPlantObservations,
   getMissionStatus,
   getPlantsPageData,
@@ -1438,10 +1440,17 @@ export function FarmCommandPage() {
     queryKey: ['plants', 'observations', selectedPlantDetail?.id ?? selectedPlantId],
     queryFn: async () => getPlantObservations(selectedPlantDetail?.id ?? selectedPlantId ?? ''),
     enabled: Boolean(selectedPlantDetail?.id ?? selectedPlantId),
-    refetchInterval: 20_000,
+    refetchInterval: isAssetModalOpen ? 5_000 : 20_000,
   })
   const selectedPlantObservationFeed = selectedPlantObservationQuery.data ?? emptyPlantObservationFeed
   const selectedPlantObservation = selectedPlantObservationFeed.items[0] ?? null
+  const selectedPlantLiveCameraQuery = useQuery({
+    queryKey: ['robot', 'live-camera', 'latest'],
+    queryFn: async () => getLiveCameraSnapshot(),
+    enabled: isAssetModalOpen && Boolean(selectedPlantDetail?.id ?? selectedPlantId),
+    refetchInterval: isAssetModalOpen ? 1_500 : false,
+  })
+  const selectedPlantLiveCamera = selectedPlantLiveCameraQuery.data ?? emptyLiveCameraSnapshot
 
   useEffect(() => {
     if (selectedAssetId && stableMapScene.assets.some((asset) => asset.id === selectedAssetId)) {
@@ -1660,10 +1669,53 @@ export function FarmCommandPage() {
     : '날씨 데이터 대기 중'
 
   const selectedTag = selectionTag(selectedAsset?.kind, selectedAsset?.status)
+  const selectedPlantLiveCameraImage = useMemo(() => {
+    if (
+      !selectedPlantLiveCamera.available
+      || selectedPlantLiveCamera.isStale
+      || !selectedPlantLiveCamera.imageUrl
+    ) {
+      return ''
+    }
+
+    const cacheKey = selectedPlantLiveCamera.capturedAt || String(Date.now())
+    try {
+      const url = new URL(selectedPlantLiveCamera.imageUrl)
+      url.searchParams.set('captured_at', cacheKey)
+      return url.toString()
+    } catch {
+      const delimiter = selectedPlantLiveCamera.imageUrl.includes('?') ? '&' : '?'
+      return `${selectedPlantLiveCamera.imageUrl}${delimiter}captured_at=${encodeURIComponent(cacheKey)}`
+    }
+  }, [
+    selectedPlantLiveCamera.available,
+    selectedPlantLiveCamera.capturedAt,
+    selectedPlantLiveCamera.imageUrl,
+    selectedPlantLiveCamera.isStale,
+  ])
   const selectedPlantPreviewImage =
-    selectedPlantObservation?.imageUrl
+    selectedPlantLiveCameraImage
+    || selectedPlantObservation?.imageUrl
     || selectedPlantDetail?.latestImageUrl
     || ''
+  const selectedPlantPreviewLabel =
+    selectedPlantLiveCameraImage
+      ? selectedPlantLiveCamera.plantId === selectedPlantDetail?.id
+        ? '실시간 가제보 카메라'
+        : '실시간 로봇 카메라'
+      : selectedPlantObservation?.displayLabel
+        || selectedPlantDetail?.latestDisplayLabel
+        || '발표용 이미지'
+  const selectedPlantPreviewNote =
+    selectedPlantLiveCameraImage
+      ? selectedPlantLiveCamera.plantId === selectedPlantDetail?.id
+        ? '현재 선택한 식물 방향에서 갱신된 Gazebo 카메라 화면입니다.'
+        : '현재 로봇이 보는 Gazebo 카메라 전체 화면입니다. 자동 인식이 성공하면 식물 스냅샷으로도 이어집니다.'
+      : selectedPlantObservation !== null
+        ? '최근 자동 관측으로 저장된 식물 스냅샷입니다.'
+        : selectedPlantDetail?.latestImageUrl
+          ? '최근 저장된 식물 이미지입니다.'
+          : '백엔드 live 이미지가 없으면 시연용 기본 이미지를 표시합니다.'
   const currentActivity = currentMissionActivity ?? activityState ?? robot.missionState
   const selectedPlantNavigationPlan = useMemo(() => {
     if (!selectedPlantDetail) {
@@ -2593,12 +2645,13 @@ export function FarmCommandPage() {
                   alt={`${selectedPlantDetail.name} 확인 이미지`}
                   className="farm-plant-modal__image"
                   height="100%"
-                  label={selectedPlantObservation?.displayLabel || selectedPlantDetail.latestDisplayLabel || '발표용 이미지'}
+                  label={selectedPlantPreviewLabel}
                   src={selectedPlantPreviewImage || previewImageForAsset('plant', selectedPlantAsset.status)}
                 />
               </div>
 
               <div className="farm-plant-modal__body">
+                <p className="farm-plant-modal__media-note">{selectedPlantPreviewNote}</p>
                 <div className="farm-plant-modal__actions">
                   <button
                     className="action-button"

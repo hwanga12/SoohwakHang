@@ -5197,6 +5197,13 @@ button.robot-facility-map__row-guide.is-clickable {
   gap: 12px;
 }
 
+.farm-plant-modal__media-note {
+  margin: 0;
+  color: color-mix(in srgb, var(--ink) 76%, white);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .farm-plant-modal__body .list-title {
   margin: 0;
 }

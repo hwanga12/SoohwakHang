@@ -21,6 +21,8 @@ from robot_map_service import _load_crop_instances
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FRONTEND_PUBLIC_DIR = REPO_ROOT / "frontend" / "public"
 DEFAULT_BACKEND_RUNTIME_DIR = REPO_ROOT / "artifacts" / "runtime" / "backend"
+DEFAULT_ROBOT_CAMERA_RUNTIME_DIR = REPO_ROOT / "artifacts" / "runtime" / "robot" / "thin_inference"
+LIVE_CAMERA_STALE_SEC = 8.0
 
 LABEL_DISPLAY_MAP = {
     "healthy_leaf": "정상 잎",
@@ -152,6 +154,15 @@ def _backend_runtime_dir() -> Path:
     ).expanduser()
 
 
+def _robot_camera_runtime_dir() -> Path:
+    return Path(
+        os.environ.get(
+            "AGRIBOT_ROBOT_CAMERA_RUNTIME_DIR",
+            str(DEFAULT_ROBOT_CAMERA_RUNTIME_DIR),
+        )
+    ).expanduser()
+
+
 def _resolve_local_media_path(image_url: str) -> Path | None:
     normalized = image_url.strip()
     if not normalized:
@@ -167,6 +178,16 @@ def _resolve_local_media_path(image_url: str) -> Path | None:
     if relative_candidate.exists():
         return relative_candidate
     return None
+
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    normalized = value.strip()
+    if not normalized:
+        return None
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
 
 
 def _read_json_file(path: Path) -> dict[str, Any] | None:
@@ -185,6 +206,31 @@ def _resolve_runtime_image_path(metadata_path: Path, image_format: str) -> Path 
             return candidate
 
     for candidate in metadata_path.parent.glob(f"{metadata_path.stem}.*"):
+        if candidate.suffix.lower() == ".json":
+            continue
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _live_camera_metadata_path() -> Path:
+    return _robot_camera_runtime_dir() / "camera" / "latest_frame.json"
+
+
+def _resolve_live_camera_image_path(metadata_path: Path, payload: dict[str, Any]) -> Path | None:
+    configured_path = str(payload.get("image_path") or "").strip()
+    if configured_path:
+        candidate = Path(configured_path).expanduser()
+        if candidate.exists():
+            return candidate
+
+    image_format = str(payload.get("image_format") or "").strip().lstrip(".")
+    if image_format:
+        candidate = metadata_path.with_name(f"latest_frame.{image_format}")
+        if candidate.exists():
+            return candidate
+
+    for candidate in metadata_path.parent.glob("latest_frame.*"):
         if candidate.suffix.lower() == ".json":
             continue
         if candidate.exists():
@@ -701,6 +747,76 @@ class ObservationReadService:
 
     def media_response_meta(self, asset_id: str) -> dict[str, str]:
         image_path = self.resolve_media_path(asset_id)
+        return {
+            "filename": image_path.name,
+            "media_type": mimetypes.guess_type(image_path.name)[0] or "application/octet-stream",
+        }
+
+    def get_live_camera_snapshot(self) -> dict[str, Any]:
+        metadata_path = _live_camera_metadata_path()
+        payload = _read_json_file(metadata_path)
+        if payload is None:
+            return {
+                "available": False,
+                "is_stale": True,
+                "captured_at": "",
+                "image_url": "",
+                "plant_id": "",
+                "fruit_id": "",
+                "observation_id": "",
+                "observation_image_url": "",
+                "detection_label": "",
+                "detection_confidence": 0.0,
+            }
+
+        image_path = _resolve_live_camera_image_path(metadata_path, payload)
+        captured_at = str(payload.get("captured_at") or "").strip()
+        captured_dt = _parse_iso_datetime(captured_at)
+        is_stale = True
+        if captured_dt is not None:
+            if captured_dt.tzinfo is None:
+                captured_dt = captured_dt.replace(tzinfo=timezone.utc)
+            is_stale = (
+                datetime.now(captured_dt.tzinfo) - captured_dt
+            ).total_seconds() > LIVE_CAMERA_STALE_SEC
+
+        detection = payload.get("detection")
+        detection_label = ""
+        detection_confidence = 0.0
+        if isinstance(detection, dict):
+            detection_label = str(detection.get("label") or "").strip()
+            try:
+                detection_confidence = float(detection.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                detection_confidence = 0.0
+
+        observation_id = str(payload.get("observation_id") or "").strip()
+        return {
+            "available": image_path is not None,
+            "is_stale": is_stale,
+            "captured_at": captured_at,
+            "image_url": "" if image_path is None else "/api/v1/camera/latest/frame",
+            "plant_id": str(payload.get("plant_id") or "").strip(),
+            "fruit_id": str(payload.get("fruit_id") or "").strip(),
+            "observation_id": observation_id,
+            "observation_image_url": "" if not observation_id else _runtime_media_url(observation_id),
+            "detection_label": detection_label,
+            "detection_confidence": detection_confidence,
+        }
+
+    def resolve_live_camera_path(self) -> Path:
+        metadata_path = _live_camera_metadata_path()
+        payload = _read_json_file(metadata_path)
+        if payload is None:
+            raise FileNotFoundError("최신 Gazebo 카메라 프레임 메타데이터가 없습니다.")
+
+        image_path = _resolve_live_camera_image_path(metadata_path, payload)
+        if image_path is None:
+            raise FileNotFoundError("최신 Gazebo 카메라 프레임 파일을 찾지 못했습니다.")
+        return image_path
+
+    def live_camera_response_meta(self) -> dict[str, str]:
+        image_path = self.resolve_live_camera_path()
         return {
             "filename": image_path.name,
             "media_type": mimetypes.guess_type(image_path.name)[0] or "application/octet-stream",
