@@ -12,6 +12,7 @@ from time import monotonic
 
 from nav_msgs.msg import Odometry
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import JointState, LaserScan
@@ -182,15 +183,18 @@ class SimTimeGuard(Node):
         )
 
     def _republish_monotonic(self, stream_label: str, stamp_ns: int, message, stamp_filter: MonotonicStampFilter, publish) -> None:
+        if not rclpy.ok():
+            return
+
         last_stamp_ns = stamp_filter.last_stamp_ns
         if last_stamp_ns is None:
             stamp_filter.reset(stamp_ns)
-            publish(message)
+            self._safe_publish(publish, message)
             return
 
         if stamp_ns > last_stamp_ns:
             stamp_filter.reset(stamp_ns)
-            publish(message)
+            self._safe_publish(publish, message)
             return
 
         backwards_jump_ns = last_stamp_ns - stamp_ns
@@ -199,6 +203,16 @@ class SimTimeGuard(Node):
             f'Dropping stale {stream_label} sample after backward timestamp jump '
             f'({backwards_jump_ns / 1_000_000_000:.3f}s behind latest accepted sample).'
         )
+
+    def _safe_publish(self, publish, message) -> None:
+        if not rclpy.ok():
+            return
+
+        try:
+            publish(message)
+        except Exception:
+            if rclpy.ok():
+                raise
 
     def _warn_drop(self, stream_label: str, message: str) -> None:
         now_monotonic = monotonic()
@@ -242,8 +256,11 @@ def main(args=None) -> None:
     node = SimTimeGuard()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except Exception:
+        if rclpy.ok():
+            raise
     finally:
         node.destroy_node()
         if rclpy.ok():

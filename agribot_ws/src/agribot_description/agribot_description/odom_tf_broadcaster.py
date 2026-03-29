@@ -3,6 +3,7 @@
 from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from tf2_ros import TransformBroadcaster
 
@@ -32,6 +33,9 @@ class OdomTfBroadcaster(Node):
         )
 
     def _handle_odom(self, msg: Odometry) -> None:
+        if not rclpy.ok():
+            return
+
         stamp = (
             msg.header.stamp
             if (msg.header.stamp.sec != 0 or msg.header.stamp.nanosec != 0)
@@ -57,7 +61,11 @@ class OdomTfBroadcaster(Node):
         transform.transform.translation.z = msg.pose.pose.position.z
         transform.transform.rotation = msg.pose.pose.orientation
         self._last_stamp_ns = stamp_ns
-        self._broadcaster.sendTransform(transform)
+        try:
+            self._broadcaster.sendTransform(transform)
+        except Exception:
+            if rclpy.ok():
+                raise
 
     def _warn(self, message: str) -> None:
         from time import monotonic
@@ -74,8 +82,11 @@ def main(args=None) -> None:
     node = OdomTfBroadcaster()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except Exception:
+        if rclpy.ok():
+            raise
     finally:
         node.destroy_node()
         if rclpy.ok():
