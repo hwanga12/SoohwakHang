@@ -116,11 +116,7 @@ function readStoredOverlayPreference() {
 
   const storedValue = window.localStorage.getItem(DEV_OVERLAY_STORAGE_KEY)
 
-  if (storedValue === 'false') {
-    return false
-  }
-
-  return true
+  return storedValue === 'true'
 }
 
 function buildOpenApiUrl() {

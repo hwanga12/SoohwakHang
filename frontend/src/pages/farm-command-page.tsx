@@ -15,7 +15,6 @@ import {
   getDashboardPageData,
   getEnvironmentPageData,
   getHarvestPageData,
-  getLatestRobotCommandStatus,
   getPlantObservations,
   getMissionStatus,
   getPlantsPageData,
@@ -53,10 +52,14 @@ import {
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
 import {
-  buildPlantInspectionTargetPose,
-} from '@/lib/robot-map/approach-pose'
+  useStablePreviewPath,
+  useStableRobotPose,
+  useStableSemanticScene,
+} from '@/lib/robot-map/render-stability'
+import { resolveObservationCandidateDisplayPose } from '@/lib/robot-map/approach-pose'
 import {
   buildPlantInspectionNavigationPlan,
+  type PlantNavigationPlan,
 } from '@/lib/robot-map/plant-navigation-plan'
 import { buildNavigationPreviewPath } from '@/lib/robot-map/navigation-preview'
 
@@ -218,6 +221,7 @@ type DiagnosePhase = 'transit' | 'inspection'
 type DiagnoseRouteStep = {
   phase: DiagnosePhase
   pose: RobotTargetPose
+  displayPose: RobotTargetPose
 }
 
 type DiagnoseCommandTracker = {
@@ -226,10 +230,13 @@ type DiagnoseCommandTracker = {
   fruitId: string
   plantName: string
   inspectWaypointId: string | null
+  inspectWaypointIds: string[]
   targetPose: RobotTargetPose
+  targetDisplayPose: RobotTargetPose
   routeSteps: DiagnoseRouteStep[]
   currentStepIndex: number
   currentTargetPose: RobotTargetPose
+  currentTargetDisplayPose: RobotTargetPose
   phase: DiagnosePhase
   baselineToken: string
   requestedAt: number
@@ -240,10 +247,13 @@ type DiagnoseDispatchInput = {
   fruitId: string
   plantName: string
   inspectWaypointId: string | null
+  inspectWaypointIds: string[]
   targetPose: RobotTargetPose
+  targetDisplayPose: RobotTargetPose
   routeSteps: DiagnoseRouteStep[]
   currentStepIndex: number
   currentTargetPose: RobotTargetPose
+  currentTargetDisplayPose: RobotTargetPose
   phase: DiagnosePhase
 }
 
@@ -271,7 +281,7 @@ type QueuedDiagnoseStart = {
   plantId: string
   fruitId: string
   plantName: string
-  targetPose: RobotTargetPose
+  plan: PlantNavigationPlan
 }
 
 function plantNumberLabel(name: string, id: string) {
@@ -662,12 +672,16 @@ function buildDiagnoseRoutePlan(
     plan?.steps.map((step) => ({
       phase: (step.phase === 'inspection' ? 'inspection' : 'transit') as DiagnosePhase,
       pose: step.pose,
+      displayPose: step.displayPose,
     }))
-    ?? [{ phase: 'inspection', pose: targetPose }]
+    ?? [{ phase: 'inspection', pose: targetPose, displayPose: targetPose }]
 
   return {
     steps: routeSteps,
     inspectionPose: plan?.inspectionPose ?? targetPose,
+    inspectionDisplayPose: plan?.inspectionDisplayPose ?? targetPose,
+    inspectWaypointId: plan?.inspectWaypointId ?? null,
+    inspectWaypointIds: plan?.inspectWaypointIds ?? [],
   }
 }
 
@@ -920,12 +934,7 @@ export function FarmCommandPage() {
     queryFn: getRobotPageData,
     initialData: robotFallback,
     refetchInterval: 1_000,
-  })
-  const latestCommandStatusQuery = useQuery({
-    queryKey: ['robot', 'command-status'],
-    queryFn: getLatestRobotCommandStatus,
-    initialData: robotFallback.latestCommandStatus,
-    refetchInterval: 2_000,
+    refetchOnWindowFocus: false,
   })
   const plantsQuery = useQuery({
     queryKey: ['page', 'plants'],
@@ -995,7 +1004,6 @@ export function FarmCommandPage() {
       const refreshJobs = [
         queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
         queryClient.invalidateQueries({ queryKey: ['page', 'dashboard'] }),
-        queryClient.invalidateQueries({ queryKey: ['robot', 'command-status'] }),
         queryClient.invalidateQueries({ queryKey: ['page', 'harvest'] }),
         queryClient.invalidateQueries({ queryKey: ['page', 'plants'] }),
       ]
@@ -1025,9 +1033,13 @@ export function FarmCommandPage() {
     },
   })
   const diagnoseMutation = useMutation({
-    mutationFn: ({ currentTargetPose, inspectWaypointId }: DiagnoseDispatchInput) => sendRobotNavigateCommand(
+    mutationFn: ({ currentTargetPose, inspectWaypointId, inspectWaypointIds, plantId }: DiagnoseDispatchInput) => sendRobotNavigateCommand(
       currentTargetPose,
-      { inspectWaypointId },
+      {
+        inspectWaypointId,
+        inspectWaypointIds,
+        plantId,
+      },
     ),
     onSuccess: async (response, variables) => {
       setActiveDiagnoseCommand({
@@ -1036,10 +1048,13 @@ export function FarmCommandPage() {
         fruitId: variables.fruitId,
         plantName: variables.plantName,
         inspectWaypointId: variables.inspectWaypointId,
+        inspectWaypointIds: variables.inspectWaypointIds,
         targetPose: variables.targetPose,
+        targetDisplayPose: variables.targetDisplayPose,
         routeSteps: variables.routeSteps,
         currentStepIndex: variables.currentStepIndex,
         currentTargetPose: variables.currentTargetPose,
+        currentTargetDisplayPose: variables.currentTargetDisplayPose,
         phase: variables.phase,
         baselineToken: latestCommandToken(latestCommandStatus),
         requestedAt: Date.now(),
@@ -1060,7 +1075,6 @@ export function FarmCommandPage() {
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
-        queryClient.invalidateQueries({ queryKey: ['robot', 'command-status'] }),
       ])
     },
     onError: (error: Error) => {
@@ -1165,7 +1179,7 @@ export function FarmCommandPage() {
 
   const dashboard = dashboardQuery.data
   const robot = robotQuery.data
-  const latestCommandStatus = latestCommandStatusQuery.data ?? robot.latestCommandStatus
+  const latestCommandStatus = robot.latestCommandStatus
   const plants = plantsQuery.data
   const environment = environmentQuery.data
   const harvest = harvestQuery.data
@@ -1230,10 +1244,12 @@ export function FarmCommandPage() {
     laneGuides: robot.scene.laneGuides.length > 0 ? robot.scene.laneGuides : farmSemanticScene.laneGuides,
     assets: robot.scene.assets.length > 0 ? robot.scene.assets : farmSemanticScene.assets,
   }), [robot.scene.assets, robot.scene.bounds, robot.scene.laneGuides, robot.scene.rowGuides])
+  const stableLiveScene = useStableSemanticScene(liveScene)
+  const stableRobotPose = useStableRobotPose(robotPose)
 
   const mapScene = useMemo<SemanticScene>(() => ({
-    ...liveScene,
-    assets: liveScene.assets.map((asset) => {
+    ...stableLiveScene,
+    assets: stableLiveScene.assets.map((asset) => {
       const actionRecord = actionRecords[asset.id]
 
       if (asset.kind === 'plant') {
@@ -1260,36 +1276,62 @@ export function FarmCommandPage() {
               : runtimeHarvestTarget || harvestTarget
                 ? 'target'
                 : 'normal'
+        const nextLinkedId = plant?.targetId ?? asset.linkedId
+        const nextLabel = plant?.name ?? asset.label
+        const nextShortLabel = plant?.name.replace('토마토 ', '') ?? asset.shortLabel
+        const nextDescription =
+          actionRecord
+            ? actionRecord.detail
+            : runtimeHandled
+              ? `${plant?.name ?? asset.label} 수확과 등 바구니 적재가 완료되었습니다.`
+              : runtimeHarvestTarget
+                ? harvest.detailMessage || `${plant?.name ?? asset.label} ${formatHarvestPhase(harvest.currentPhase)}`
+                : plant
+                  ? `${plant.status} · ${plant.recommendedAction}`
+                  : asset.description
+
+        if (
+          nextLinkedId === asset.linkedId
+          && nextLabel === asset.label
+          && nextShortLabel === asset.shortLabel
+          && nextDescription === asset.description
+          && status === asset.status
+        ) {
+          return asset
+        }
 
         return {
           ...asset,
-          linkedId: plant?.targetId ?? asset.linkedId,
-          label: plant?.name ?? asset.label,
-          shortLabel: plant?.name.replace('토마토 ', '') ?? asset.shortLabel,
-          description:
-            actionRecord
-              ? actionRecord.detail
-              : runtimeHandled
-                ? `${plant?.name ?? asset.label} 수확과 등 바구니 적재가 완료되었습니다.`
-                : runtimeHarvestTarget
-                  ? harvest.detailMessage || `${plant?.name ?? asset.label} ${formatHarvestPhase(harvest.currentPhase)}`
-                  : plant
-                    ? `${plant.status} · ${plant.recommendedAction}`
-                    : asset.description,
+          linkedId: nextLinkedId,
+          label: nextLabel,
+          shortLabel: nextShortLabel,
+          description: nextDescription,
           status,
         }
       }
 
       const sprinklerIndex = Number(asset.id.replace('sprinkler_', ''))
       const status: SemanticAssetStatus = actionRecord?.statusEffect === 'handled' ? 'handled' : 'normal'
+      const nextLabel = `${sprinklerIndex + 1}번 급수 헤드`
+      const nextShortLabel = `S${sprinklerIndex + 1}`
+      const nextDescription = actionRecord
+        ? actionRecord.detail
+        : '고장 없이 정상 작동하는 급수 포인트입니다.'
+
+      if (
+        nextLabel === asset.label
+        && nextShortLabel === asset.shortLabel
+        && nextDescription === asset.description
+        && status === asset.status
+      ) {
+        return asset
+      }
 
       return {
         ...asset,
-        label: `${sprinklerIndex + 1}번 급수 헤드`,
-        shortLabel: `S${sprinklerIndex + 1}`,
-        description: actionRecord
-          ? actionRecord.detail
-          : '고장 없이 정상 작동하는 급수 포인트입니다.',
+        label: nextLabel,
+        shortLabel: nextShortLabel,
+        description: nextDescription,
         status,
       }
     }),
@@ -1299,15 +1341,16 @@ export function FarmCommandPage() {
     harvest.currentPhase,
     harvest.detailMessage,
     harvest.lastHarvestedFruitId,
-    liveScene,
+    stableLiveScene,
     plantLookup,
     runtimeActiveHarvestPlantId,
     runtimeHandledFruitIds,
   ])
+  const stableMapScene = useStableSemanticScene(mapScene)
 
   const selectedAsset = useMemo(
-    () => mapScene.assets.find((asset) => asset.id === selectedAssetId) ?? null,
-    [mapScene.assets, selectedAssetId],
+    () => stableMapScene.assets.find((asset) => asset.id === selectedAssetId) ?? null,
+    [selectedAssetId, stableMapScene.assets],
   )
   const selectedSummary = summarizeSelectedAsset(selectedAsset)
   const selectedActionRecord = selectedAssetId ? actionRecords[selectedAssetId] ?? null : null
@@ -1318,7 +1361,7 @@ export function FarmCommandPage() {
       selectedAsset?.kind === 'plant'
         ? selectedAsset
         : selectedPlantId
-          ? mapScene.assets.find((item) => item.id === selectedPlantId && item.kind === 'plant') ?? null
+          ? stableMapScene.assets.find((item) => item.id === selectedPlantId && item.kind === 'plant') ?? null
           : null
 
     if (!asset || asset.kind !== 'plant') {
@@ -1375,7 +1418,7 @@ export function FarmCommandPage() {
       latestDisplayLabel: '',
       latestImageUrl: '',
     }
-  }, [harvestPlant, mapScene.assets, plantLookup, selectedAsset, selectedPlantId])
+  }, [harvestPlant, plantLookup, selectedAsset, selectedPlantId, stableMapScene.assets])
   const selectedPlantObservationQuery = useQuery({
     queryKey: ['plants', 'observations', selectedPlantDetail?.id ?? selectedPlantId],
     queryFn: async () => getPlantObservations(selectedPlantDetail?.id ?? selectedPlantId ?? ''),
@@ -1386,7 +1429,7 @@ export function FarmCommandPage() {
   const selectedPlantObservation = selectedPlantObservationFeed.items[0] ?? null
 
   useEffect(() => {
-    if (selectedAssetId && mapScene.assets.some((asset) => asset.id === selectedAssetId)) {
+    if (selectedAssetId && stableMapScene.assets.some((asset) => asset.id === selectedAssetId)) {
       return
     }
 
@@ -1403,7 +1446,7 @@ export function FarmCommandPage() {
     if (attentionPlant) {
       setSelectedAssetId(attentionPlant.id)
     }
-  }, [activeHarvestPlant, attentionPlant, mapScene.assets, selectedAssetId, targetAssetId])
+  }, [activeHarvestPlant, attentionPlant, selectedAssetId, stableMapScene.assets, targetAssetId])
 
   useEffect(() => {
     if (selectedAsset?.kind === 'plant') {
@@ -1607,30 +1650,31 @@ export function FarmCommandPage() {
     || selectedPlantDetail?.latestImageUrl
     || ''
   const currentActivity = currentMissionActivity ?? activityState ?? robot.missionState
-  const selectedPlantTargetPose = useMemo(() => {
+  const selectedPlantNavigationPlan = useMemo(() => {
     if (!selectedPlantDetail) {
       return null
     }
 
-    return buildPlantInspectionTargetPose(
+    return buildPlantInspectionNavigationPlan(
       selectedPlantDetail.id,
-      liveScene,
-      mapScene,
+      stableLiveScene,
+      stableMapScene,
       selectedPlantDetail.positionLabel,
-      robotPose
+      stableRobotPose
         ? {
-            x: robotPose.x,
-            y: robotPose.y,
+            x: stableRobotPose.x,
+            y: stableRobotPose.y,
           }
         : null,
     )
-  }, [liveScene, mapScene, robotPose, selectedPlantDetail])
+  }, [selectedPlantDetail, stableLiveScene, stableMapScene, stableRobotPose])
+  const selectedPlantTargetPose = selectedPlantNavigationPlan?.inspectionPose ?? null
   const diagnoseCommandActive =
     latestCommandStatus.status === 'pending' || latestCommandStatus.status === 'running'
   const mapPreviewPath = useMemo(() => {
     if (activeDiagnoseCommand !== null) {
       return buildNavigationPreviewPath(
-        robotPose,
+        stableRobotPose,
         activeDiagnoseCommand.routeSteps
           .slice(activeDiagnoseCommand.currentStepIndex)
           .map((step) => step.pose),
@@ -1638,11 +1682,50 @@ export function FarmCommandPage() {
     }
 
     if (selectedPlantTargetPose) {
-      return buildNavigationPreviewPath(robotPose, [selectedPlantTargetPose])
+      return buildNavigationPreviewPath(stableRobotPose, [selectedPlantTargetPose])
     }
 
     return []
-  }, [activeDiagnoseCommand, robotPose, selectedPlantTargetPose])
+  }, [activeDiagnoseCommand, selectedPlantTargetPose, stableRobotPose])
+  const stableMapPreviewPath = useStablePreviewPath(mapPreviewPath)
+  const activeDiagnoseAsset = useMemo(
+    () => (
+      activeDiagnoseCommand
+        ? stableMapScene.assets.find((asset) => asset.id === activeDiagnoseCommand.plantId) ?? null
+        : null
+    ),
+    [activeDiagnoseCommand, stableMapScene.assets],
+  )
+  const activeDiagnoseMarkerPose = useMemo(() => {
+    if (!diagnoseCommandActive || !latestCommandStatus.targetPose) {
+      return null
+    }
+
+    return (
+      resolveObservationCandidateDisplayPose(activeDiagnoseAsset, latestCommandStatus.targetPose)
+      ?? activeDiagnoseCommand?.currentTargetDisplayPose
+      ?? selectedPlantNavigationPlan?.inspectionDisplayPose
+      ?? latestCommandStatus.targetPose
+    )
+  }, [
+    activeDiagnoseAsset,
+    activeDiagnoseCommand,
+    diagnoseCommandActive,
+    latestCommandStatus.targetPose,
+    selectedPlantNavigationPlan,
+  ])
+  const stableActiveCommandTarget = useStableRobotPose(
+    diagnoseCommandActive ? latestCommandStatus.targetPose : null,
+  )
+  const stableActiveDiagnoseMarkerPose = useStableRobotPose(activeDiagnoseMarkerPose)
+  const stablePendingDiagnosePose = useStableRobotPose(
+    activeDiagnoseCommand?.currentTargetPose ?? selectedPlantTargetPose,
+  )
+  const stablePendingDiagnoseMarkerPose = useStableRobotPose(
+    activeDiagnoseCommand?.currentTargetDisplayPose
+    ?? selectedPlantNavigationPlan?.inspectionDisplayPose
+    ?? selectedPlantTargetPose,
+  )
   const diagnoseUiState = buildDiagnoseUiState(
     latestCommandStatus,
     activeDiagnoseCommand,
@@ -1692,23 +1775,18 @@ export function FarmCommandPage() {
         ]
       : []
 
-  const dispatchDiagnoseStart = (input: QueuedDiagnoseStart) => {
-    const inspectWaypointId =
-      liveScene.assets.find((asset) => asset.id === input.plantId)?.inspectWaypointId
-      ?? mapScene.assets.find((asset) => asset.id === input.plantId)?.inspectWaypointId
-      ?? null
-    const fallbackPositionLabel = plantLookup.get(input.plantId)?.positionLabel ?? ''
+  const dispatchDiagnoseStart = useCallback((input: QueuedDiagnoseStart) => {
     const diagnoseRoute = buildDiagnoseRoutePlan(
       input.plantId,
-      input.targetPose,
-      robotPose
+      input.plan.inspectionPose,
+      stableRobotPose
         ? {
-            x: robotPose.x,
-            y: robotPose.y,
+            x: stableRobotPose.x,
+            y: stableRobotPose.y,
           }
         : null,
-      liveScene,
-      fallbackPositionLabel,
+      stableLiveScene,
+      plantLookup.get(input.plantId)?.positionLabel ?? '',
     )
     const firstStep = diagnoseRoute.steps[0]
 
@@ -1725,14 +1803,17 @@ export function FarmCommandPage() {
       plantId: input.plantId,
       fruitId: input.fruitId,
       plantName: input.plantName,
-      inspectWaypointId,
+      inspectWaypointId: diagnoseRoute.inspectWaypointId,
+      inspectWaypointIds: diagnoseRoute.inspectWaypointIds,
       targetPose: diagnoseRoute.inspectionPose,
+      targetDisplayPose: diagnoseRoute.inspectionDisplayPose,
       routeSteps: diagnoseRoute.steps,
       currentStepIndex: 0,
       currentTargetPose: firstStep.pose,
+      currentTargetDisplayPose: firstStep.displayPose,
       phase: firstStep.phase,
     })
-  }
+  }, [diagnoseMutation, plantLookup, stableLiveScene, stableRobotPose])
 
   const handleGuideMove = useCallback((guideId: string) => {
     setUiMessage(null)
@@ -1851,20 +1932,20 @@ export function FarmCommandPage() {
       return
     }
 
-    const targetPose = buildPlantInspectionTargetPose(
+    const inspectionPlan = buildPlantInspectionNavigationPlan(
       targetPlant.id,
-      liveScene,
-      mapScene,
+      stableLiveScene,
+      stableMapScene,
       targetPlant.positionLabel,
-      robotPose
+      stableRobotPose
         ? {
-            x: robotPose.x,
-            y: robotPose.y,
+            x: stableRobotPose.x,
+            y: stableRobotPose.y,
           }
         : null,
     )
 
-    if (targetPose === null) {
+    if (inspectionPlan === null) {
       setUiMessage(`${targetPlant.name} 진단 관측 경로를 계산하지 못해 이동을 시작할 수 없습니다.`)
       return
     }
@@ -1873,7 +1954,7 @@ export function FarmCommandPage() {
       plantId: targetPlant.id,
       fruitId: targetPlant.targetId,
       plantName: targetPlant.name,
-      targetPose,
+      plan: inspectionPlan,
     } satisfies QueuedDiagnoseStart
 
     if (canRestartDiagnosisWhilePaused(latestCommandStatus)) {
@@ -1979,10 +2060,13 @@ export function FarmCommandPage() {
           fruitId: activeDiagnoseCommand.fruitId,
           plantName: activeDiagnoseCommand.plantName,
           inspectWaypointId: activeDiagnoseCommand.inspectWaypointId,
+          inspectWaypointIds: activeDiagnoseCommand.inspectWaypointIds,
           targetPose: activeDiagnoseCommand.targetPose,
+          targetDisplayPose: activeDiagnoseCommand.targetDisplayPose,
           routeSteps: activeDiagnoseCommand.routeSteps,
           currentStepIndex: activeDiagnoseCommand.currentStepIndex + 1,
           currentTargetPose: nextStep.pose,
+          currentTargetDisplayPose: nextStep.displayPose,
           phase: nextStep.phase,
         })
         return
@@ -2048,8 +2132,8 @@ export function FarmCommandPage() {
     }
   }, [
     activeDiagnoseCommand,
+    diagnoseMutation,
     demoDiagnosisMutation,
-    dispatchDiagnoseStart,
     latestCommandStatus,
     observedDiagnoseState,
     triggeredDemoDiagnosisCommandIds,
@@ -2142,7 +2226,7 @@ export function FarmCommandPage() {
   const harvestPatrolButtonDisabled =
     harvestPatrolActive ? stopPatrolMutation.isPending : patrolActionDisabled
 
-  const handledSummaryItems = mapScene.assets
+  const handledSummaryItems = stableMapScene.assets
     .filter((asset) => asset.kind === 'plant' && asset.status === 'handled')
     .map((asset) => {
       const plant = plantLookup.get(asset.id)
@@ -2166,7 +2250,7 @@ export function FarmCommandPage() {
       treatmentName: treatmentNameLabel(plant?.recommendedAction ?? ''),
     }))
   const handledPlantIds = new Set(handledSummaryItems.map((item) => item.key.replace('handled:', '')))
-  const attentionSummaryItems = mapScene.assets
+  const attentionSummaryItems = stableMapScene.assets
     .filter((asset) => asset.kind === 'plant' && asset.status === 'attention' && !handledPlantIds.has(asset.id))
     .map((asset) => plantLookup.get(asset.id) ?? null)
     .filter((plant): plant is NonNullable<typeof plant> => plant !== null)
@@ -2176,7 +2260,7 @@ export function FarmCommandPage() {
       plantNumber: plantNumberLabel(plant.name, plant.id),
       diseaseName: diseaseNameLabel(plant.latestDisplayLabel, plant.latestLabel),
     }))
-  const targetPlantCount = mapScene.assets.filter((asset) => asset.kind === 'plant' && asset.status === 'target').length
+  const targetPlantCount = stableMapScene.assets.filter((asset) => asset.kind === 'plant' && asset.status === 'target').length
   const summaryAlertItems = [
     {
       key: 'target-summary',
@@ -2225,15 +2309,17 @@ export function FarmCommandPage() {
 
         <div className="map-board farm-map-board">
           <RobotFacilityMap
-            activeCommandTarget={diagnoseCommandActive ? latestCommandStatus.targetPose : null}
+            activeCommandTarget={stableActiveCommandTarget}
             activeCommandTargetLabel="실행 중 목표"
+            activeCommandTargetMarker={stableActiveDiagnoseMarkerPose}
             onSelectAsset={handleSelectAsset}
             onSelectGuide={handleGuideMove}
-            pendingTarget={activeDiagnoseCommand?.currentTargetPose ?? selectedPlantTargetPose}
+            pendingTarget={stablePendingDiagnosePose}
             pendingTargetLabel="선택한 관측 후보"
-            pose={robotPose}
-            previewPath={mapPreviewPath}
-            scene={mapScene}
+            pendingTargetMarker={stablePendingDiagnoseMarkerPose}
+            pose={stableRobotPose}
+            previewPath={stableMapPreviewPath}
+            scene={stableMapScene}
             selectedAssetId={selectedAssetId}
             targetAssetId={targetAssetId}
             zoom={1}

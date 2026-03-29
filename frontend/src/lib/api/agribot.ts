@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api/client'
 import {
   farmSemanticScene,
   type SemanticAsset,
+  type SemanticObservationCandidate,
   type SemanticGuideLine,
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
@@ -15,6 +16,12 @@ export type HealthTone = 'healthy' | 'warning' | 'critical'
 export type QuerySourceMap = Partial<Record<string, DataSource>>
 
 type UnknownRecord = Record<string, unknown>
+
+type CachedGetEntry = {
+  expiresAt: number
+  pending: Promise<unknown> | null
+  value: unknown
+}
 
 type PageDebugMeta = {
   querySources: QuerySourceMap
@@ -853,6 +860,36 @@ function readSemanticAsset(payload: unknown): SemanticAsset | null {
   }
 
   const status = readString(payload.status)
+  const fallbackPose = {
+    x: readNumber(position.x),
+    y: readNumber(position.y),
+    z: 0,
+    yaw: 0,
+    frameId: 'map',
+  }
+  const observationCandidates = Array.isArray(payload.observation_candidates)
+    ? payload.observation_candidates
+      .map((candidatePayload): SemanticObservationCandidate | null => {
+        if (!isRecord(candidatePayload)) {
+          return null
+        }
+
+        const navigationPose = readRobotTargetPose(
+          candidatePayload.navigation_pose,
+          fallbackPose,
+        )
+
+        return {
+          inspectWaypointId: readString(candidatePayload.inspect_waypoint_id),
+          inspectWaypointName: readString(candidatePayload.inspect_waypoint_name),
+          navigationPose,
+          approachPose: candidatePayload.approach_pose
+            ? readRobotTargetPose(candidatePayload.approach_pose, navigationPose)
+            : undefined,
+        }
+      })
+      .filter((candidate): candidate is SemanticObservationCandidate => candidate !== null)
+    : []
 
   return {
     id: readString(payload.id) || `${kind}-${readNumber(position.x)}-${readNumber(position.y)}`,
@@ -867,25 +904,14 @@ function readSemanticAsset(payload: unknown): SemanticAsset | null {
       y: readNumber(position.y),
     },
     navigationPose: payload.navigation_pose
-      ? readRobotTargetPose(payload.navigation_pose, {
-          x: readNumber(position.x),
-          y: readNumber(position.y),
-          z: 0,
-          yaw: 0,
-          frameId: 'map',
-        })
+      ? readRobotTargetPose(payload.navigation_pose, fallbackPose)
       : undefined,
     approachPose: payload.approach_pose
-      ? readRobotTargetPose(payload.approach_pose, {
-          x: readNumber(position.x),
-          y: readNumber(position.y),
-          z: 0,
-          yaw: 0,
-          frameId: 'map',
-        })
+      ? readRobotTargetPose(payload.approach_pose, fallbackPose)
       : undefined,
     inspectWaypointId: readString(payload.inspect_waypoint_id),
     inspectWaypointName: readString(payload.inspect_waypoint_name),
+    observationCandidates: observationCandidates.length > 0 ? observationCandidates : undefined,
     status:
       status === 'attention' || status === 'target' || status === 'handled'
         ? status
@@ -1106,6 +1132,41 @@ async function safeGet(path: string) {
   } catch {
     return null
   }
+}
+
+const requestCache = new Map<string, CachedGetEntry>()
+const ROBOT_RUNTIME_CACHE_TTL_MS = 300
+const ROBOT_STATIC_CACHE_TTL_MS = 15_000
+
+async function safeGetCached(path: string, ttlMs: number) {
+  const now = Date.now()
+  const cachedEntry = requestCache.get(path)
+
+  if (cachedEntry && cachedEntry.expiresAt > now) {
+    return cachedEntry.value
+  }
+
+  if (cachedEntry?.pending) {
+    return cachedEntry.pending
+  }
+
+  const pending = safeGet(path).then((payload) => {
+    const expiresAt = payload === null ? Date.now() + Math.min(ttlMs, 1_000) : Date.now() + ttlMs
+    requestCache.set(path, {
+      expiresAt,
+      pending: null,
+      value: payload,
+    })
+    return payload
+  })
+
+  requestCache.set(path, {
+    expiresAt: now + ttlMs,
+    pending,
+    value: cachedEntry?.value ?? null,
+  })
+
+  return pending
 }
 
 async function postWithFallback(
@@ -1910,12 +1971,12 @@ export async function getDashboardPageData(): Promise<DashboardPageData> {
 export async function getRobotPageData(): Promise<RobotPageData> {
   const [statusPayload, posePayload, zonesPayload, mapPayload, layersPayload, commandStatusPayload] =
     await Promise.all([
-      safeGet('/robot/status'),
-      safeGet('/robot/pose'),
-      safeGet('/zones'),
-      safeGet('/robot/map'),
-      safeGet('/robot/map/layers'),
-      safeGet('/robot/commands/latest'),
+      safeGetCached('/robot/status', ROBOT_RUNTIME_CACHE_TTL_MS),
+      safeGetCached('/robot/pose', ROBOT_RUNTIME_CACHE_TTL_MS),
+      safeGetCached('/zones', ROBOT_STATIC_CACHE_TTL_MS),
+      safeGetCached('/robot/map', ROBOT_STATIC_CACHE_TTL_MS),
+      safeGetCached('/robot/map/layers', ROBOT_STATIC_CACHE_TTL_MS),
+      safeGetCached('/robot/commands/latest', ROBOT_RUNTIME_CACHE_TTL_MS),
     ])
 
   const querySources: QuerySourceMap = {
@@ -2836,7 +2897,7 @@ export async function stopPatrolMission() {
 }
 
 export async function getLatestRobotCommandStatus(): Promise<RobotCommandStatus> {
-  const payload = await safeGet('/robot/commands/latest')
+  const payload = await safeGetCached('/robot/commands/latest', ROBOT_RUNTIME_CACHE_TTL_MS)
   return readRobotCommandStatus(payload) ?? robotFallback.latestCommandStatus
 }
 
@@ -2866,6 +2927,8 @@ export async function sendRobotNavigateCommand(
   targetPose: RobotTargetPose,
   options?: {
     inspectWaypointId?: string | null
+    inspectWaypointIds?: string[] | null
+    plantId?: string | null
   },
 ) {
   try {
@@ -2880,11 +2943,16 @@ export async function sendRobotNavigateCommand(
         yaw: targetPose.yaw,
         frame_id: targetPose.frameId,
       },
-      payload: options?.inspectWaypointId
-        ? {
-            inspect_waypoint_id: options.inspectWaypointId,
-          }
-        : undefined,
+      payload:
+        options?.inspectWaypointId || options?.inspectWaypointIds?.length || options?.plantId
+          ? {
+              ...(options.inspectWaypointId ? { inspect_waypoint_id: options.inspectWaypointId } : {}),
+              ...(options.inspectWaypointIds?.length
+                ? { inspect_waypoint_ids: options.inspectWaypointIds }
+                : {}),
+              ...(options.plantId ? { plant_id: options.plantId } : {}),
+            }
+          : undefined,
     })
     markRouteVerified('POST', '/robot/commands')
     return parseCommandDispatch(response.data, '클릭한 좌표로 이동 요청을 보냈습니다.')

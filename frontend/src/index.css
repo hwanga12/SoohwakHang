@@ -1637,6 +1637,38 @@ button {
   filter: drop-shadow(0 0 6px rgba(46, 164, 164, 0.26));
 }
 
+.robot-facility-map.is-resizing {
+  transition: none;
+}
+
+.robot-facility-map.is-resizing .robot-facility-map__asset,
+.robot-facility-map.is-resizing .robot-facility-map__target-label,
+.robot-facility-map.is-resizing .robot-facility-map__target-dot,
+.robot-facility-map.is-resizing .robot-facility-map__robot-core {
+  box-shadow: none;
+  transition: none;
+}
+
+.robot-facility-map.is-resizing .robot-facility-map__legend,
+.robot-facility-map.is-resizing .robot-facility-map__toggles,
+.robot-facility-map.is-resizing .robot-facility-map__hint,
+.robot-facility-map.is-resizing .robot-facility-map__status {
+  backdrop-filter: none;
+}
+
+.robot-facility-map.is-resizing .robot-facility-map__path-line {
+  filter: none;
+}
+
+.robot-facility-map.is-resizing .robot-facility-map__robot,
+.robot-facility-map.is-resizing .robot-facility-map__robot-core {
+  transition: none;
+}
+
+.robot-facility-map.is-resizing .robot-facility-map__robot-ping {
+  animation: none;
+}
+
 .map-overlay {
   position: absolute;
   inset: 0;

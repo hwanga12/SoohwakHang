@@ -10,7 +10,6 @@ import {
   summarizeSelectedAsset,
 } from '@/components/robot-facility-map'
 import {
-  getLatestRobotCommandStatus,
   getRobotPageData,
   robotFallback,
   sendRobotControlAction,
@@ -27,10 +26,17 @@ import {
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
 import {
+  useStablePreviewPath,
+  useStableRobotMap,
+  useStableRobotPose,
+  useStableSemanticScene,
+} from '@/lib/robot-map/render-stability'
+import {
   buildPlantInspectionNavigationPlan,
   type PlantNavigationPlan,
   type PlantNavigationStep,
 } from '@/lib/robot-map/plant-navigation-plan'
+import { resolveObservationCandidateDisplayPose } from '@/lib/robot-map/approach-pose'
 import { buildNavigationPreviewPath } from '@/lib/robot-map/navigation-preview'
 
 type ControlActionId = 'pause' | 'resume' | 'home' | 'emergency';
@@ -52,8 +58,10 @@ type PendingTargetData =
       assetId: string
       assetLabel: string
       inspectWaypointId: string | null
+      inspectWaypointIds: string[]
       inspectWaypointName: string | null
       pose: RobotTargetPose
+      displayPose: RobotTargetPose
       plan: PlantNavigationPlan
     }
   | { type: 'preset'; preset: RobotZonePreset; pose: RobotTargetPose }
@@ -65,7 +73,9 @@ type ActiveNavigationPlan = {
   assetId: string
   assetLabel: string
   inspectWaypointId: string | null
+  inspectWaypointIds: string[]
   finalPose: RobotTargetPose
+  finalDisplayPose: RobotTargetPose
   steps: PlantNavigationStep[]
   currentStepIndex: number
 }
@@ -171,9 +181,11 @@ function buildPlantNavigationPendingTarget(
     type: 'asset',
     assetId: asset.id,
     assetLabel: asset.label,
-    inspectWaypointId: asset.inspectWaypointId ?? null,
-    inspectWaypointName: asset.inspectWaypointName ?? null,
+    inspectWaypointId: plan.inspectWaypointId,
+    inspectWaypointIds: plan.inspectWaypointIds,
+    inspectWaypointName: plan.inspectWaypointName,
     pose: plan.inspectionPose,
+    displayPose: plan.inspectionDisplayPose,
     plan,
   }
 }
@@ -714,12 +726,7 @@ export function MapControlPage() {
     queryFn: getRobotPageData,
     initialData: robotFallback,
     refetchInterval: 1_000,
-  })
-  const latestCommandStatusQuery = useQuery({
-    queryKey: ['robot', 'command-status'],
-    queryFn: getLatestRobotCommandStatus,
-    initialData: robotFallback.latestCommandStatus,
-    refetchInterval: 2_000,
+    refetchOnWindowFocus: false,
   })
   const controlMutation = useMutation({
     mutationFn: sendRobotControlAction,
@@ -733,10 +740,7 @@ export function MapControlPage() {
           requestedAt: Date.now(),
         })
       }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
-        queryClient.invalidateQueries({ queryKey: ['robot', 'command-status'] }),
-      ])
+      await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
     },
     onError: () => {
       setPendingControlRequest(null)
@@ -768,10 +772,7 @@ export function MapControlPage() {
           ? `${buildTransitionNotice(nextTransitionFeedback)} 상태 카드에서 새 목표 전환 진행 상황을 확인하세요.`
           : `${preset.name} 이동 요청을 보냈습니다. 상태 카드에서 진행 상황을 확인하세요.`,
       )
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
-        queryClient.invalidateQueries({ queryKey: ['robot', 'command-status'] }),
-      ])
+      await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
     },
     onError: (error: Error) => {
       setActiveNavigationPlan(null)
@@ -781,7 +782,11 @@ export function MapControlPage() {
   const navigateMutation = useMutation({
     mutationFn: ({ currentTargetPose, assetPlan }: NavigateDispatchInput) => sendRobotNavigateCommand(
       currentTargetPose,
-      { inspectWaypointId: assetPlan?.inspectWaypointId ?? null },
+      {
+        inspectWaypointId: assetPlan?.inspectWaypointId ?? null,
+        inspectWaypointIds: assetPlan?.inspectWaypointIds ?? [],
+        plantId: assetPlan?.assetId ?? null,
+      },
     ),
     onSuccess: async (response, variables) => {
       const dispatchedTarget = response.targetPose ?? variables.currentTargetPose
@@ -819,10 +824,7 @@ export function MapControlPage() {
             ? `${variables.assetPlan.assetLabel} 안전 관측 경로 이동을 시작했습니다.`
             : '클릭한 좌표로 이동 요청을 보냈습니다. 상태 카드가 pending/running으로 바뀌는지 확인하세요.',
       )
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['page', 'robot'] }),
-        queryClient.invalidateQueries({ queryKey: ['robot', 'command-status'] }),
-      ])
+      await queryClient.invalidateQueries({ queryKey: ['page', 'robot'] })
     },
     onError: (error: Error) => {
       setNotice(error.message)
@@ -830,23 +832,26 @@ export function MapControlPage() {
   })
 
   const page = robotQuery.data
-  const latestCommandStatus = latestCommandStatusQuery.data ?? page.latestCommandStatus
+  const stableScene = useStableSemanticScene(page.scene)
+  const stableMap = useStableRobotMap(page.map)
+  const stableRobotPose = useStableRobotPose(page.robotPose)
+  const latestCommandStatus = page.latestCommandStatus
   const querySource = (path: string) =>
     page.debug.querySources[path]
     ?? (path === '/robot/commands/latest' ? latestCommandStatus.source : 'fallback')
   const targetAssetId = resolveSemanticTargetId(page.targetLabel)
   const selectedAsset = useMemo(
-    () => page.scene.assets.find((asset) => asset.id === selectedAssetId) ?? null,
-    [page.scene.assets, selectedAssetId],
+    () => stableScene.assets.find((asset) => asset.id === selectedAssetId) ?? null,
+    [selectedAssetId, stableScene.assets],
   )
   const selectedSummary = summarizeSelectedAsset(selectedAsset)
   const selectedAssetPendingTarget = useMemo(
     () => buildPlantNavigationPendingTarget(
       selectedAsset ?? null,
-      page.scene,
-      { x: page.robotPose.x, y: page.robotPose.y },
+      stableScene,
+      { x: stableRobotPose.x, y: stableRobotPose.y },
     ),
-    [page.robotPose.x, page.robotPose.y, page.scene, selectedAsset],
+    [selectedAsset, stableRobotPose.x, stableRobotPose.y, stableScene],
   )
   const controlRequestObserved = hasObservedPendingControlRequest(latestCommandStatus, pendingControlRequest)
   const pendingControlAgeMs =
@@ -881,15 +886,15 @@ export function MapControlPage() {
   }, [movementCommandBlockMessage, movementCommandBlocked])
   const handleAssetSelect = useCallback((assetId: string) => {
     setSelectedAssetId(assetId)
-    const asset = page.scene.assets.find((item) => item.id === assetId) ?? null
+    const asset = stableScene.assets.find((item) => item.id === assetId) ?? null
     if (!asset) {
       return
     }
 
     const nextPendingTarget = buildPlantNavigationPendingTarget(
       asset,
-      page.scene,
-      { x: page.robotPose.x, y: page.robotPose.y },
+      stableScene,
+      { x: stableRobotPose.x, y: stableRobotPose.y },
     )
     if (nextPendingTarget === null) {
       setNotice(`${asset.label}을 선택했습니다.`)
@@ -904,7 +909,7 @@ export function MapControlPage() {
     setNotice(
       `${asset.label} 선택. 최종 관측 위치 ${formatPose(nextPendingTarget.pose)} 기준으로 안전 경로를 준비했습니다.`,
     )
-  }, [movementCommandBlockMessage, movementCommandBlocked, page.robotPose.x, page.robotPose.y, page.scene])
+  }, [movementCommandBlockMessage, movementCommandBlocked, stableRobotPose.x, stableRobotPose.y, stableScene])
   const missionStateBadgeLabel =
     controlSummary.currentState === 'emergency_stopped'
       ? '비상 정지'
@@ -929,21 +934,46 @@ export function MapControlPage() {
   const isTrackedCommandActive =
     trackedCommand
     && (latestCommandStatus.status === 'pending' || latestCommandStatus.status === 'running')
+  const activeNavigationAsset = useMemo(
+    () => (
+      activeNavigationPlan
+        ? stableScene.assets.find((asset) => asset.id === activeNavigationPlan.assetId) ?? null
+        : null
+    ),
+    [activeNavigationPlan, stableScene.assets],
+  )
+  const activeCommandMarkerPose = useMemo(() => {
+    if (!isTrackedCommandActive || !activeCommandTarget) {
+      return null
+    }
+
+    return (
+      resolveObservationCandidateDisplayPose(activeNavigationAsset, activeCommandTarget)
+      ?? activeNavigationPlan?.steps[activeNavigationPlan.currentStepIndex]?.displayPose
+      ?? activeNavigationPlan?.finalDisplayPose
+      ?? activeCommandTarget
+    )
+  }, [
+    activeCommandTarget,
+    activeNavigationAsset,
+    activeNavigationPlan,
+    isTrackedCommandActive,
+  ])
   const mapPreviewPath = useMemo(() => {
     if (pendingTarget) {
       if (pendingTarget.type === 'asset') {
         return buildNavigationPreviewPath(
-          page.robotPose,
+          stableRobotPose,
           pendingTarget.plan.steps.map((step) => step.pose),
         )
       }
 
-      return buildNavigationPreviewPath(page.robotPose, [pendingTarget.pose])
+      return buildNavigationPreviewPath(stableRobotPose, [pendingTarget.pose])
     }
 
     if (isTrackedCommandActive && activeNavigationPlan) {
       return buildNavigationPreviewPath(
-        page.robotPose,
+        stableRobotPose,
         activeNavigationPlan.steps
           .slice(activeNavigationPlan.currentStepIndex)
           .map((step) => step.pose),
@@ -951,7 +981,7 @@ export function MapControlPage() {
     }
 
     if (isTrackedCommandActive && activeCommandTarget) {
-      return buildNavigationPreviewPath(page.robotPose, [activeCommandTarget])
+      return buildNavigationPreviewPath(stableRobotPose, [activeCommandTarget])
     }
 
     return []
@@ -959,11 +989,26 @@ export function MapControlPage() {
     activeCommandTarget,
     activeNavigationPlan,
     isTrackedCommandActive,
-    page.robotPose,
     pendingTarget,
+    stableRobotPose,
   ])
+  const stableMapPreviewPath = useStablePreviewPath(mapPreviewPath)
+  const stablePendingTargetPose = useStableRobotPose(pendingTarget?.pose ?? null)
+  const stablePendingTargetMarker = useStableRobotPose(
+    pendingTarget?.type === 'asset' ? pendingTarget.displayPose : pendingTarget?.pose ?? null,
+  )
+  const stableActiveCommandTarget = useStableRobotPose(isTrackedCommandActive ? activeCommandTarget : null)
+  const stableActiveCommandMarkerPose = useStableRobotPose(activeCommandMarkerPose)
+  const plantAssetCount = useMemo(
+    () => stableScene.assets.filter((asset) => asset.kind === 'plant').length,
+    [stableScene.assets],
+  )
+  const sprinklerAssetCount = useMemo(
+    () => stableScene.assets.filter((asset) => asset.kind === 'sprinkler').length,
+    [stableScene.assets],
+  )
 
-  const controlActionDisabledReason = (actionId: ControlActionId) => {
+  const controlActionDisabledReason = useCallback((actionId: ControlActionId) => {
     if (actionId === 'emergency') {
       if (controlActionPending) {
         return '제어 명령을 전송 중입니다.'
@@ -1019,7 +1064,18 @@ export function MapControlPage() {
       return movementCommandBlockMessage
     }
     return null
-  }
+  }, [
+    controlActionPending,
+    controlRequestObserved,
+    controlSummary.currentState,
+    latestCommandStatus.controlState?.activeActivity,
+    latestCommandStatus.controlState?.mode,
+    latestCommandStatus.controlState?.resumeAvailable,
+    movementActionPending,
+    movementCommandBlockMessage,
+    movementCommandBlocked,
+    pendingControlRequest?.action,
+  ])
 
   const primaryAction = useMemo(() => {
     const canPause = controlActionDisabledReason('pause') === null
@@ -1040,10 +1096,18 @@ export function MapControlPage() {
       return
     }
 
-    if (!selectedAssetId && page.scene.assets[0]) {
-      setSelectedAssetId(page.scene.assets[0].id)
+    if (!selectedAssetId && stableScene.assets[0]) {
+      setSelectedAssetId(stableScene.assets[0].id)
     }
-  }, [page.scene.assets, selectedAssetId, targetAssetId])
+  }, [selectedAssetId, stableScene.assets, targetAssetId])
+
+  useEffect(() => {
+    if (!isTrackedCommandActive || !latestCommandStatus.targetPose) {
+      return
+    }
+
+    setActiveCommandTarget(latestCommandStatus.targetPose)
+  }, [isTrackedCommandActive, latestCommandStatus.targetPose])
 
   useEffect(() => {
     if (!trackedCommand || activeNavigationPlan !== null) {
@@ -1207,17 +1271,19 @@ export function MapControlPage() {
           </div>
 
           <RobotFacilityMap
-            activeCommandTarget={isTrackedCommandActive ? activeCommandTarget : null}
+            activeCommandTarget={stableActiveCommandTarget}
             activeCommandTargetLabel="실행 중 목표"
-            map={page.map}
+            activeCommandTargetMarker={stableActiveCommandMarkerPose}
+            map={stableMap}
             onMapClickFeedback={setNotice}
             onSelectAsset={handleAssetSelect}
             onSelectMapTarget={handleMapTargetSelect}
-            pendingTarget={pendingTarget?.pose ?? null}
+            pendingTarget={stablePendingTargetPose}
             pendingTargetLabel={pendingTargetLabel(pendingTarget)}
-            pose={page.robotPose}
-            previewPath={mapPreviewPath}
-            scene={page.scene}
+            pendingTargetMarker={stablePendingTargetMarker}
+            pose={stableRobotPose}
+            previewPath={stableMapPreviewPath}
+            scene={stableScene}
             selectedAssetId={selectedAssetId}
             targetAssetId={targetAssetId}
             zoom={mapZoom}
@@ -1300,7 +1366,9 @@ export function MapControlPage() {
                           assetId: pendingTarget.assetId,
                           assetLabel: pendingTarget.assetLabel,
                           inspectWaypointId: pendingTarget.inspectWaypointId,
+                          inspectWaypointIds: pendingTarget.inspectWaypointIds,
                           finalPose: pendingTarget.plan.inspectionPose,
+                          finalDisplayPose: pendingTarget.plan.inspectionDisplayPose,
                           steps: pendingTarget.plan.steps,
                           currentStepIndex: 0,
                         },
@@ -1506,13 +1574,13 @@ export function MapControlPage() {
               <article className="detail-card">
                 <span className="detail-label">식물 레이어</span>
                 <strong className="detail-value">
-                  {page.scene.assets.filter((asset) => asset.kind === 'plant').length}주 배치
+                  {plantAssetCount}주 배치
                 </strong>
               </article>
               <article className="detail-card">
                 <span className="detail-label">급수 포인트</span>
                 <strong className="detail-value">
-                  {page.scene.assets.filter((asset) => asset.kind === 'sprinkler').length}개 헤드
+                  {sprinklerAssetCount}개 헤드
                 </strong>
               </article>
               <article className="detail-card">
@@ -1522,7 +1590,7 @@ export function MapControlPage() {
               <article className="detail-card">
                 <span className="detail-label">렌더링 기준</span>
                 <strong className="detail-value">
-                  {page.map.imageUrl ? 'robot/map + robot/map/raw' : 'semantic fallback'}
+                  {stableMap?.imageUrl ? 'robot/map + robot/map/raw' : 'semantic fallback'}
                 </strong>
               </article>
             </div>

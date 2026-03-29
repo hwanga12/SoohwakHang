@@ -14,6 +14,7 @@ import {
   type RobotPoseSnapshot,
   type RobotTargetPose,
 } from '@/lib/api/agribot'
+import { areRobotPosesEqual } from '@/lib/robot-map/render-stability'
 import { parsePgm, type ParsedPgm } from '@/lib/robot-map/pgm'
 import {
   type SemanticAsset,
@@ -28,7 +29,9 @@ type RobotFacilityMapProps = {
   selectedAssetId: string | null
   targetAssetId: string | null
   pendingTarget?: RobotTargetPose | null
+  pendingTargetMarker?: RobotTargetPose | null
   activeCommandTarget?: RobotTargetPose | null
+  activeCommandTargetMarker?: RobotTargetPose | null
   pendingTargetLabel?: string
   activeCommandTargetLabel?: string
   previewPath?: NavigationPreviewPoint[] | null
@@ -313,121 +316,6 @@ function rotationDegreesForPose(pose: RobotTargetPose | RobotPoseSnapshot) {
   return 90 - headingDegreesForPose(pose)
 }
 
-function samePose(
-  left: RobotTargetPose | RobotPoseSnapshot | null | undefined,
-  right: RobotTargetPose | RobotPoseSnapshot | null | undefined,
-) {
-  if (left === right) {
-    return true
-  }
-  if (!left || !right) {
-    return false
-  }
-
-  const samePosition = left.x === right.x && left.y === right.y
-  const leftYaw = 'yaw' in left ? left.yaw : left.yawDeg
-  const rightYaw = 'yaw' in right ? right.yaw : right.yawDeg
-
-  return samePosition && leftYaw === rightYaw
-}
-
-function sameMap(left: RobotMapData | undefined, right: RobotMapData | undefined) {
-  if (left === right) {
-    return true
-  }
-  if (!left || !right) {
-    return false
-  }
-
-  return (
-    left.imageUrl === right.imageUrl
-    && left.width === right.width
-    && left.height === right.height
-    && left.resolution === right.resolution
-    && left.origin.x === right.origin.x
-    && left.origin.y === right.origin.y
-    && left.origin.z === right.origin.z
-    && left.origin.yaw === right.origin.yaw
-    && left.origin.frameId === right.origin.frameId
-  )
-}
-
-function samePreviewPath(
-  left: NavigationPreviewPoint[] | null | undefined,
-  right: NavigationPreviewPoint[] | null | undefined,
-) {
-  if (left === right) {
-    return true
-  }
-  if (!left || !right || left.length !== right.length) {
-    return false
-  }
-
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index].x !== right[index].x || left[index].y !== right[index].y) {
-      return false
-    }
-  }
-
-  return true
-}
-
-function sameScene(left: SemanticScene, right: SemanticScene) {
-  if (left === right) {
-    return true
-  }
-
-  if (
-    left.bounds.minX !== right.bounds.minX
-    || left.bounds.maxX !== right.bounds.maxX
-    || left.bounds.minY !== right.bounds.minY
-    || left.bounds.maxY !== right.bounds.maxY
-    || left.rowGuides.length !== right.rowGuides.length
-    || left.assets.length !== right.assets.length
-  ) {
-    return false
-  }
-
-  for (let index = 0; index < left.rowGuides.length; index += 1) {
-    const prevGuide = left.rowGuides[index]
-    const nextGuide = right.rowGuides[index]
-    if (
-      prevGuide.id !== nextGuide.id
-      || prevGuide.label !== nextGuide.label
-      || prevGuide.value !== nextGuide.value
-    ) {
-      return false
-    }
-  }
-
-  for (let index = 0; index < left.assets.length; index += 1) {
-    const prevAsset = left.assets[index]
-    const nextAsset = right.assets[index]
-    if (
-      prevAsset.id !== nextAsset.id
-      || prevAsset.kind !== nextAsset.kind
-      || prevAsset.label !== nextAsset.label
-      || prevAsset.shortLabel !== nextAsset.shortLabel
-      || prevAsset.description !== nextAsset.description
-      || prevAsset.status !== nextAsset.status
-      || prevAsset.zoneId !== nextAsset.zoneId
-      || prevAsset.linkedId !== nextAsset.linkedId
-      || prevAsset.position.x !== nextAsset.position.x
-      || prevAsset.position.y !== nextAsset.position.y
-      || prevAsset.navigationPose?.x !== nextAsset.navigationPose?.x
-      || prevAsset.navigationPose?.y !== nextAsset.navigationPose?.y
-      || prevAsset.navigationPose?.yaw !== nextAsset.navigationPose?.yaw
-      || prevAsset.approachPose?.x !== nextAsset.approachPose?.x
-      || prevAsset.approachPose?.y !== nextAsset.approachPose?.y
-      || prevAsset.approachPose?.yaw !== nextAsset.approachPose?.yaw
-    ) {
-      return false
-    }
-  }
-
-  return true
-}
-
 function areRobotFacilityMapPropsEqual(
   previous: RobotFacilityMapProps,
   next: RobotFacilityMapProps,
@@ -442,12 +330,14 @@ function areRobotFacilityMapPropsEqual(
     && previous.onMapClickFeedback === next.onMapClickFeedback
     && previous.pendingTargetLabel === next.pendingTargetLabel
     && previous.activeCommandTargetLabel === next.activeCommandTargetLabel
-    && sameMap(previous.map, next.map)
-    && samePose(previous.pose, next.pose)
-    && samePose(previous.pendingTarget, next.pendingTarget)
-    && samePose(previous.activeCommandTarget, next.activeCommandTarget)
-    && samePreviewPath(previous.previewPath, next.previewPath)
-    && sameScene(previous.scene, next.scene)
+    && previous.map === next.map
+    && previous.scene === next.scene
+    && previous.previewPath === next.previewPath
+    && areRobotPosesEqual(previous.pose, next.pose)
+    && areRobotPosesEqual(previous.pendingTarget, next.pendingTarget)
+    && areRobotPosesEqual(previous.pendingTargetMarker, next.pendingTargetMarker)
+    && areRobotPosesEqual(previous.activeCommandTarget, next.activeCommandTarget)
+    && areRobotPosesEqual(previous.activeCommandTargetMarker, next.activeCommandTargetMarker)
   )
 }
 
@@ -458,7 +348,9 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
   selectedAssetId,
   targetAssetId,
   pendingTarget = null,
+  pendingTargetMarker = null,
   activeCommandTarget = null,
+  activeCommandTargetMarker = null,
   pendingTargetLabel = '선택한 후보',
   activeCommandTargetLabel = '실행 중 목표',
   previewPath = null,
@@ -471,6 +363,7 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
   const [showPlants, setShowPlants] = useState(true)
   const [showDevices, setShowDevices] = useState(true)
   const [showLabels, setShowLabels] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
   const [parsedMap, setParsedMap] = useState<ParsedPgm | null>(null)
   const [mapLoadError, setMapLoadError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -484,8 +377,29 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
   const robotCoreStyle: CSSProperties = {
     transform: `translate(-50%, -50%) rotate(${rotationDegreesForPose(pose)}deg)`,
   }
-  const showPendingTarget = pendingTarget !== null && !samePose(pendingTarget, activeCommandTarget)
+  const showPendingTarget = pendingTarget !== null && !areRobotPosesEqual(pendingTarget, activeCommandTarget)
   const visiblePendingTarget = showPendingTarget ? pendingTarget : null
+  const visiblePendingTargetMarker = showPendingTarget ? (pendingTargetMarker ?? pendingTarget) : null
+  const visibleActiveCommandTargetMarker = activeCommandTargetMarker ?? activeCommandTarget
+
+  useEffect(() => {
+    let timeoutId = 0
+
+    const handleResize = () => {
+      setIsResizing(true)
+      window.clearTimeout(timeoutId)
+      timeoutId = window.setTimeout(() => {
+        setIsResizing(false)
+      }, 180)
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.clearTimeout(timeoutId)
+    }
+  }, [])
+
   const rowGuideItems = useMemo(
     () => scene.rowGuides.map((guide) => ({
       guide,
@@ -520,9 +434,12 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
           style: toOverlayPercent(scene, map, asset.position.x, asset.position.y),
           isSelected: selectedAssetId === asset.id,
           isTarget: targetAssetId === asset.id,
-          label: buttonLabelForAsset(asset, showLabels),
+          label:
+            isResizing && selectedAssetId !== asset.id && targetAssetId !== asset.id
+              ? ''
+              : buttonLabelForAsset(asset, showLabels),
         })),
-    [map, scene, selectedAssetId, showDevices, showLabels, showPlants, targetAssetId],
+    [isResizing, map, scene, selectedAssetId, showDevices, showLabels, showPlants, targetAssetId],
   )
   const previewPathPolyline = useMemo(() => {
     if (!previewPath || previewPath.length < 2) {
@@ -667,7 +584,7 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
 
   return (
     <>
-      <div className="robot-facility-map" style={{ transform: `scale(${zoom})` }}>
+      <div className={`robot-facility-map${isResizing ? ' is-resizing' : ''}`} style={{ transform: `scale(${zoom})` }}>
         <div
           className={`robot-facility-map__surface${mapLoadError ? ' is-fallback' : ''}`}
           onClick={handleSurfaceClick}
@@ -726,9 +643,7 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
                     <SprinklerGlyph status={asset.status} />
                   )}
                 </span>
-                <span className="robot-facility-map__asset-label">
-                  {label}
-                </span>
+                {label ? <span className="robot-facility-map__asset-label">{label}</span> : null}
               </button>
             )
           })}
@@ -739,20 +654,33 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
             </svg>
           ) : null}
 
-          {activeCommandTarget ? (
-            <div
-              className="robot-facility-map__target robot-facility-map__target--active"
-              style={toOverlayPercent(scene, map, activeCommandTarget.x, activeCommandTarget.y)}
-            >
-              <span className="robot-facility-map__target-dot" />
-              <span className="robot-facility-map__target-label">{activeCommandTargetLabel}</span>
-            </div>
-          ) : null}
+          {activeCommandTarget ? (() => {
+            const activeMarker = visibleActiveCommandTargetMarker ?? activeCommandTarget
+            return (
+              <div
+                className="robot-facility-map__target robot-facility-map__target--active"
+                style={toOverlayPercent(
+                  scene,
+                  map,
+                  activeMarker.x,
+                  activeMarker.y,
+                )}
+              >
+                <span className="robot-facility-map__target-dot" />
+                <span className="robot-facility-map__target-label">{activeCommandTargetLabel}</span>
+              </div>
+            )
+          })() : null}
 
-          {visiblePendingTarget ? (
+          {visiblePendingTarget && visiblePendingTargetMarker ? (
             <div
               className="robot-facility-map__target robot-facility-map__target--pending"
-              style={toOverlayPercent(scene, map, visiblePendingTarget.x, visiblePendingTarget.y)}
+              style={toOverlayPercent(
+                scene,
+                map,
+                visiblePendingTargetMarker.x,
+                visiblePendingTargetMarker.y,
+              )}
             >
               <span className="robot-facility-map__target-dot" />
               <span className="robot-facility-map__target-label">{pendingTargetLabel}</span>
