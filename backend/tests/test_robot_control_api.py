@@ -289,7 +289,7 @@ def test_read_layers_payload_exposes_safe_approach_pose_for_plants() -> None:
     assert plant_asset["position"]["y"] == pytest.approx(-6.0)
     assert plant_asset["navigation_pose"]["x"] == pytest.approx(-8.0)
     assert plant_asset["navigation_pose"]["y"] == pytest.approx(-6.0)
-    assert plant_asset["approach_pose"]["x"] == pytest.approx(-6.75)
+    assert plant_asset["approach_pose"]["x"] == pytest.approx(-6.3)
     assert plant_asset["approach_pose"]["y"] == pytest.approx(-6.0)
     assert plant_asset["inspect_waypoint_id"] == "farm_01_lane_01_inspect_01"
     assert payload["command_type"] == "pause_motion"
@@ -319,8 +319,37 @@ def test_read_layers_payload_exposes_dual_observation_candidates_for_center_toma
     )
     assert center_candidate["navigation_pose"]["x"] == pytest.approx(0.0)
     assert center_candidate["navigation_pose"]["y"] == pytest.approx(4.0)
-    assert center_candidate["approach_pose"]["x"] == pytest.approx(1.25)
+    assert center_candidate["approach_pose"]["x"] == pytest.approx(1.7)
     assert center_candidate["approach_pose"]["y"] == pytest.approx(4.0)
+
+
+def test_read_layers_payload_spreads_center_lane_display_markers_toward_each_crop() -> None:
+    payload = read_layers_payload()
+
+    plant_14 = next(
+        asset for asset in payload["assets"]
+        if asset["kind"] == "plant" and asset["id"] == "farm01_plant_14"
+    )
+    plant_15 = next(
+        asset for asset in payload["assets"]
+        if asset["kind"] == "plant" and asset["id"] == "farm01_plant_15"
+    )
+
+    plant_14_center_candidate = next(
+        candidate for candidate in plant_14["observation_candidates"]
+        if candidate["inspect_waypoint_id"] == "farm_01_lane_center_inspect_04"
+    )
+    plant_15_center_candidate = next(
+        candidate for candidate in plant_15["observation_candidates"]
+        if candidate["inspect_waypoint_id"] == "farm_01_lane_center_inspect_04"
+    )
+
+    assert plant_14_center_candidate["approach_pose"]["x"] == pytest.approx(-1.7)
+    assert plant_15_center_candidate["approach_pose"]["x"] == pytest.approx(1.7)
+    assert abs(
+        plant_15_center_candidate["approach_pose"]["x"]
+        - plant_14_center_candidate["approach_pose"]["x"]
+    ) == pytest.approx(3.4)
 
 
 def test_publish_navigate_command_keeps_all_observation_candidates_in_bridge_payload() -> None:

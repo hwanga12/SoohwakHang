@@ -29,12 +29,17 @@ harvest_routing:
   approach_margin_from_bed_edge_m: 0.45
   max_lateral_offset_from_inspect_m: 1.25
   align_standoff_from_crop_m: 0.65
+  map_display_standoff_from_crop_m: 0.3
+  map_display_max_lateral_offset_from_inspect_m: 1.7
   return_modes:
     default: resume_patrol
     fallback: home
   notes:
   - Approach poses move from the inspect stop toward the observed tomato with a short
     standoff.
+  - Map display markers may use a tighter crop-side standoff so the frontend world
+    map communicates left/right observation intent more clearly than the safe aisle
+    center navigation pose.
   - Align poses square the robot to the crop row so the fixed harvest arm faces the tomato.
   - If patrol resume is unavailable, fall back to the south-center home pose.
 waypoints:

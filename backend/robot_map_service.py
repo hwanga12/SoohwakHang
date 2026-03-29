@@ -205,6 +205,12 @@ def _build_route_lookup() -> tuple[list[dict[str, Any]], dict[str, float]]:
         "max_lateral_offset_from_inspect_m": float(
             harvest_routing.get("max_lateral_offset_from_inspect_m", 2.50)
         ),
+        "map_display_standoff_from_crop_m": float(
+            harvest_routing.get("map_display_standoff_from_crop_m", 0.30)
+        ),
+        "map_display_max_lateral_offset_from_inspect_m": float(
+            harvest_routing.get("map_display_max_lateral_offset_from_inspect_m", 1.70)
+        ),
     }
     return (routes, routing_config)
 
@@ -330,8 +336,10 @@ def _compute_approach_pose(
     waypoint_lookup: dict[str, dict[str, Any]],
     routing_config: dict[str, float],
 ) -> dict[str, float]:
-    standoff_margin = routing_config["approach_margin_from_bed_edge_m"]
-    approach_limit = routing_config["max_lateral_offset_from_inspect_m"]
+    # Frontend world-map markers should sit closer to the observed crop than the
+    # safe aisle-center navigation target so left/right intent is visually clear.
+    standoff_margin = routing_config["map_display_standoff_from_crop_m"]
+    approach_limit = routing_config["map_display_max_lateral_offset_from_inspect_m"]
     min_route_x, max_route_x, min_route_y, max_route_y = _route_bounds(route, waypoint_lookup)
 
     inspect_pose = inspect_waypoint["pose"]
