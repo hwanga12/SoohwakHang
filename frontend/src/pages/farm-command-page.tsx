@@ -2263,12 +2263,11 @@ export function FarmCommandPage() {
       onSuccess: () => {
         rememberAction(
           selectedAsset.id,
-          '물주기 완료',
-          `${selectedAsset.label} 물주기 요청을 등록했습니다.`,
+          '물주기 요청 등록',
+          `${selectedAsset.label} 물주기 명령을 IoT 제어 파이프라인에 전달했습니다.`,
           'healthy',
-          'handled',
         )
-        setUiMessage(`${selectedAsset.label} 물주기 요청을 등록했습니다.`)
+        setUiMessage(`${selectedAsset.label} 물주기 명령을 전달했습니다.`)
       },
     })
   }
@@ -2287,12 +2286,11 @@ export function FarmCommandPage() {
       onSuccess: () => {
         rememberAction(
           selectedAsset.id,
-          '영양제 주기 완료',
-          `${selectedAsset.label} 영양제 주기 요청을 등록했습니다.`,
+          '영양제 요청 등록',
+          `${selectedAsset.label} 영양제 분사 명령을 IoT 제어 파이프라인에 전달했습니다.`,
           'accent',
-          'handled',
         )
-        setUiMessage(`${selectedAsset.label} 영양제 주기 요청을 등록했습니다.`)
+        setUiMessage(`${selectedAsset.label} 영양제 분사 명령을 전달했습니다.`)
       },
     })
   }

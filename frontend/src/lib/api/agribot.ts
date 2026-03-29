@@ -1220,8 +1220,20 @@ async function postWithFallback(
       const payload = unwrapPayload(response.data)
 
       if (isRecord(payload)) {
+        const commandStatus = readString(payload.command_status).trim().toUpperCase()
+        const result = readString(payload.result).trim().toUpperCase()
+        const status = readString(payload.status).trim().toLowerCase()
+        if (commandStatus === 'FAILED' || result === 'FAILED' || status === 'failed') {
+          throw new Error(
+            readString(payload.result_message)
+            || readString(payload.detail_message)
+            || readString(payload.message)
+            || successFallback,
+          )
+        }
         return (
           readString(payload.message)
+          || readString(payload.result_message)
           || readString(payload.status)
           || readString(payload.command_type)
           || successFallback

@@ -69,7 +69,7 @@ class TreatmentCommandDispatcher:
         )
         self._dispatch_min_subscribers = max(
             1,
-            int(os.environ.get('AGRIBOT_TREATMENT_DISPATCH_MIN_SUBSCRIBERS', '5')),
+            int(os.environ.get('AGRIBOT_TREATMENT_DISPATCH_MIN_SUBSCRIBERS', '1')),
         )
         self._manual_min_subscribers = max(
             1,

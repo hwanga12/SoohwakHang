@@ -98,6 +98,16 @@ def generate_launch_description():
     return LaunchDescription([
         use_sim_time_arg,
         force_log_only_arg,
+        # Keep standalone IoT launches on the same local ROS graph as the backend
+        # even when the user launches this file without sourcing agribot_env.sh.
+        SetEnvironmentVariable(
+            'ROS_DOMAIN_ID',
+            EnvironmentVariable('ROS_DOMAIN_ID', default_value='42'),
+        ),
+        SetEnvironmentVariable(
+            'ROS_AUTOMATIC_DISCOVERY_RANGE',
+            EnvironmentVariable('AGRIBOT_ROS_DISCOVERY_RANGE', default_value='LOCALHOST'),
+        ),
         SetEnvironmentVariable(
             'GZ_PARTITION',
             EnvironmentVariable('GZ_PARTITION', default_value='agribot_sim'),
