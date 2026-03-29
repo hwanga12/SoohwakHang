@@ -659,6 +659,7 @@ function latestCommandToken(status: RobotCommandStatus) {
 }
 
 const DIAGNOSE_OBSERVATION_DWELL_MS = 1200
+const PLANT_OBSERVATION_SELECTION_STRATEGY = 'nearest' as const
 
 function buildDiagnoseRoutePlan(
   plantId: string,
@@ -674,7 +675,7 @@ function buildDiagnoseRoutePlan(
     fallbackPositionLabel,
     currentPose,
     {
-      selectionStrategy: 'harvest-primary',
+      selectionStrategy: PLANT_OBSERVATION_SELECTION_STRATEGY,
       selectedCandidateOnly: true,
     },
   )
@@ -1740,7 +1741,7 @@ export function FarmCommandPage() {
           }
         : null,
       {
-        selectionStrategy: 'harvest-primary',
+        selectionStrategy: PLANT_OBSERVATION_SELECTION_STRATEGY,
         selectedCandidateOnly: true,
       },
     )
@@ -2084,7 +2085,7 @@ export function FarmCommandPage() {
           }
         : null,
       {
-        selectionStrategy: 'harvest-primary',
+        selectionStrategy: PLANT_OBSERVATION_SELECTION_STRATEGY,
         selectedCandidateOnly: true,
       },
     )
