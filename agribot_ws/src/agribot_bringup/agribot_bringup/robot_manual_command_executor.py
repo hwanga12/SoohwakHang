@@ -43,6 +43,7 @@ from .manual_navigation_routing import (
     ManualNavigationRoute,
     build_manual_navigation_route,
     select_best_target_waypoint_id,
+    select_route_egress_waypoint_id,
 )
 from .runtime_snapshot_service import (
     DEFAULT_FRAME_ID,
@@ -1987,6 +1988,27 @@ class RobotManualCommandExecutor(Node):
                 f'preferred={context.command.inspect_waypoint_id or "-"}'
             )
 
+        egress_waypoint_id = select_route_egress_waypoint_id(
+            self._plan,
+            current_pose,
+        )
+        if egress_waypoint_id:
+            egress_pose = self._command_pose_from_pose2d(self._plan.waypoints[egress_waypoint_id].pose)
+            if (
+                context.route_target_pose is None
+                or pose_distance_xy(egress_pose, context.route_target_pose) > 0.05
+            ):
+                context.navigation_phase = ManualNavigationPhase.ROUTE_EGRESS
+                context.target_pose = egress_pose
+                self.get_logger().info(
+                    '작물 옆 최종 관측 위치에서 새 장거리 이동을 시작해 먼저 안전 통로로 복귀합니다. '
+                    f'plant_id={context.command.plant_id or "-"}, '
+                    f'egress_waypoint={egress_waypoint_id}, '
+                    f'egress_pose=({egress_pose.x:.2f}, {egress_pose.y:.2f}), '
+                    f'final_waypoint={context.target_waypoint_id or "-"}'
+                )
+                return
+
         if self._is_two_stage_observation(context):
             context.navigation_phase = ManualNavigationPhase.ROUTE_ANCHOR
             context.target_pose = context.route_target_pose
@@ -2010,6 +2032,18 @@ class RobotManualCommandExecutor(Node):
         label: str,
         is_retry: bool,
     ) -> None:
+        if (
+            context.navigation_phase is ManualNavigationPhase.ROUTE_EGRESS
+            and context.target_pose is not None
+        ):
+            self._dispatch_route_egress_goal(
+                context,
+                target_pose=context.target_pose,
+                label=label,
+                is_retry=is_retry,
+            )
+            return
+
         if (
             context.navigation_phase is ManualNavigationPhase.FINAL_OBSERVATION
             and self._is_two_stage_observation(context)
@@ -2378,6 +2412,43 @@ class RobotManualCommandExecutor(Node):
             is_retry=is_retry,
         )
 
+    def _dispatch_route_egress_goal(
+        self,
+        context: ActiveCommandContext,
+        *,
+        target_pose: CommandPose,
+        label: str,
+        is_retry: bool,
+    ) -> None:
+        if not self._navigate_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
+            self._finish_active_command(
+                'failed',
+                f'NavigateToPose action server를 찾지 못했습니다: {self._action_name}',
+                error='navigate_action_unavailable',
+            )
+            return
+
+        context.target_pose = target_pose
+        context.navigation_phase = ManualNavigationPhase.ROUTE_EGRESS
+        if context.started_at is None:
+            context.started_at = _iso_now()
+
+        goal = NavigateToPose.Goal()
+        goal.pose = self._build_pose_stamped(target_pose.as_pose2d())
+        goal.behavior_tree = ''
+
+        if is_retry:
+            message = (
+                f'{label} 안전 통로 복귀를 재시도 중입니다. '
+                f'({self._goal_reject_retry_count}/{self._goal_reject_retry_limit})'
+            )
+        else:
+            message = f'{label} 새 장거리 경로를 위해 안전 통로로 복귀 중입니다.'
+
+        self._write_status(self._build_status_payload(context, 'running', message))
+        self._goal_send_future = self._navigate_client.send_goal_async(goal)
+        self._goal_send_future.add_done_callback(self._handle_navigation_goal_response)
+
     def _dispatch_final_observation_goal(
         self,
         context: ActiveCommandContext,
@@ -2545,6 +2616,25 @@ class RobotManualCommandExecutor(Node):
 
         if status == GoalStatus.STATUS_SUCCEEDED:
             self._start_occupied_recovery_count = 0
+            if (
+                active_context is not None
+                and active_context.navigation_phase is ManualNavigationPhase.ROUTE_EGRESS
+            ):
+                if self._is_two_stage_observation(active_context):
+                    active_context.navigation_phase = ManualNavigationPhase.ROUTE_ANCHOR
+                    active_context.target_pose = active_context.route_target_pose
+                else:
+                    active_context.navigation_phase = ManualNavigationPhase.FINAL_OBSERVATION
+                    active_context.target_pose = active_context.final_target_pose
+                self._dispatch_current_navigation_stage(
+                    active_context,
+                    label=describe_manual_navigation_label(
+                        active_context.command.command_type,
+                        active_context.home_waypoint_id,
+                    ),
+                    is_retry=False,
+                )
+                return
             if (
                 active_context is not None
                 and active_context.navigation_phase is ManualNavigationPhase.ROUTE_ANCHOR

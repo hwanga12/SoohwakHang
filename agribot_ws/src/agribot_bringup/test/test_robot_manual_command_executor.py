@@ -35,6 +35,7 @@ from agribot_bringup.robot_manual_command_executor import (
 from agribot_bringup.manual_navigation_routing import (
     build_manual_navigation_route,
     select_best_target_waypoint_id,
+    select_route_egress_waypoint_id,
     select_start_waypoint_id,
 )
 from agribot_navigation.patrol_config import Pose2D, get_default_patrol_waypoints_path, load_patrol_plan
@@ -854,6 +855,28 @@ def test_select_start_waypoint_id_avoids_opposite_direction_detour_on_same_lane(
     )
 
     assert start_waypoint_id == 'farm_01_lane_center_inspect_04'
+
+
+def test_select_route_egress_waypoint_id_prefers_matching_inspect_anchor_for_crop_side_pose() -> None:
+    patrol_plan = load_patrol_plan(get_default_patrol_waypoints_path())
+
+    egress_waypoint_id = select_route_egress_waypoint_id(
+        patrol_plan,
+        SimpleNamespace(x=-1.7, y=6.0, z=0.0, yaw=3.1415),
+    )
+
+    assert egress_waypoint_id == 'farm_01_lane_center_inspect_06'
+
+
+def test_select_route_egress_waypoint_id_skips_pose_that_is_already_on_lane_anchor() -> None:
+    patrol_plan = load_patrol_plan(get_default_patrol_waypoints_path())
+
+    egress_waypoint_id = select_route_egress_waypoint_id(
+        patrol_plan,
+        SimpleNamespace(x=0.02, y=6.01, z=0.0, yaw=0.0),
+    )
+
+    assert egress_waypoint_id is None
 
 
 def test_build_manual_navigation_route_starts_from_safe_lane_anchor_when_robot_is_between_beds() -> None:

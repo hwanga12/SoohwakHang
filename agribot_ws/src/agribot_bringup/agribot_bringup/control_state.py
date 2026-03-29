@@ -32,6 +32,7 @@ class ResumeContextType(str, Enum):
 
 
 class ManualNavigationPhase(str, Enum):
+    ROUTE_EGRESS = 'route_egress'
     ROUTE_ANCHOR = 'route_anchor'
     FINAL_OBSERVATION = 'final_observation'
 

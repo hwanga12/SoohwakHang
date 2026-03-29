@@ -13,6 +13,8 @@ LANE_SELECTION_TOLERANCE_M = 1.1
 POSE_MATCH_TOLERANCE_M = 0.4
 CURRENT_POSE_SKIP_TOLERANCE_M = 0.55
 LANE_DIRECTION_SELECTION_TOLERANCE_M = 0.35
+ROUTE_EGRESS_Y_TOLERANCE_M = 0.8
+ROUTE_EGRESS_MAX_DISTANCE_M = 2.2
 
 
 @dataclass(frozen=True)
@@ -132,6 +134,39 @@ def select_start_waypoint_id(
             waypoint_id,
             current_pose=current_pose,
             target_lane_id=target_lane_id,
+        ),
+    )
+
+
+def select_route_egress_waypoint_id(
+    plan: PatrolPlan,
+    current_pose: Pose2D | None,
+) -> str | None:
+    if current_pose is None:
+        return None
+
+    if normalize_waypoint_id(plan, target_pose=current_pose, pose_match_tolerance_m=0.9):
+        return None
+
+    egress_candidates = [
+        waypoint_id
+        for waypoint_id, waypoint in plan.waypoints.items()
+        if waypoint.purpose == 'inspect'
+        and abs(waypoint.pose.y - current_pose.y) <= ROUTE_EGRESS_Y_TOLERANCE_M
+        and abs(waypoint.pose.x - current_pose.x) > LANE_SELECTION_TOLERANCE_M
+        and pose_distance_xy(waypoint.pose, current_pose) <= ROUTE_EGRESS_MAX_DISTANCE_M
+    ]
+
+    if not egress_candidates:
+        return None
+
+    return min(
+        egress_candidates,
+        key=lambda waypoint_id: (
+            abs(plan.waypoints[waypoint_id].pose.y - current_pose.y),
+            pose_distance_xy(plan.waypoints[waypoint_id].pose, current_pose),
+            abs(plan.waypoints[waypoint_id].pose.x - current_pose.x),
+            waypoint_id,
         ),
     )
 
