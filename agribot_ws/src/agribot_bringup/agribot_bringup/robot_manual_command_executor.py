@@ -171,6 +171,7 @@ class ActiveCommandContext:
     target_waypoint_id: str | None = None
     navigation_phase: ManualNavigationPhase | None = None
     home_waypoint_id: str | None = None
+    route_egress_release_attempted: bool = False
 
 
 class CommandValidationError(ValueError):
@@ -622,6 +623,20 @@ def should_run_resume_release_recovery(
     )
 
 
+def should_run_route_egress_release_recovery(
+    context: ActiveCommandContext | None,
+    *,
+    distance_m: float,
+) -> bool:
+    return (
+        distance_m > 0.0
+        and context is not None
+        and context.navigation_phase is ManualNavigationPhase.ROUTE_EGRESS
+        and context.target_pose is not None
+        and not context.route_egress_release_attempted
+    )
+
+
 def _navigation_error_code(nav_result: Any) -> int:
     return int(getattr(nav_result, 'error_code', NAVIGATE_TO_POSE_NONE_ERROR_CODE) or 0)
 
@@ -768,6 +783,16 @@ def should_complete_route_anchor_only(
     )
 
 
+def should_attempt_route_egress_simulation_pose_reset(
+    active_context: ActiveCommandContext | None,
+) -> bool:
+    return (
+        active_context is not None
+        and active_context.navigation_phase is ManualNavigationPhase.ROUTE_EGRESS
+        and active_context.target_pose is not None
+    )
+
+
 def should_release_orphaned_active_command(
     active_context: ActiveCommandContext | None,
     last_status_payload: dict[str, Any] | None,
@@ -810,6 +835,9 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('resume_release_recovery_distance_m', 0.14)
         self.declare_parameter('resume_release_recovery_speed_mps', 0.05)
         self.declare_parameter('resume_release_recovery_time_allowance_sec', 3.0)
+        self.declare_parameter('route_egress_release_recovery_distance_m', 0.24)
+        self.declare_parameter('route_egress_release_recovery_speed_mps', 0.06)
+        self.declare_parameter('route_egress_release_recovery_time_allowance_sec', 3.5)
         self.declare_parameter('start_occupied_recovery_distance_m', 0.28)
         self.declare_parameter('start_occupied_recovery_speed_mps', 0.08)
         self.declare_parameter('start_occupied_recovery_time_allowance_sec', 4.0)
@@ -863,6 +891,18 @@ class RobotManualCommandExecutor(Node):
         self._resume_release_recovery_time_allowance_sec = max(
             0.5,
             float(self.get_parameter('resume_release_recovery_time_allowance_sec').value),
+        )
+        self._route_egress_release_recovery_distance_m = max(
+            0.0,
+            float(self.get_parameter('route_egress_release_recovery_distance_m').value),
+        )
+        self._route_egress_release_recovery_speed_mps = max(
+            0.01,
+            float(self.get_parameter('route_egress_release_recovery_speed_mps').value),
+        )
+        self._route_egress_release_recovery_time_allowance_sec = max(
+            0.5,
+            float(self.get_parameter('route_egress_release_recovery_time_allowance_sec').value),
         )
         self._start_occupied_recovery_distance_m = max(
             0.0,
@@ -2000,6 +2040,7 @@ class RobotManualCommandExecutor(Node):
             ):
                 context.navigation_phase = ManualNavigationPhase.ROUTE_EGRESS
                 context.target_pose = egress_pose
+                context.route_egress_release_attempted = False
                 self.get_logger().info(
                     '작물 옆 최종 관측 위치에서 새 장거리 이동을 시작해 먼저 안전 통로로 복귀합니다. '
                     f'plant_id={context.command.plant_id or "-"}, '
@@ -2036,6 +2077,8 @@ class RobotManualCommandExecutor(Node):
             context.navigation_phase is ManualNavigationPhase.ROUTE_EGRESS
             and context.target_pose is not None
         ):
+            if self._schedule_route_egress_release_recovery(context):
+                return
             self._dispatch_route_egress_goal(
                 context,
                 target_pose=context.target_pose,
@@ -2712,6 +2755,10 @@ class RobotManualCommandExecutor(Node):
                 )
                 return
 
+        if should_attempt_route_egress_simulation_pose_reset(active_context):
+            if self._schedule_simulation_pose_reset_recovery():
+                return
+
         if not in_final_observation_stage and _navigation_result_indicates_start_occupied(nav_result):
             if self._schedule_simulation_pose_reset_recovery():
                 return
@@ -2789,6 +2836,37 @@ class RobotManualCommandExecutor(Node):
         self._recovery_send_future.add_done_callback(self._handle_resume_release_recovery_goal_response)
         return True
 
+    def _schedule_route_egress_release_recovery(self, context: ActiveCommandContext) -> bool:
+        if not should_run_route_egress_release_recovery(
+            context,
+            distance_m=self._route_egress_release_recovery_distance_m,
+        ):
+            return False
+        if not self._backup_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
+            self.get_logger().warning(
+                f'crop-side egress용 {self._backup_action_name} action server를 찾지 못해 '
+                '안전 통로 복귀 goal을 바로 시도합니다.'
+            )
+            return False
+
+        context.route_egress_release_attempted = True
+        recovery_label = (
+            '작물 옆 최종 관측 위치에서 바로 새 경로를 시작하면 충돌로 판정될 수 있어 '
+            '통로 쪽으로 잠시 후진한 뒤 안전 통로 복귀를 시도합니다.'
+        )
+        self.get_logger().info(recovery_label)
+        self._write_status(self._build_status_payload(context, 'running', recovery_label))
+
+        goal = BackUp.Goal()
+        goal.target = Point(x=float(self._route_egress_release_recovery_distance_m))
+        goal.speed = float(self._route_egress_release_recovery_speed_mps)
+        goal.time_allowance = Duration(
+            seconds=float(self._route_egress_release_recovery_time_allowance_sec)
+        ).to_msg()
+        self._recovery_send_future = self._backup_client.send_goal_async(goal)
+        self._recovery_send_future.add_done_callback(self._handle_route_egress_release_recovery_goal_response)
+        return True
+
     def _handle_resume_release_recovery_goal_response(self, future: Any) -> None:
         self._recovery_send_future = None
         try:
@@ -2853,6 +2931,70 @@ class RobotManualCommandExecutor(Node):
 
         self._resume_navigation_after_release_recovery()
 
+    def _handle_route_egress_release_recovery_goal_response(self, future: Any) -> None:
+        self._recovery_send_future = None
+        try:
+            goal_handle = future.result()
+        except Exception as exc:
+            self.get_logger().warning(
+                f'crop-side egress 전 안전 후진 goal 전송에 실패해 바로 통로 복귀를 시도합니다: {exc}'
+            )
+            self._resume_navigation_after_route_egress_release_recovery()
+            return
+
+        if not goal_handle.accepted:
+            if self._pending_context is not None:
+                cancel_message, cancel_error = self._cancel_outcome_for_pending_transition()
+                self._finish_active_command(
+                    'canceled',
+                    cancel_message,
+                    error=cancel_error,
+                )
+                return
+            self.get_logger().warning(
+                'crop-side egress 전 안전 후진 goal이 거부되어 바로 통로 복귀를 시도합니다.'
+            )
+            self._resume_navigation_after_route_egress_release_recovery()
+            return
+
+        self._active_recovery_handle = goal_handle
+        self._recovery_result_future = goal_handle.get_result_async()
+        self._recovery_result_future.add_done_callback(self._handle_route_egress_release_recovery_result)
+
+    def _handle_route_egress_release_recovery_result(self, future: Any) -> None:
+        self._active_recovery_handle = None
+        self._recovery_result_future = None
+
+        if self._pending_context is not None:
+            cancel_message, cancel_error = self._cancel_outcome_for_pending_transition()
+            self._finish_active_command(
+                'canceled',
+                cancel_message,
+                error=cancel_error,
+            )
+            return
+
+        try:
+            result = future.result()
+        except Exception as exc:
+            self.get_logger().warning(
+                f'crop-side egress 전 안전 후진 결과를 받지 못해 바로 통로 복귀를 시도합니다: {exc}'
+            )
+            self._resume_navigation_after_route_egress_release_recovery()
+            return
+
+        if result.status != GoalStatus.STATUS_SUCCEEDED:
+            recovery_result = result.result
+            error_msg = str(getattr(recovery_result, 'error_msg', '') or '').strip()
+            error_code = int(getattr(recovery_result, 'error_code', BackUp.Result.UNKNOWN) or 0)
+            detail = error_msg or '후진으로 충분한 통로 여유를 만들지 못했습니다.'
+            self.get_logger().warning(
+                'crop-side egress 전 안전 후진이 실패했지만 '
+                f'통로 복귀 goal은 계속 시도합니다: {detail} (error_code={error_code})'
+            )
+
+        self._resume_navigation_after_route_egress_release_recovery()
+
     def _resume_navigation_after_release_recovery(self) -> None:
         context = self._active_context
         if context is None or context.target_pose is None:
@@ -2860,6 +3002,19 @@ class RobotManualCommandExecutor(Node):
         self._dispatch_current_navigation_stage(
             context,
             label='저장된 수동 이동 재개',
+            is_retry=True,
+        )
+
+    def _resume_navigation_after_route_egress_release_recovery(self) -> None:
+        context = self._active_context
+        if context is None or context.target_pose is None:
+            return
+        self._dispatch_current_navigation_stage(
+            context,
+            label=describe_manual_navigation_label(
+                context.command.command_type,
+                context.home_waypoint_id,
+            ),
             is_retry=True,
         )
 
@@ -3023,6 +3178,8 @@ class RobotManualCommandExecutor(Node):
     def _choose_simulation_pose_reset_target(self, context: ActiveCommandContext) -> CommandPose | None:
         if context.target_pose is None:
             return None
+        if context.navigation_phase is ManualNavigationPhase.ROUTE_EGRESS:
+            return context.target_pose
 
         route = self._resolve_navigation_route(context, context.target_pose)
         if route.poses:

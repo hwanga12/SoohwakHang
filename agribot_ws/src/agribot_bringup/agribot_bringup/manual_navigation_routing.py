@@ -119,6 +119,16 @@ def select_start_waypoint_id(
             ),
         )
 
+    route_egress_waypoint_id = select_route_egress_waypoint_id(plan, current_pose)
+    if (
+        route_egress_waypoint_id
+        and (
+            not target_lane_id
+            or plan.waypoints[route_egress_waypoint_id].lane_id == target_lane_id
+        )
+    ):
+        return route_egress_waypoint_id
+
     route_anchor_waypoint_id = _select_target_route_anchor_waypoint_id(
         plan,
         current_pose=current_pose,
