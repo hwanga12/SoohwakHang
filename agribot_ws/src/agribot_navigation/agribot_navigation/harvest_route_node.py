@@ -976,7 +976,7 @@ class HarvestRouteNode(Node):
     def _finish_harvest_dwell(self) -> None:
         self._cancel_harvest_timer()
         self._publish_arm_position(self._harvest_arm_ready_position)
-        if not self._hide_harvested_tomato_visual():
+        if not self._finalize_harvested_tomato_visual():
             return
         self._start_return_navigation(use_fallback=False)
 
@@ -1128,6 +1128,17 @@ class HarvestRouteNode(Node):
             stage='hide',
             failure_reason='수확이 끝난 뒤 토마토 visual을 월드 밖으로 숨기지 못했습니다.',
         )
+
+    def _should_keep_harvested_tomato_visible_in_basket(self) -> bool:
+        slot_count = max(0, int(self._animation_config.basket_slot_count))
+        if slot_count <= 0:
+            return False
+        return len(self._loaded_tomato_ids) < slot_count
+
+    def _finalize_harvested_tomato_visual(self) -> bool:
+        if self._should_keep_harvested_tomato_visible_in_basket():
+            return True
+        return self._hide_harvested_tomato_visual()
 
     def _set_gazebo_entity_pose(self, entity_name: str, pose: WorldPose) -> bool:
         command_env = os.environ.copy()

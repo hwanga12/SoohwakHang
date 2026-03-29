@@ -204,45 +204,35 @@ def test_handle_goal_response_uses_fallback_return_waypoint_when_return_goal_is_
     assert warnings
 
 
-def test_finish_harvest_dwell_hides_harvested_tomato_before_return() -> None:
+def test_finish_harvest_dwell_keeps_harvested_tomato_visible_in_basket_when_slot_is_available() -> None:
     node = object.__new__(HarvestRouteNode)
     published_positions: list[float] = []
-    pose_updates: list[tuple[str, object]] = []
     return_calls: list[bool] = []
     node._cancel_harvest_timer = lambda: None
     node._publish_arm_position = published_positions.append
     node._harvest_arm_ready_position = 0.0
-    node._active_plan = SimpleNamespace(tomato_id='farm01_plant_01_tomato_01')
-    node._catalog = SimpleNamespace(
-        tomatoes={
-            'farm01_plant_01_tomato_01': SimpleNamespace(
-                world_model_name='farm01_plant_01_tomato_01',
-                pose=Pose2D(x=-6.0, y=-6.0, z=0.82, yaw=0.0),
-            )
-        }
-    )
-    node._animation_config = HarvestAnimationConfig(
-        hidden_x_m=999.0,
-        hidden_y_m=999.0,
-        hidden_z_m=-10.0,
-    )
-    def _record_pose_update(entity_name, pose):
-        pose_updates.append((entity_name, pose))
-        return True
-
-    node._set_gazebo_entity_pose = _record_pose_update
+    node._loaded_tomato_ids = []
+    node._animation_config = HarvestAnimationConfig(basket_slot_count=2)
+    node._finalize_harvested_tomato_visual = lambda: True
     node._start_return_navigation = lambda use_fallback: return_calls.append(use_fallback)
-    node.get_logger = lambda: SimpleNamespace(warning=lambda _: None)
 
     HarvestRouteNode._finish_harvest_dwell(node)
 
     assert published_positions == [0.0]
     assert return_calls == [False]
-    assert len(pose_updates) == 1
-    assert pose_updates[0][0] == 'farm01_plant_01_tomato_01'
-    assert pose_updates[0][1].x == 999.0
-    assert pose_updates[0][1].y == 999.0
-    assert pose_updates[0][1].z == -10.0
+
+
+def test_finalize_harvested_tomato_visual_hides_overflow_tomato_when_basket_slots_are_full() -> None:
+    node = object.__new__(HarvestRouteNode)
+    hidden = {'called': False}
+    node._loaded_tomato_ids = ['farm01_plant_01_tomato_01', 'farm01_plant_02_tomato_01']
+    node._animation_config = HarvestAnimationConfig(basket_slot_count=2)
+    node._hide_harvested_tomato_visual = lambda: hidden.__setitem__('called', True) or True
+
+    finalized = HarvestRouteNode._finalize_harvested_tomato_visual(node)
+
+    assert finalized is True
+    assert hidden['called'] is True
 
 
 def test_start_approach_navigation_uses_safe_inspect_waypoint_target_in_default_mode() -> None:
@@ -327,7 +317,7 @@ def test_finish_harvest_dwell_stops_when_hiding_visual_fails() -> None:
     node._cancel_harvest_timer = lambda: None
     node._publish_arm_position = published_positions.append
     node._harvest_arm_ready_position = 0.0
-    node._hide_harvested_tomato_visual = lambda: False
+    node._finalize_harvested_tomato_visual = lambda: False
     node._start_return_navigation = lambda use_fallback: return_calls.append(use_fallback)
 
     HarvestRouteNode._finish_harvest_dwell(node)
