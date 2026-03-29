@@ -10,6 +10,7 @@ from agribot_navigation.harvest_simulation import (
     compute_basket_pose,
     compute_carry_pose,
     compute_grasp_pose,
+    compute_hidden_pose,
     compute_relative_world_pose,
 )
 from agribot_navigation.patrol_config import Pose2D
@@ -80,3 +81,11 @@ def test_compute_grasp_pose_places_tomato_near_gripper_fingers() -> None:
     grasp_pose = compute_grasp_pose(pose, HarvestAnimationConfig())
 
     assert grasp_pose == WorldPose(x=-2.31, y=4.0, z=0.54)
+
+
+def test_compute_hidden_pose_drops_harvested_tomato_below_world_floor() -> None:
+    pose = Pose2D(x=-2.0, y=4.0, z=0.82, yaw=0.0)
+
+    hidden_pose = compute_hidden_pose(pose, HarvestAnimationConfig(hidden_z_m=-2.5))
+
+    assert hidden_pose == WorldPose(x=-2.0, y=4.0, z=-2.5)

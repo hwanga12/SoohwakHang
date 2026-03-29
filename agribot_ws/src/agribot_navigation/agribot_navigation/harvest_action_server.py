@@ -68,6 +68,7 @@ from .harvest_simulation import (
     compute_basket_pose,
     compute_carry_pose,
     compute_grasp_pose,
+    compute_hidden_pose,
 )
 from .nav_goal_utils import build_latest_pose_stamped
 from .patrol_config import Pose2D, PatrolPlan, get_default_patrol_waypoints_path, load_patrol_plan
@@ -140,6 +141,7 @@ class HarvestActionServerNode(Node):
         self.declare_parameter('harvest_basket_slot_lateral_spacing_m', 0.05)
         self.declare_parameter('harvest_basket_slot_forward_spacing_m', 0.0)
         self.declare_parameter('harvest_basket_overflow_stack_z_m', 0.035)
+        self.declare_parameter('harvest_hidden_z_m', -2.0)
 
         self._plan = self._load_patrol_plan()
         self._catalog = self._load_crop_catalog()
@@ -228,6 +230,7 @@ class HarvestActionServerNode(Node):
             basket_overflow_stack_z_m=float(
                 self.get_parameter('harvest_basket_overflow_stack_z_m').value
             ),
+            hidden_z_m=float(self.get_parameter('harvest_hidden_z_m').value),
         )
 
         self._navigate_client = ActionClient(
@@ -1106,6 +1109,7 @@ class HarvestActionServerNode(Node):
             target_id=tomato_id,
             detail_message=f'Loading {tomato_id} into the rear basket.',
         )
+        self._hide_harvested_tomato_visual(tomato_id)
 
     def _run_non_visual_harvest_waits(self, goal_handle, *, tomato_id: str) -> None:
         self._wait_phase(
@@ -1221,6 +1225,23 @@ class HarvestActionServerNode(Node):
                 y=tomato.pose.y,
                 z=tomato.pose.z,
             ),
+        )
+
+    def _hide_harvested_tomato_visual(self, tomato_id: str) -> None:
+        normalized_tomato_id = self._normalize_request_text(tomato_id)
+        if not normalized_tomato_id:
+            return
+
+        tomato = self._catalog.tomatoes.get(normalized_tomato_id)
+        if tomato is None:
+            self.get_logger().warning(
+                f'No tomato metadata found while hiding harvested target {normalized_tomato_id}.'
+            )
+            return
+
+        self._set_gazebo_entity_pose(
+            tomato.world_model_name,
+            compute_hidden_pose(tomato.pose, self._animation_config),
         )
 
     def _wait_for_future(

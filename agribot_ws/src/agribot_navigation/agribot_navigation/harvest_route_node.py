@@ -42,6 +42,7 @@ from .harvest_simulation import (
     compute_basket_pose,
     compute_carry_pose,
     compute_grasp_pose,
+    compute_hidden_pose,
 )
 from .harvest_runtime_store import (
     harvest_action_status_path,
@@ -136,6 +137,7 @@ class HarvestRouteNode(Node):
         self.declare_parameter('harvest_basket_slot_lateral_spacing_m', 0.05)
         self.declare_parameter('harvest_basket_slot_forward_spacing_m', 0.0)
         self.declare_parameter('harvest_basket_overflow_stack_z_m', 0.035)
+        self.declare_parameter('harvest_hidden_z_m', -2.0)
         self.declare_parameter('harvest_inspect_waypoint_fallback_enabled', True)
         self.declare_parameter('harvest_demo_recovery_enabled', False)
         self.declare_parameter('harvest_navigation_target_mode', 'inspect_waypoint')
@@ -207,6 +209,7 @@ class HarvestRouteNode(Node):
             basket_overflow_stack_z_m=float(
                 self.get_parameter('harvest_basket_overflow_stack_z_m').value
             ),
+            hidden_z_m=float(self.get_parameter('harvest_hidden_z_m').value),
         )
 
         crop_status_topic = str(self.get_parameter('crop_status_topic').value)
@@ -944,6 +947,7 @@ class HarvestRouteNode(Node):
     def _finish_harvest_dwell(self) -> None:
         self._cancel_harvest_timer()
         self._publish_arm_position(self._harvest_arm_ready_position)
+        self._hide_harvested_tomato_visual()
         self._start_return_navigation(use_fallback=False)
 
     def _finish_sequence_after_return(self) -> None:
@@ -1061,6 +1065,22 @@ class HarvestRouteNode(Node):
 
     def _publish_arm_position(self, position: float) -> None:
         self._arm_command_pub.publish(Float64(data=float(position)))
+
+    def _hide_harvested_tomato_visual(self) -> None:
+        if self._active_plan is None:
+            return
+
+        tomato = self._catalog.tomatoes.get(self._active_plan.tomato_id)
+        if tomato is None:
+            self.get_logger().warning(
+                f'No tomato metadata found while hiding harvested target {self._active_plan.tomato_id}.'
+            )
+            return
+
+        self._set_gazebo_entity_pose(
+            tomato.world_model_name,
+            compute_hidden_pose(tomato.pose, self._animation_config),
+        )
 
     def _set_gazebo_entity_pose(self, entity_name: str, pose: WorldPose) -> bool:
         command_env = os.environ.copy()

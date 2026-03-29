@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from agribot_navigation.harvest_simulation import HarvestAnimationConfig
 from agribot_navigation.harvest_route_node import (
     HarvestRouteNode,
     _poses_are_effectively_same,
@@ -201,6 +202,39 @@ def test_handle_goal_response_uses_fallback_return_waypoint_when_return_goal_is_
     assert fallback_calls == [True]
     assert errors == []
     assert warnings
+
+
+def test_finish_harvest_dwell_hides_harvested_tomato_before_return() -> None:
+    node = object.__new__(HarvestRouteNode)
+    published_positions: list[float] = []
+    pose_updates: list[tuple[str, object]] = []
+    return_calls: list[bool] = []
+    node._cancel_harvest_timer = lambda: None
+    node._publish_arm_position = published_positions.append
+    node._harvest_arm_ready_position = 0.0
+    node._active_plan = SimpleNamespace(tomato_id='farm01_plant_01_tomato_01')
+    node._catalog = SimpleNamespace(
+        tomatoes={
+            'farm01_plant_01_tomato_01': SimpleNamespace(
+                world_model_name='farm01_plant_01_tomato_01',
+                pose=Pose2D(x=-6.0, y=-6.0, z=0.82, yaw=0.0),
+            )
+        }
+    )
+    node._animation_config = HarvestAnimationConfig(hidden_z_m=-2.0)
+    node._set_gazebo_entity_pose = lambda entity_name, pose: pose_updates.append((entity_name, pose))
+    node._start_return_navigation = lambda use_fallback: return_calls.append(use_fallback)
+    node.get_logger = lambda: SimpleNamespace(warning=lambda _: None)
+
+    HarvestRouteNode._finish_harvest_dwell(node)
+
+    assert published_positions == [0.0]
+    assert return_calls == [False]
+    assert len(pose_updates) == 1
+    assert pose_updates[0][0] == 'farm01_plant_01_tomato_01'
+    assert pose_updates[0][1].x == -6.0
+    assert pose_updates[0][1].y == -6.0
+    assert pose_updates[0][1].z == -2.0
 
 
 def test_start_approach_navigation_uses_safe_inspect_waypoint_target_in_default_mode() -> None:

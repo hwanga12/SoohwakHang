@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from agribot_navigation.harvest_simulation import HarvestAnimationConfig
 from agribot_navigation.harvest_action_server import HarvestActionServerNode
 from agribot_navigation.harvest_routing import HarvestRoutePlan
 from agribot_navigation.patrol_config import Pose2D
@@ -86,3 +87,34 @@ def test_reset_visual_harvest_state_restores_arm_and_tomato_pose() -> None:
     assert pose_updates[0][1].x == -6.0
     assert pose_updates[0][1].y == -6.0
     assert pose_updates[0][1].z == 0.82
+
+
+def test_hide_harvested_tomato_visual_moves_entity_below_world_floor() -> None:
+    node = object.__new__(HarvestActionServerNode)
+    pose_updates: list[tuple[str, object]] = []
+    node._catalog = SimpleNamespace(
+        tomatoes={
+            'farm01_plant_01_tomato_01': SimpleNamespace(
+                world_model_name='farm01_plant_01_tomato_01',
+                pose=Pose2D(x=-6.0, y=-6.0, z=0.82, yaw=0.0),
+            )
+        }
+    )
+    node._animation_config = HarvestAnimationConfig(hidden_z_m=-2.0)
+    node._set_gazebo_entity_pose = lambda entity_name, pose: pose_updates.append((entity_name, pose))
+    node._normalize_request_text = HarvestActionServerNode._normalize_request_text.__get__(
+        node,
+        HarvestActionServerNode,
+    )
+    node.get_logger = lambda: SimpleNamespace(warning=lambda _: None)
+
+    HarvestActionServerNode._hide_harvested_tomato_visual(
+        node,
+        'farm01_plant_01_tomato_01',
+    )
+
+    assert len(pose_updates) == 1
+    assert pose_updates[0][0] == 'farm01_plant_01_tomato_01'
+    assert pose_updates[0][1].x == -6.0
+    assert pose_updates[0][1].y == -6.0
+    assert pose_updates[0][1].z == -2.0

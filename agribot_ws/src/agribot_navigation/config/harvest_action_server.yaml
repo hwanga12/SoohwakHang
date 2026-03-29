@@ -46,3 +46,4 @@ harvest_action_server:
     harvest_basket_slot_lateral_spacing_m: 0.05
     harvest_basket_slot_forward_spacing_m: 0.0
     harvest_basket_overflow_stack_z_m: 0.035
+    harvest_hidden_z_m: -2.0
