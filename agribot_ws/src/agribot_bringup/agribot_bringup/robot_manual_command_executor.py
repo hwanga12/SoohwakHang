@@ -1764,7 +1764,7 @@ class RobotManualCommandExecutor(Node):
             )
 
         context.target_waypoint_id = selected_waypoint_id
-        return self._command_pose_from_pose2d(selected_waypoint.pose)
+        return requested_target_pose
 
     def _start_navigation_command(
         self,

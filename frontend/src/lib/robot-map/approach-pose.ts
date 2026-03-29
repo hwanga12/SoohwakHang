@@ -15,6 +15,7 @@ export type PlantObservationSelection = {
   inspectWaypointIds: string[]
   inspectWaypointName: string | null
   navigationPose: RobotTargetPose
+  goalPose: RobotTargetPose
   displayPose: RobotTargetPose
   approachPose: RobotTargetPose | null
 }
@@ -213,13 +214,15 @@ function buildFallbackObservationSelection(
   pose: RobotTargetPose,
   targetAsset: SemanticAsset | null,
 ): PlantObservationSelection {
+  const goalPose = targetAsset?.approachPose ?? pose
   return {
     targetAsset,
     inspectWaypointId: targetAsset?.inspectWaypointId ?? null,
     inspectWaypointIds: targetAsset?.inspectWaypointId ? [targetAsset.inspectWaypointId] : [],
     inspectWaypointName: targetAsset?.inspectWaypointName ?? null,
     navigationPose: pose,
-    displayPose: targetAsset?.approachPose ?? pose,
+    goalPose,
+    displayPose: goalPose,
     approachPose: targetAsset?.approachPose ?? null,
   }
 }
@@ -255,14 +258,21 @@ export function resolveObservationCandidateDisplayPose(
   }
 
   const matchedCandidate = normalizeObservationCandidates(asset).find((candidate) => {
-    const candidatePose = candidateNavigationPose(candidate)
-    if (!candidatePose) {
+    const navigationCandidatePose = candidateNavigationPose(candidate)
+    const displayCandidatePose = candidateDisplayPose(candidate)
+    if (!navigationCandidatePose || !displayCandidatePose) {
       return false
     }
 
     return (
-      Math.abs(candidatePose.x - navigationPose.x) <= OBSERVATION_CANDIDATE_MATCH_TOLERANCE_M
-      && Math.abs(candidatePose.y - navigationPose.y) <= OBSERVATION_CANDIDATE_MATCH_TOLERANCE_M
+      (
+        Math.abs(navigationCandidatePose.x - navigationPose.x) <= OBSERVATION_CANDIDATE_MATCH_TOLERANCE_M
+        && Math.abs(navigationCandidatePose.y - navigationPose.y) <= OBSERVATION_CANDIDATE_MATCH_TOLERANCE_M
+      )
+      || (
+        Math.abs(displayCandidatePose.x - navigationPose.x) <= OBSERVATION_CANDIDATE_MATCH_TOLERANCE_M
+        && Math.abs(displayCandidatePose.y - navigationPose.y) <= OBSERVATION_CANDIDATE_MATCH_TOLERANCE_M
+      )
     )
   })
 
@@ -295,12 +305,16 @@ export function resolvePlantObservationSelection(
       const navigationPose = candidateNavigationPose(selectedCandidate)
       const displayPose = candidateDisplayPose(selectedCandidate)
       if (navigationPose && displayPose) {
+        const goalPose = selectedCandidate.approachPose
+          ? toRobotTargetPose(selectedCandidate.approachPose)
+          : toRobotTargetPose(navigationPose)
         return {
           targetAsset,
           inspectWaypointId: selectedCandidate.inspectWaypointId ?? null,
           inspectWaypointIds: uniqueWaypointIds(observationCandidates),
           inspectWaypointName: selectedCandidate.inspectWaypointName ?? null,
           navigationPose: toRobotTargetPose(navigationPose),
+          goalPose,
           displayPose: toRobotTargetPose(displayPose),
           approachPose: selectedCandidate.approachPose
             ? toRobotTargetPose(selectedCandidate.approachPose)
@@ -354,7 +368,7 @@ function buildPlantPoseWithPreference(
 
   return posePreference === 'navigation-first'
     ? observationSelection.navigationPose
-    : observationSelection.approachPose ?? observationSelection.navigationPose
+    : observationSelection.goalPose
 }
 
 export function buildPlantTargetPose(
