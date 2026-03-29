@@ -38,6 +38,7 @@ class ResumeContext:
     command_id: str = ''
     command_type: str = ''
     target_pose: dict[str, Any] | None = None
+    target_waypoint_id: str | None = None
     home_waypoint_id: str | None = None
     patrol_snapshot: dict[str, Any] | None = None
 
@@ -48,6 +49,7 @@ class ResumeContext:
             'command_id': self.command_id or None,
             'command_type': self.command_type or None,
             'target_pose': self.target_pose,
+            'target_waypoint_id': self.target_waypoint_id,
             'home_waypoint_id': self.home_waypoint_id,
             'patrol_snapshot': self.patrol_snapshot,
         }
@@ -64,6 +66,11 @@ class ResumeContext:
             command_id=str(payload.get('command_id') or ''),
             command_type=str(payload.get('command_type') or ''),
             target_pose=payload.get('target_pose') if isinstance(payload.get('target_pose'), dict) else None,
+            target_waypoint_id=(
+                str(payload.get('target_waypoint_id')).strip()
+                if payload.get('target_waypoint_id') is not None
+                else None
+            ),
             home_waypoint_id=(
                 str(payload.get('home_waypoint_id')).strip()
                 if payload.get('home_waypoint_id') is not None

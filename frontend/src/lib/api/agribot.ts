@@ -2862,7 +2862,12 @@ export async function getMissionStatus(missionId: string): Promise<MissionStatus
   }
 }
 
-export async function sendRobotNavigateCommand(targetPose: RobotTargetPose) {
+export async function sendRobotNavigateCommand(
+  targetPose: RobotTargetPose,
+  options?: {
+    inspectWaypointId?: string | null
+  },
+) {
   try {
     const response = await apiClient.post('/robot/commands', {
       robot_id: 'AGR-02',
@@ -2875,6 +2880,11 @@ export async function sendRobotNavigateCommand(targetPose: RobotTargetPose) {
         yaw: targetPose.yaw,
         frame_id: targetPose.frameId,
       },
+      payload: options?.inspectWaypointId
+        ? {
+            inspect_waypoint_id: options.inspectWaypointId,
+          }
+        : undefined,
     })
     markRouteVerified('POST', '/robot/commands')
     return parseCommandDispatch(response.data, '클릭한 좌표로 이동 요청을 보냈습니다.')

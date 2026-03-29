@@ -224,6 +224,7 @@ type DiagnoseCommandTracker = {
   plantId: string
   fruitId: string
   plantName: string
+  inspectWaypointId: string | null
   targetPose: RobotTargetPose
   routeSteps: DiagnoseRouteStep[]
   currentStepIndex: number
@@ -237,6 +238,7 @@ type DiagnoseDispatchInput = {
   plantId: string
   fruitId: string
   plantName: string
+  inspectWaypointId: string | null
   targetPose: RobotTargetPose
   routeSteps: DiagnoseRouteStep[]
   currentStepIndex: number
@@ -1022,13 +1024,17 @@ export function FarmCommandPage() {
     },
   })
   const diagnoseMutation = useMutation({
-    mutationFn: ({ currentTargetPose }: DiagnoseDispatchInput) => sendRobotNavigateCommand(currentTargetPose),
+    mutationFn: ({ currentTargetPose, inspectWaypointId }: DiagnoseDispatchInput) => sendRobotNavigateCommand(
+      currentTargetPose,
+      { inspectWaypointId },
+    ),
     onSuccess: async (response, variables) => {
       setActiveDiagnoseCommand({
         commandId: response.commandId,
         plantId: variables.plantId,
         fruitId: variables.fruitId,
         plantName: variables.plantName,
+        inspectWaypointId: variables.inspectWaypointId,
         targetPose: variables.targetPose,
         routeSteps: variables.routeSteps,
         currentStepIndex: variables.currentStepIndex,
@@ -1668,6 +1674,10 @@ export function FarmCommandPage() {
       : []
 
   const dispatchDiagnoseStart = (input: QueuedDiagnoseStart) => {
+    const inspectWaypointId =
+      liveScene.assets.find((asset) => asset.id === input.plantId)?.inspectWaypointId
+      ?? mapScene.assets.find((asset) => asset.id === input.plantId)?.inspectWaypointId
+      ?? null
     const fallbackPositionLabel = plantLookup.get(input.plantId)?.positionLabel ?? ''
     const diagnoseRoute = buildDiagnoseRoutePlan(
       input.plantId,
@@ -1696,6 +1706,7 @@ export function FarmCommandPage() {
       plantId: input.plantId,
       fruitId: input.fruitId,
       plantName: input.plantName,
+      inspectWaypointId,
       targetPose: diagnoseRoute.inspectionPose,
       routeSteps: diagnoseRoute.steps,
       currentStepIndex: 0,
@@ -1948,6 +1959,7 @@ export function FarmCommandPage() {
           plantId: activeDiagnoseCommand.plantId,
           fruitId: activeDiagnoseCommand.fruitId,
           plantName: activeDiagnoseCommand.plantName,
+          inspectWaypointId: activeDiagnoseCommand.inspectWaypointId,
           targetPose: activeDiagnoseCommand.targetPose,
           routeSteps: activeDiagnoseCommand.routeSteps,
           currentStepIndex: activeDiagnoseCommand.currentStepIndex + 1,

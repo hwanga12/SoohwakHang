@@ -35,7 +35,7 @@ amcl:
       z: 0.0
       yaw: 1.5708
     sigma_hit: 0.2
-    tf_broadcast: false
+    tf_broadcast: true
     transform_tolerance: 1.0
     update_min_a: 0.1
     update_min_d: 0.10

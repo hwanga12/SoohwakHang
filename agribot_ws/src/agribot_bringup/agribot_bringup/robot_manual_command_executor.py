@@ -4,12 +4,14 @@ from collections import deque
 from dataclasses import dataclass
 import json
 import math
+import os
 from pathlib import Path
+import subprocess
 from typing import Any
 
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import Point
-from nav2_msgs.action import BackUp, NavigateToPose
+from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped
+from nav2_msgs.action import BackUp, NavigateThroughPoses, NavigateToPose
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.duration import Duration
@@ -34,6 +36,10 @@ from .control_state import (
     ResumeContextType,
     build_control_state_payload,
     iso_now,
+)
+from .manual_navigation_routing import (
+    ManualNavigationRoute,
+    build_manual_navigation_route,
 )
 from .runtime_snapshot_service import (
     DEFAULT_FRAME_ID,
@@ -73,6 +79,8 @@ RESUME_COMMAND_TYPES = {
 PATROL_ACTIVE_STATES = {'starting', 'running', 'observing', 'stopping'}
 PATROL_RESUMABLE_STATES = PATROL_ACTIVE_STATES | {'stopped'}
 NAVIGATE_TO_POSE_NONE_ERROR_CODE = int(getattr(NavigateToPose.Result, 'NONE', 0) or 0)
+START_OCCUPIED_ERROR_CODES = {205, 305}
+TRANSIENT_NAVIGATION_TF_ERROR_CODES = {102, 202, 302}
 _UNSET = object()
 
 
@@ -132,8 +140,9 @@ class ManualCommand:
     robot_id: str
     requested_by: str
     target_pose: CommandPose | None
-    home_waypoint_id: str | None
-    preempt_current_navigation: bool
+    inspect_waypoint_id: str | None = None
+    home_waypoint_id: str | None = None
+    preempt_current_navigation: bool = False
 
 
 @dataclass
@@ -142,6 +151,7 @@ class ActiveCommandContext:
     received_at: str
     started_at: str | None = None
     target_pose: CommandPose | None = None
+    target_waypoint_id: str | None = None
     home_waypoint_id: str | None = None
 
 
@@ -415,6 +425,10 @@ def parse_manual_command_payload(
         raw_payload,
         'home_waypoint_id',
     )
+    inspect_waypoint_id = _extract_string(payload, 'inspect_waypoint_id') or _extract_string(
+        raw_payload,
+        'inspect_waypoint_id',
+    )
 
     return ManualCommand(
         command_id=command_id,
@@ -422,6 +436,7 @@ def parse_manual_command_payload(
         robot_id=robot_id,
         requested_by=requested_by,
         target_pose=target_pose,
+        inspect_waypoint_id=inspect_waypoint_id or None,
         home_waypoint_id=home_waypoint_id or None,
         preempt_current_navigation=preempt_current_navigation,
     )
@@ -466,6 +481,7 @@ def build_manual_resume_context(
         command_id=context.command.command_id,
         command_type=command_type,
         target_pose=context.target_pose.as_status_payload(),
+        target_waypoint_id=context.target_waypoint_id,
         home_waypoint_id=context.home_waypoint_id,
     )
 
@@ -509,8 +525,23 @@ def _navigation_error_message(nav_result: Any) -> str:
 
 
 def _navigation_result_indicates_start_occupied(nav_result: Any) -> bool:
+    error_code = _navigation_error_code(nav_result)
+    if error_code in START_OCCUPIED_ERROR_CODES:
+        return True
     error_msg = _navigation_error_message(nav_result).lower()
     return bool(error_msg) and 'start' in error_msg and 'occupied' in error_msg
+
+
+def _navigation_result_indicates_transient_tf_error(nav_result: Any) -> bool:
+    error_code = _navigation_error_code(nav_result)
+    if error_code in TRANSIENT_NAVIGATION_TF_ERROR_CODES:
+        return True
+    error_msg = _navigation_error_message(nav_result).lower()
+    return bool(error_msg) and (
+        'transform' in error_msg
+        or 'extrapolation' in error_msg
+        or 'tf' in error_msg
+    )
 
 
 def _navigation_failure_message(nav_result: Any) -> str:
@@ -619,6 +650,7 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('robot_id', 'AGR-02')
         self.declare_parameter('map_frame', DEFAULT_FRAME_ID)
         self.declare_parameter('navigate_to_pose_action', 'navigate_to_pose')
+        self.declare_parameter('navigate_through_poses_action', 'navigate_through_poses')
         self.declare_parameter('patrol_status_topic', '/patrol/status')
         self.declare_parameter('patrol_stop_service', '/patrol/stop')
         self.declare_parameter('patrol_resume_service', '/patrol/resume')
@@ -636,6 +668,15 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('start_occupied_recovery_time_allowance_sec', 4.0)
         self.declare_parameter('start_occupied_recovery_limit', 1)
         self.declare_parameter('goal_soft_complete_xy_tolerance_m', 0.55)
+        self.declare_parameter('simulation_pose_reset_recovery_enabled', True)
+        self.declare_parameter('simulation_pose_reset_retry_limit', 1)
+        self.declare_parameter('simulation_pose_reset_retry_delay_sec', 0.8)
+        self.declare_parameter('simulation_pose_reset_robot_model_name', 'agribot')
+        self.declare_parameter('gazebo_world_name', 'farm_world')
+        self.declare_parameter('gazebo_partition', os.environ.get('GZ_PARTITION', 'agribot_sim'))
+        self.declare_parameter('gazebo_command_timeout_ms', 3000)
+        self.declare_parameter('gz_executable', 'gz')
+        self.declare_parameter('initial_pose_topic', '/initialpose')
         self.declare_parameter(
             'patrol_waypoints_file',
             str(get_default_patrol_waypoints_path()),
@@ -651,6 +692,7 @@ class RobotManualCommandExecutor(Node):
         self._default_robot_id = str(self.get_parameter('robot_id').value)
         self._map_frame = str(self.get_parameter('map_frame').value)
         self._action_name = str(self.get_parameter('navigate_to_pose_action').value)
+        self._batch_action_name = str(self.get_parameter('navigate_through_poses_action').value)
         self._backup_action_name = str(self.get_parameter('backup_action').value)
         self._patrol_status_topic = str(self.get_parameter('patrol_status_topic').value)
         self._control_state_topic = str(self.get_parameter('control_state_topic').value)
@@ -690,10 +732,37 @@ class RobotManualCommandExecutor(Node):
             0.0,
             float(self.get_parameter('goal_soft_complete_xy_tolerance_m').value),
         )
+        self._simulation_pose_reset_recovery_enabled = bool(
+            self.get_parameter('simulation_pose_reset_recovery_enabled').value
+        )
+        self._simulation_pose_reset_retry_limit = max(
+            0,
+            int(self.get_parameter('simulation_pose_reset_retry_limit').value),
+        )
+        self._simulation_pose_reset_retry_delay_sec = max(
+            0.0,
+            float(self.get_parameter('simulation_pose_reset_retry_delay_sec').value),
+        )
+        self._simulation_pose_reset_robot_model_name = str(
+            self.get_parameter('simulation_pose_reset_robot_model_name').value
+        ).strip() or 'agribot'
+        self._gazebo_world_name = str(self.get_parameter('gazebo_world_name').value).strip()
+        self._gazebo_partition = str(self.get_parameter('gazebo_partition').value).strip()
+        self._gazebo_command_timeout_ms = max(
+            1,
+            int(self.get_parameter('gazebo_command_timeout_ms').value),
+        )
+        self._gz_executable = str(self.get_parameter('gz_executable').value).strip() or 'gz'
+        self._initial_pose_topic = str(self.get_parameter('initial_pose_topic').value).strip() or '/initialpose'
         history_size = max(8, int(self.get_parameter('processed_command_history_size').value))
 
         self._plan = self._load_patrol_plan()
         self._navigate_client = ActionClient(self, NavigateToPose, self._action_name)
+        self._navigate_through_client = ActionClient(
+            self,
+            NavigateThroughPoses,
+            self._batch_action_name,
+        )
         self._backup_client = ActionClient(self, BackUp, self._backup_action_name)
         self._patrol_stop_client = self.create_client(
             Trigger,
@@ -714,6 +783,11 @@ class RobotManualCommandExecutor(Node):
             self._control_state_topic,
             10,
         )
+        self._initial_pose_publisher = self.create_publisher(
+            PoseWithCovarianceStamped,
+            self._initial_pose_topic,
+            10,
+        )
 
         self._processed_command_ids: set[str] = set()
         self._processed_command_order: deque[str] = deque(maxlen=history_size)
@@ -729,6 +803,8 @@ class RobotManualCommandExecutor(Node):
         self._recovery_cancel_future = None
         self._active_recovery_handle = None
         self._start_occupied_recovery_count = 0
+        self._simulation_pose_reset_recovery_count = 0
+        self._simulation_pose_reset_retry_timer = None
         self._service_future = None
         self._pending_context: ActiveCommandContext | None = None
         self._last_status_payload: dict[str, Any] | None = None
@@ -1094,6 +1170,7 @@ class RobotManualCommandExecutor(Node):
                 self._active_recovery_handle,
                 self._recovery_cancel_future,
                 self._goal_retry_timer,
+                self._simulation_pose_reset_retry_timer,
                 self._patrol_state_wait,
             )
         )
@@ -1126,10 +1203,12 @@ class RobotManualCommandExecutor(Node):
         self._recovery_cancel_future = None
         self._active_recovery_handle = None
         self._start_occupied_recovery_count = 0
+        self._simulation_pose_reset_recovery_count = 0
         self._patrol_state_wait = None
         self._navigation_cancel_reason = ''
         self._resume_release_pending = False
         self._goal_reject_retry_count = 0
+        self._cancel_simulation_pose_reset_retry_timer()
         self._update_control_state()
 
     def _build_non_active_command_status_payload(
@@ -1173,6 +1252,7 @@ class RobotManualCommandExecutor(Node):
             command=command,
             received_at=_iso_now(),
             target_pose=command.target_pose,
+            target_waypoint_id=command.inspect_waypoint_id or command.home_waypoint_id,
             home_waypoint_id=command.home_waypoint_id,
         )
 
@@ -1407,6 +1487,7 @@ class RobotManualCommandExecutor(Node):
             return
 
         if command.command_type == 'navigate_to_pose':
+            context.target_waypoint_id = command.inspect_waypoint_id
             self._start_navigation_command(
                 context,
                 target_pose=command.target_pose,
@@ -1421,6 +1502,7 @@ class RobotManualCommandExecutor(Node):
                 self._finish_active_command('failed', str(exc), error='home_waypoint_not_found')
                 return
             context.home_waypoint_id = home_waypoint_id
+            context.target_waypoint_id = home_waypoint_id
             self._start_navigation_command(
                 context,
                 target_pose=target_pose,
@@ -1567,6 +1649,7 @@ class RobotManualCommandExecutor(Node):
             return
 
         context.home_waypoint_id = resume_context.home_waypoint_id
+        context.target_waypoint_id = resume_context.target_waypoint_id or resume_context.home_waypoint_id
         context.target_pose = _coerce_pose(resume_context.target_pose, self._map_frame)
         self._resume_release_pending = True
         if self._schedule_resume_release_recovery(context):
@@ -1645,7 +1728,14 @@ class RobotManualCommandExecutor(Node):
         self._goal_reject_retry_count = 0
         self._cancel_goal_retry_timer()
         self._start_occupied_recovery_count = 0
+        self._simulation_pose_reset_recovery_count = 0
+        self._cancel_simulation_pose_reset_retry_timer()
         context.target_pose = target_pose
+        context.target_waypoint_id = (
+            context.target_waypoint_id
+            or context.command.inspect_waypoint_id
+            or context.home_waypoint_id
+        )
         self._update_control_state()
         if context.command.preempt_current_navigation:
             self._prepare_navigation_preemption(context, label=label)
@@ -1740,6 +1830,77 @@ class RobotManualCommandExecutor(Node):
             is_retry=False,
         )
 
+    def _command_pose_from_pose2d(self, pose: Pose2D) -> CommandPose:
+        return CommandPose(
+            x=pose.x,
+            y=pose.y,
+            z=pose.z,
+            yaw=pose.yaw,
+            frame_id=self._plan.frame_id,
+        )
+
+    def _resolve_navigation_route(
+        self,
+        context: ActiveCommandContext,
+        target_pose: CommandPose,
+    ) -> ManualNavigationRoute:
+        current_pose = read_runtime_pose_snapshot(
+            self._runtime_dir,
+            expected_frame=self._map_frame,
+        )
+        route = build_manual_navigation_route(
+            self._plan,
+            current_pose=current_pose,
+            target_pose=target_pose.as_pose2d(),
+            explicit_waypoint_id=context.target_waypoint_id,
+        )
+        if route.target_waypoint_id:
+            context.target_waypoint_id = route.target_waypoint_id
+        if route.poses:
+            context.target_pose = self._command_pose_from_pose2d(route.poses[-1])
+        if route.waypoint_ids:
+            self.get_logger().info(
+                '수동 이동 경로를 patrol waypoint 기준으로 재해석했습니다. '
+                f'target_waypoint={context.target_waypoint_id or "-"}, '
+                f'route={" -> ".join(route.waypoint_ids)}'
+            )
+        return route
+
+    def _dispatch_navigation_batch_goal(
+        self,
+        context: ActiveCommandContext,
+        *,
+        route: ManualNavigationRoute,
+        label: str,
+        is_retry: bool,
+    ) -> None:
+        if not self._navigate_through_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
+            self._finish_active_command(
+                'failed',
+                f'NavigateThroughPoses action server를 찾지 못했습니다: {self._batch_action_name}',
+                error='navigate_through_action_unavailable',
+            )
+            return
+
+        if context.started_at is None:
+            context.started_at = _iso_now()
+
+        goal = NavigateThroughPoses.Goal()
+        goal.poses = [self._build_pose_stamped(pose) for pose in route.poses]
+        goal.behavior_tree = ''
+
+        if is_retry:
+            message = (
+                f'{label} 안전 경로 재시도 중입니다. '
+                f'({self._goal_reject_retry_count}/{self._goal_reject_retry_limit})'
+            )
+        else:
+            message = f'{label} 안전 경로를 실행 중입니다.'
+
+        self._write_status(self._build_status_payload(context, 'running', message))
+        self._goal_send_future = self._navigate_through_client.send_goal_async(goal)
+        self._goal_send_future.add_done_callback(self._handle_navigation_goal_response)
+
     def _dispatch_navigation_goal(
         self,
         context: ActiveCommandContext,
@@ -1748,6 +1909,16 @@ class RobotManualCommandExecutor(Node):
         label: str,
         is_retry: bool,
     ) -> None:
+        route = self._resolve_navigation_route(context, target_pose)
+        if len(route.poses) > 1:
+            self._dispatch_navigation_batch_goal(
+                context,
+                route=route,
+                label=label,
+                is_retry=is_retry,
+            )
+            return
+
         if not self._navigate_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
             self._finish_active_command(
                 'failed',
@@ -1756,12 +1927,15 @@ class RobotManualCommandExecutor(Node):
             )
             return
 
-        context.target_pose = target_pose
+        if route.poses:
+            context.target_pose = self._command_pose_from_pose2d(route.poses[-1])
+        else:
+            context.target_pose = target_pose
         if context.started_at is None:
             context.started_at = _iso_now()
 
         goal = NavigateToPose.Goal()
-        goal.pose = self._build_pose_stamped(target_pose.as_pose2d())
+        goal.pose = self._build_pose_stamped(context.target_pose.as_pose2d())
         goal.behavior_tree = ''
 
         message = f'{label} 명령을 실행 중입니다.'
@@ -1797,7 +1971,7 @@ class RobotManualCommandExecutor(Node):
         except Exception as exc:
             self._finish_active_command(
                 'failed',
-                f'NavigateToPose goal 전송에 실패했습니다: {exc}',
+                f'주행 goal 전송에 실패했습니다: {exc}',
                 error='goal_send_failed',
             )
             return
@@ -1815,7 +1989,7 @@ class RobotManualCommandExecutor(Node):
                 return
             self._finish_active_command(
                 'failed',
-                'NavigateToPose goal이 반복해서 거부되었습니다. 현재 로봇 위치 추정과 TF 상태를 확인하세요.',
+                '주행 goal이 반복해서 거부되었습니다. 현재 로봇 위치 추정과 TF 상태를 확인하세요.',
                 error='goal_rejected',
             )
             return
@@ -1879,8 +2053,14 @@ class RobotManualCommandExecutor(Node):
             )
             return
 
-        if _navigation_result_indicates_start_occupied(nav_result) and self._schedule_start_occupied_recovery():
-            return
+        if _navigation_result_indicates_start_occupied(nav_result):
+            if self._schedule_simulation_pose_reset_recovery():
+                return
+            if self._schedule_start_occupied_recovery():
+                return
+        if _navigation_result_indicates_transient_tf_error(nav_result):
+            if self._schedule_transient_navigation_retry():
+                return
 
         message = _navigation_failure_message(nav_result)
         self._finish_active_command('failed', message, error='navigate_failed')
@@ -2089,6 +2269,8 @@ class RobotManualCommandExecutor(Node):
             error_msg = str(getattr(recovery_result, 'error_msg', '') or '').strip()
             error_code = int(getattr(recovery_result, 'error_code', BackUp.Result.UNKNOWN) or 0)
             detail = error_msg or '후진 recovery로도 통로를 확보하지 못했습니다.'
+            if self._schedule_simulation_pose_reset_recovery():
+                return
             self._finish_active_command(
                 'failed',
                 f'시작 위치 recovery가 실패했습니다: {detail} (error_code={error_code})',
@@ -2104,6 +2286,135 @@ class RobotManualCommandExecutor(Node):
             context,
             target_pose=context.target_pose,
             label=retry_label,
+            is_retry=True,
+        )
+
+    def _build_gazebo_robot_pose_request(self, pose: CommandPose) -> str:
+        half_yaw = float(pose.yaw) / 2.0
+        orientation_z = math.sin(half_yaw)
+        orientation_w = math.cos(half_yaw)
+        return (
+            f'name: "{self._simulation_pose_reset_robot_model_name}", '
+            f'position: {{x: {pose.x:.6f}, y: {pose.y:.6f}, z: {pose.z:.6f}}}, '
+            'orientation: {'
+            f'x: 0.000000, y: 0.000000, z: {orientation_z:.6f}, w: {orientation_w:.6f}'
+            '}'
+        )
+
+    def _set_gazebo_robot_pose(self, pose: CommandPose) -> bool:
+        command_env = os.environ.copy()
+        if self._gazebo_partition:
+            command_env['GZ_PARTITION'] = self._gazebo_partition
+
+        service_candidates = (
+            f'/world/{self._gazebo_world_name}/set_pose/blocking',
+            f'/world/{self._gazebo_world_name}/set_pose',
+        )
+        last_error = ''
+        for service_name in service_candidates:
+            try:
+                completed = subprocess.run(
+                    [
+                        self._gz_executable,
+                        'service',
+                        '-s',
+                        service_name,
+                        '--reqtype',
+                        'gz.msgs.Pose',
+                        '--reptype',
+                        'gz.msgs.Boolean',
+                        '--timeout',
+                        str(self._gazebo_command_timeout_ms),
+                        '--req',
+                        self._build_gazebo_robot_pose_request(pose),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    env=command_env,
+                    text=True,
+                )
+            except FileNotFoundError:
+                self.get_logger().warning(
+                    f'Gazebo CLI "{self._gz_executable}"를 찾지 못해 시뮬레이션 pose 복구를 건너뜁니다.'
+                )
+                return False
+
+            combined_output = f'{completed.stdout}\n{completed.stderr}'.strip()
+            if completed.returncode == 0 and 'data: false' not in combined_output.lower():
+                return True
+            last_error = combined_output or str(completed.returncode)
+
+        self.get_logger().warning(f'Gazebo pose 복구에 실패했습니다: {last_error}')
+        return False
+
+    def _publish_initial_pose(self, pose: CommandPose) -> None:
+        message = PoseWithCovarianceStamped()
+        message.header.stamp = self.get_clock().now().to_msg()
+        message.header.frame_id = pose.frame_id
+        message.pose.pose.position.x = pose.x
+        message.pose.pose.position.y = pose.y
+        message.pose.pose.position.z = pose.z
+        message.pose.pose.orientation.z = math.sin(float(pose.yaw) / 2.0)
+        message.pose.pose.orientation.w = math.cos(float(pose.yaw) / 2.0)
+        covariance = [0.0] * 36
+        covariance[0] = 0.15
+        covariance[7] = 0.15
+        covariance[35] = math.radians(10.0) ** 2
+        message.pose.covariance = covariance
+        self._initial_pose_publisher.publish(message)
+
+    def _choose_simulation_pose_reset_target(self, context: ActiveCommandContext) -> CommandPose | None:
+        if context.target_pose is None:
+            return None
+
+        route = self._resolve_navigation_route(context, context.target_pose)
+        if route.poses:
+            return self._command_pose_from_pose2d(route.poses[0])
+        return context.target_pose
+
+    def _schedule_simulation_pose_reset_recovery(self) -> bool:
+        context = self._active_context
+        if context is None or context.target_pose is None:
+            return False
+        if not self._simulation_pose_reset_recovery_enabled:
+            return False
+        if self._simulation_pose_reset_recovery_count >= self._simulation_pose_reset_retry_limit:
+            return False
+
+        recovery_pose = self._choose_simulation_pose_reset_target(context)
+        if recovery_pose is None:
+            return False
+        if not self._set_gazebo_robot_pose(recovery_pose):
+            return False
+
+        self._publish_initial_pose(recovery_pose)
+        self._simulation_pose_reset_recovery_count += 1
+        self._cancel_simulation_pose_reset_retry_timer()
+        recovery_label = (
+            '현재 위치가 통로 밖으로 걸려 Gazebo 시뮬레이션 pose를 안전 waypoint로 복구한 뒤 '
+            '원래 목적지를 다시 시도합니다. '
+            f'({self._simulation_pose_reset_recovery_count}/{self._simulation_pose_reset_retry_limit})'
+        )
+        self.get_logger().warning(recovery_label)
+        self._write_status(self._build_status_payload(context, 'running', recovery_label))
+        self._simulation_pose_reset_retry_timer = self.create_timer(
+            self._simulation_pose_reset_retry_delay_sec,
+            self._retry_active_navigation_after_simulation_pose_reset,
+        )
+        return True
+
+    def _retry_active_navigation_after_simulation_pose_reset(self) -> None:
+        self._cancel_simulation_pose_reset_retry_timer()
+        context = self._active_context
+        if context is None or context.target_pose is None:
+            return
+        self._dispatch_navigation_goal(
+            context,
+            target_pose=context.target_pose,
+            label=describe_manual_navigation_label(
+                context.command.command_type,
+                context.home_waypoint_id,
+            ),
             is_retry=True,
         )
 
@@ -2276,6 +2587,9 @@ class RobotManualCommandExecutor(Node):
         self._write_status(payload)
         self._remember_processed_command_id(self._active_context.command.command_id)
         self._active_context = None
+        self._active_goal_handle = None
+        self._goal_send_future = None
+        self._goal_result_future = None
         self._goal_cancel_future = None
         self._service_future = None
         self._recovery_send_future = None
@@ -2283,9 +2597,11 @@ class RobotManualCommandExecutor(Node):
         self._recovery_cancel_future = None
         self._active_recovery_handle = None
         self._start_occupied_recovery_count = 0
+        self._simulation_pose_reset_recovery_count = 0
         self._patrol_state_wait = None
         self._navigation_cancel_reason = ''
         self._resume_release_pending = False
+        self._cancel_simulation_pose_reset_retry_timer()
         self._update_control_state()
         if self._pending_context is not None:
             self._start_pending_command()
@@ -2352,8 +2668,35 @@ class RobotManualCommandExecutor(Node):
         self._goal_reject_retry_count += 1
         self._cancel_goal_retry_timer()
         retry_message = (
-            'NavigateToPose goal이 일시적으로 거부되어 '
+            '주행 goal이 일시적으로 거부되어 '
             f'{self._goal_reject_retry_sec:.2f}s 후 재시도합니다. '
+            f'({self._goal_reject_retry_count}/{self._goal_reject_retry_limit})'
+        )
+        self.get_logger().warning(retry_message)
+        self._write_status(self._build_status_payload(context, 'running', retry_message))
+        self._goal_retry_timer = self.create_timer(
+            self._goal_reject_retry_sec,
+            self._retry_active_navigation_goal,
+        )
+        return True
+
+    def _schedule_transient_navigation_retry(self) -> bool:
+        context = self._active_context
+        if context is None or context.target_pose is None:
+            return False
+        if self._goal_reject_retry_sec <= 0.0:
+            return False
+        if not should_retry_goal_rejection(
+            self._goal_reject_retry_count,
+            self._goal_reject_retry_limit,
+        ):
+            return False
+
+        self._goal_reject_retry_count += 1
+        self._cancel_goal_retry_timer()
+        retry_message = (
+            'TF 동기화가 아직 안정화되지 않아 '
+            f'{self._goal_reject_retry_sec:.2f}s 후 같은 목적지를 다시 시도합니다. '
             f'({self._goal_reject_retry_count}/{self._goal_reject_retry_limit})'
         )
         self.get_logger().warning(retry_message)
@@ -2386,10 +2729,19 @@ class RobotManualCommandExecutor(Node):
         self.destroy_timer(self._goal_retry_timer)
         self._goal_retry_timer = None
 
+    def _cancel_simulation_pose_reset_retry_timer(self) -> None:
+        if self._simulation_pose_reset_retry_timer is None:
+            return
+        self._simulation_pose_reset_retry_timer.cancel()
+        self.destroy_timer(self._simulation_pose_reset_retry_timer)
+        self._simulation_pose_reset_retry_timer = None
+
     def destroy_node(self) -> bool:
         self._cancel_goal_retry_timer()
+        self._cancel_simulation_pose_reset_retry_timer()
         self._pending_context = None
         self._navigate_client.destroy()
+        self._navigate_through_client.destroy()
         self._backup_client.destroy()
         return super().destroy_node()
 

@@ -50,6 +50,7 @@ type PendingTargetData =
       type: 'asset'
       assetId: string
       assetLabel: string
+      inspectWaypointId: string | null
       inspectWaypointName: string | null
       pose: RobotTargetPose
       plan: PlantNavigationPlan
@@ -62,6 +63,7 @@ type ActiveNavigationPlan = {
   commandId: string
   assetId: string
   assetLabel: string
+  inspectWaypointId: string | null
   finalPose: RobotTargetPose
   steps: PlantNavigationStep[]
   currentStepIndex: number
@@ -155,6 +157,7 @@ function buildPlantNavigationPendingTarget(
     type: 'asset',
     assetId: asset.id,
     assetLabel: asset.label,
+    inspectWaypointId: asset.inspectWaypointId ?? null,
     inspectWaypointName: asset.inspectWaypointName ?? null,
     pose: plan.inspectionPose,
     plan,
@@ -762,7 +765,10 @@ export function MapControlPage() {
     },
   })
   const navigateMutation = useMutation({
-    mutationFn: ({ currentTargetPose }: NavigateDispatchInput) => sendRobotNavigateCommand(currentTargetPose),
+    mutationFn: ({ currentTargetPose, assetPlan }: NavigateDispatchInput) => sendRobotNavigateCommand(
+      currentTargetPose,
+      { inspectWaypointId: assetPlan?.inspectWaypointId ?? null },
+    ),
     onSuccess: async (response, variables) => {
       const nextTarget = variables.assetPlan?.finalPose ?? response.targetPose ?? variables.currentTargetPose
       const shouldAnnounceTransition =
@@ -1207,7 +1213,7 @@ export function MapControlPage() {
                   {pendingTarget.type === 'preset'
                     ? '선택하신 구역으로의 주행을 시작하시겠습니까?'
                     : pendingTarget.type === 'asset'
-                      ? `${pendingTarget.inspectWaypointName ?? '순찰 메타데이터'} 기준 최종 관측 위치입니다. 필요한 경우 연결 통로를 먼저 경유한 뒤 이 위치로 주행합니다.`
+                      ? `${pendingTarget.inspectWaypointName ?? '순찰 메타데이터'} 기준 최종 관측 위치입니다. executor가 실제 통로 waypoint를 따라 안전 경로를 계산해 이 위치까지 주행합니다.`
                       : '빈 지도 영역을 눌러 잡은 목표입니다. 확인을 누르면 지정한 좌표로 주행합니다.'}
                 </p>
               </div>
@@ -1234,6 +1240,7 @@ export function MapControlPage() {
                           commandId: '',
                           assetId: pendingTarget.assetId,
                           assetLabel: pendingTarget.assetLabel,
+                          inspectWaypointId: pendingTarget.inspectWaypointId,
                           finalPose: pendingTarget.plan.inspectionPose,
                           steps: pendingTarget.plan.steps,
                           currentStepIndex: 0,
@@ -1408,9 +1415,7 @@ export function MapControlPage() {
                 <strong>{formatPose(selectedAssetPendingTarget.pose)}</strong>
                 <p>
                   작물 중심 좌표가 아니라 통로에서 멈출 수 있는 최종 관측 위치입니다.
-                  {selectedAssetPendingTarget.plan.steps.length > 1
-                    ? ` 시작 위치에 따라 ${selectedAssetPendingTarget.plan.steps.length - 1}개의 안전 경유 지점을 먼저 거칩니다.`
-                    : ''}
+                  executor가 현재 로봇 위치와 inspect waypoint를 기준으로 실제 안전 경로를 계산합니다.
                   {selectedAssetPendingTarget.inspectWaypointName
                     ? ` ${selectedAssetPendingTarget.inspectWaypointName} 기준으로 계산했습니다.`
                     : ''}

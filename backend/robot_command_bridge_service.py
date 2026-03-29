@@ -162,6 +162,19 @@ def _coerce_target_pose_object(target_pose: dict[str, Any]) -> dict[str, Any]:
     return _coerce_target_pose({"target_pose": target_pose})
 
 
+def _coerce_optional_waypoint_id(
+    payload: dict[str, Any],
+    *,
+    field_name: str,
+) -> str | None:
+    raw_value = payload.get(field_name)
+    if raw_value is None:
+        return None
+
+    normalized = str(raw_value).strip()
+    return normalized or None
+
+
 def _validate_target_pose_bounds(
     target_pose: dict[str, Any],
     map_id: str | None = None,
@@ -502,6 +515,12 @@ def publish_robot_command(
             _coerce_target_pose_object(explicit_target_pose),
             resolved_map_id,
         )
+        inspect_waypoint_id = _coerce_optional_waypoint_id(
+            normalized_payload,
+            field_name="inspect_waypoint_id",
+        )
+        if inspect_waypoint_id:
+            command_payload["inspect_waypoint_id"] = inspect_waypoint_id
     elif normalized_command_type == "move_to_zone":
         resolved_target_zone_id = str(target_zone_id or "").strip()
         if not resolved_target_zone_id:

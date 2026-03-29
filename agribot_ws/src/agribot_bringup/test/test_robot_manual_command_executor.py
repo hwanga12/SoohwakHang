@@ -8,6 +8,7 @@ from agribot_bringup.robot_manual_command_executor import (
     CommandPose,
     CommandValidationError,
     _navigation_failure_message,
+    _navigation_result_indicates_transient_tf_error,
     _navigation_result_indicates_start_occupied,
     ManualCommand,
     PatrolStatusSnapshot,
@@ -28,6 +29,10 @@ from agribot_bringup.robot_manual_command_executor import (
     resolve_return_home_target,
     should_block_command_for_control_mode,
     should_retry_goal_rejection,
+)
+from agribot_bringup.manual_navigation_routing import (
+    build_manual_navigation_route,
+    select_start_waypoint_id,
 )
 from agribot_navigation.patrol_config import get_default_patrol_waypoints_path, load_patrol_plan
 
@@ -142,6 +147,28 @@ def test_parse_manual_command_payload_allows_explicit_preempt_override() -> None
     assert command.preempt_current_navigation is False
 
 
+def test_parse_manual_command_payload_keeps_inspect_waypoint_id_for_plant_navigation() -> None:
+    command = parse_manual_command_payload(
+        {
+            'command_id': 'cmd-nav-plant-01',
+            'command_type': 'navigate_to_pose',
+            'robot_id': 'AGR-02',
+            'requested_by': 'frontend-operator',
+            'target_pose': {
+                'x': -4.0,
+                'y': 2.0,
+                'yaw': -1.5708,
+                'frame_id': 'map',
+            },
+            'payload': {
+                'inspect_waypoint_id': 'farm_01_lane_02_inspect_03',
+            },
+        }
+    )
+
+    assert command.inspect_waypoint_id == 'farm_01_lane_02_inspect_03'
+
+
 def test_parse_manual_command_payload_defaults_non_navigation_preempt_to_false() -> None:
     command = parse_manual_command_payload(
         {
@@ -208,11 +235,25 @@ def test_navigation_result_detects_start_occupied_without_missing_nav2_constant(
     assert 'error_code=42' in _navigation_failure_message(nav_result)
 
 
+def test_navigation_result_detects_start_occupied_from_nav2_error_code_only() -> None:
+    nav_result = SimpleNamespace(error_code=205, error_msg='')
+
+    assert _navigation_result_indicates_start_occupied(nav_result) is True
+    assert '현재 시작 위치가 통로 밖 장애물로 판정' in _navigation_failure_message(nav_result)
+    assert 'error_code=205' in _navigation_failure_message(nav_result)
+
+
 def test_navigation_failure_message_keeps_generic_errors_when_not_start_occupied() -> None:
     nav_result = SimpleNamespace(error_code=17, error_msg='Goal failed')
 
     assert _navigation_result_indicates_start_occupied(nav_result) is False
     assert _navigation_failure_message(nav_result) == 'Goal failed (error_code=17)'
+
+
+def test_navigation_result_detects_transient_tf_error_by_error_code() -> None:
+    nav_result = SimpleNamespace(error_code=102, error_msg='')
+
+    assert _navigation_result_indicates_transient_tf_error(nav_result) is True
 
 
 def test_read_runtime_pose_snapshot_reads_map_pose(tmp_path: Path) -> None:
@@ -505,3 +546,60 @@ def test_latched_emergency_stop_blocks_new_navigation_until_resume() -> None:
     assert should_block_command_for_control_mode(ControlMode.EMERGENCY_STOP, 'navigate_to_pose') is True
     assert should_block_command_for_control_mode(ControlMode.EMERGENCY_STOP, 'return_home') is True
     assert should_block_command_for_control_mode(ControlMode.EMERGENCY_STOP, 'resume_motion') is False
+
+
+def test_select_start_waypoint_id_prefers_current_connector_band_anchor() -> None:
+    patrol_plan = load_patrol_plan(get_default_patrol_waypoints_path())
+    start_waypoint_id = select_start_waypoint_id(
+        patrol_plan,
+        SimpleNamespace(x=0.0, y=-8.6, z=0.0, yaw=1.5708),
+        target_waypoint_id='farm_01_lane_02_inspect_03',
+    )
+
+    assert start_waypoint_id == 'farm_01_home'
+
+
+def test_build_manual_navigation_route_uses_patrol_lane_sequence_for_plant_inspection() -> None:
+    patrol_plan = load_patrol_plan(get_default_patrol_waypoints_path())
+    route = build_manual_navigation_route(
+        patrol_plan,
+        current_pose=SimpleNamespace(x=0.0, y=-8.6, z=0.0, yaw=1.5708),
+        target_pose=SimpleNamespace(x=-4.0, y=2.0, z=0.0, yaw=-1.5708),
+        explicit_waypoint_id='farm_01_lane_02_inspect_03',
+    )
+
+    assert route.target_waypoint_id == 'farm_01_lane_02_inspect_03'
+    assert route.waypoint_ids[0] == 'farm_01_lane_02_south_turn'
+    assert route.waypoint_ids[-1] == 'farm_01_lane_02_inspect_03'
+    assert route.poses[-1].x == -4.0
+    assert route.poses[-1].y == 2.0
+
+
+def test_select_start_waypoint_id_prefers_target_lane_anchor_when_robot_is_between_beds() -> None:
+    patrol_plan = load_patrol_plan(get_default_patrol_waypoints_path())
+    start_waypoint_id = select_start_waypoint_id(
+        patrol_plan,
+        SimpleNamespace(x=-1.7347, y=1.9200, z=0.0, yaw=2.0991),
+        target_waypoint_id='farm_01_lane_02_inspect_03',
+    )
+
+    assert start_waypoint_id == 'farm_01_lane_02_north_entry'
+
+
+def test_build_manual_navigation_route_starts_from_safe_lane_anchor_when_robot_is_between_beds() -> None:
+    patrol_plan = load_patrol_plan(get_default_patrol_waypoints_path())
+    route = build_manual_navigation_route(
+        patrol_plan,
+        current_pose=SimpleNamespace(x=-1.7347, y=1.9200, z=0.0, yaw=2.0991),
+        target_pose=SimpleNamespace(x=-4.0, y=2.0, z=0.0, yaw=-1.5708),
+        explicit_waypoint_id='farm_01_lane_02_inspect_03',
+    )
+
+    assert route.waypoint_ids[0] == 'farm_01_lane_02_north_entry'
+    assert route.waypoint_ids[-1] == 'farm_01_lane_02_inspect_03'
+    assert route.waypoint_ids[:4] == (
+        'farm_01_lane_02_north_entry',
+        'farm_01_lane_02_inspect_01',
+        'farm_01_lane_02_inspect_02',
+        'farm_01_lane_02_inspect_03',
+    )
