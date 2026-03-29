@@ -107,6 +107,8 @@ def test_spawn_launch_bridges_harvest_arm_command_topic(monkeypatch) -> None:
     arguments = [str(argument) for argument in getattr(state_bridge, '_Node__arguments', ())]
 
     assert '/agribot/harvest_arm_joint/cmd_pos@std_msgs/msg/Float64]gz.msgs.Double' in arguments
+    assert '/agribot/harvest_basket_slot_01/cmd_pos@std_msgs/msg/Float64]gz.msgs.Double' in arguments
+    assert '/agribot/harvest_basket_slot_02/cmd_pos@std_msgs/msg/Float64]gz.msgs.Double' in arguments
 
 
 def test_spawn_launch_uses_raw_clock_and_disables_clock_guard(monkeypatch) -> None:

@@ -46,3 +46,19 @@
   direction: ROS_TO_GZ
   subscriber_queue: 1
   publisher_queue: 1
+
+- ros_topic_name: "/agribot/harvest_basket_slot_01/cmd_pos"
+  gz_topic_name: "/agribot/harvest_basket_slot_01/cmd_pos"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+  subscriber_queue: 1
+  publisher_queue: 1
+
+- ros_topic_name: "/agribot/harvest_basket_slot_02/cmd_pos"
+  gz_topic_name: "/agribot/harvest_basket_slot_02/cmd_pos"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+  subscriber_queue: 1
+  publisher_queue: 1

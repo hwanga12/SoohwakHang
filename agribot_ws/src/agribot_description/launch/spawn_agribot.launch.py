@@ -165,6 +165,9 @@ def generate_launch_description():
             '/world/farm_world/model/agribot/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
             # Harvest arm position command — ROS → GZ
             '/agribot/harvest_arm_joint/cmd_pos@std_msgs/msg/Float64]gz.msgs.Double',
+            # Harvest basket preview slots — ROS → GZ
+            '/agribot/harvest_basket_slot_01/cmd_pos@std_msgs/msg/Float64]gz.msgs.Double',
+            '/agribot/harvest_basket_slot_02/cmd_pos@std_msgs/msg/Float64]gz.msgs.Double',
         ],
         remappings=[
             ('/clock', '/clock_raw'),

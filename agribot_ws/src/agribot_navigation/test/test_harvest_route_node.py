@@ -237,23 +237,25 @@ def test_finalize_harvested_tomato_visual_always_hides_actual_harvested_tomato()
     assert hidden['called'] is True
 
 
-def test_build_basket_visual_sync_targets_shows_only_loaded_slots_and_hides_rest() -> None:
+def test_sync_basket_visual_slots_publishes_visible_and_hidden_joint_positions() -> None:
     node = object.__new__(HarvestRouteNode)
-    node._animation_config = HarvestAnimationConfig(basket_slot_count=2)
-    node._basket_visual_slot_names = (
-        'agribot_harvest_basket_slot_01',
-        'agribot_harvest_basket_slot_02',
-    )
+    published_slot_01: list[float] = []
+    published_slot_02: list[float] = []
+    node._basket_visual_slot_publishers = [
+        SimpleNamespace(publish=lambda msg: published_slot_01.append(msg.data)),
+        SimpleNamespace(publish=lambda msg: published_slot_02.append(msg.data)),
+    ]
+    node._basket_visual_slot_hidden_position = 0.0
+    node._basket_visual_slot_visible_position = 0.255
     node._basket_visual_preview_count = 1
+    node._loaded_tomato_ids = []
+    node._basket_visual_last_visible_count = -1
 
-    targets = HarvestRouteNode._build_basket_visual_sync_targets(
-        node,
-        Pose2D(x=0.0, y=0.0, z=0.0, yaw=0.0),
-    )
+    HarvestRouteNode._sync_basket_visual_slots(node)
 
-    assert [name for name, _ in targets] == list(node._basket_visual_slot_names)
-    assert targets[0][1].x == node._animation_config.basket_forward_m
-    assert targets[1][1].x == node._animation_config.hidden_x_m
+    assert published_slot_01 == [0.255]
+    assert published_slot_02 == [0.0]
+    assert node._basket_visual_last_visible_count == 1
 
 
 def test_start_approach_navigation_uses_safe_inspect_waypoint_target_in_default_mode() -> None:
