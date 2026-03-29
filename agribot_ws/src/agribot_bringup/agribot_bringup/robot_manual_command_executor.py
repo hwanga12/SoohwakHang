@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 import subprocess
+import time
 from typing import Any
 
 from action_msgs.msg import GoalStatus
@@ -693,11 +694,20 @@ def read_runtime_pose_snapshot(
     runtime_dir: Path,
     *,
     expected_frame: str,
+    max_age_sec: float | None = None,
 ) -> Pose2D | None:
     try:
         payload = read_json_object(pose_snapshot_path(runtime_dir))
     except (OSError, ValueError):
         return None
+
+    if max_age_sec is not None and max_age_sec > 0.0:
+        try:
+            snapshot_timestamp = float(payload['timestamp'])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if (time.time() - snapshot_timestamp) > max_age_sec:
+            return None
 
     pose = payload.get('pose')
     if not isinstance(pose, dict):
@@ -724,11 +734,16 @@ def should_treat_failed_navigation_as_success(
     expected_frame: str,
     target_pose: CommandPose | None,
     xy_tolerance_m: float,
+    max_snapshot_age_sec: float | None = None,
 ) -> bool:
     if target_pose is None or xy_tolerance_m <= 0.0:
         return False
 
-    current_pose = read_runtime_pose_snapshot(runtime_dir, expected_frame=expected_frame)
+    current_pose = read_runtime_pose_snapshot(
+        runtime_dir,
+        expected_frame=expected_frame,
+        max_age_sec=max_snapshot_age_sec,
+    )
     return is_pose_within_xy_tolerance(
         current_pose,
         target_pose,
@@ -782,6 +797,7 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('start_occupied_recovery_time_allowance_sec', 4.0)
         self.declare_parameter('start_occupied_recovery_limit', 1)
         self.declare_parameter('goal_soft_complete_xy_tolerance_m', 0.55)
+        self.declare_parameter('runtime_pose_snapshot_max_age_sec', 1.5)
         self.declare_parameter('final_observation_stage_trigger_distance_m', 0.08)
         self.declare_parameter('final_observation_soft_complete_xy_tolerance_m', 0.4)
         self.declare_parameter('route_anchor_fallback_xy_tolerance_m', 0.65)
@@ -848,6 +864,10 @@ class RobotManualCommandExecutor(Node):
         self._goal_soft_complete_xy_tolerance_m = max(
             0.0,
             float(self.get_parameter('goal_soft_complete_xy_tolerance_m').value),
+        )
+        self._runtime_pose_snapshot_max_age_sec = max(
+            0.0,
+            float(self.get_parameter('runtime_pose_snapshot_max_age_sec').value),
         )
         self._final_observation_stage_trigger_distance_m = max(
             0.0,
@@ -1899,6 +1919,7 @@ class RobotManualCommandExecutor(Node):
         current_pose = read_runtime_pose_snapshot(
             self._runtime_dir,
             expected_frame=self._map_frame,
+            max_age_sec=self._runtime_pose_snapshot_max_age_sec,
         )
         candidate_waypoint_ids = self._observation_candidate_waypoint_ids(context)
         selected_waypoint_id = select_best_target_waypoint_id(
@@ -2120,6 +2141,7 @@ class RobotManualCommandExecutor(Node):
         current_pose = read_runtime_pose_snapshot(
             self._runtime_dir,
             expected_frame=self._map_frame,
+            max_age_sec=self._runtime_pose_snapshot_max_age_sec,
         )
         route = build_manual_navigation_route(
             self._plan,
@@ -2388,6 +2410,7 @@ class RobotManualCommandExecutor(Node):
                 if in_final_observation_stage
                 else self._goal_soft_complete_xy_tolerance_m
             ),
+            max_snapshot_age_sec=self._runtime_pose_snapshot_max_age_sec,
         ):
             self._start_occupied_recovery_count = 0
             self._finish_active_command(
@@ -2404,6 +2427,7 @@ class RobotManualCommandExecutor(Node):
             current_pose = read_runtime_pose_snapshot(
                 self._runtime_dir,
                 expected_frame=self._map_frame,
+                max_age_sec=self._runtime_pose_snapshot_max_age_sec,
             )
             if is_pose_within_xy_tolerance(
                 current_pose,
