@@ -11,7 +11,7 @@ import time
 from typing import Any
 
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped, Twist
+from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped
 from nav2_msgs.action import BackUp, ComputePathToPose, NavigateThroughPoses, NavigateToPose
 import rclpy
 from rclpy.action import ActionClient
@@ -856,10 +856,6 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('gazebo_command_timeout_ms', 3000)
         self.declare_parameter('gz_executable', 'gz')
         self.declare_parameter('initial_pose_topic', '/initialpose')
-        self.declare_parameter('terminal_stop_command_topic', '/cmd_vel')
-        self.declare_parameter('terminal_stop_safe_topic', '/cmd_vel_safe')
-        self.declare_parameter('terminal_stop_burst_count', 4)
-        self.declare_parameter('terminal_stop_burst_period_sec', 0.05)
         self.declare_parameter(
             'patrol_waypoints_file',
             str(get_default_patrol_waypoints_path()),
@@ -966,20 +962,6 @@ class RobotManualCommandExecutor(Node):
         )
         self._gz_executable = str(self.get_parameter('gz_executable').value).strip() or 'gz'
         self._initial_pose_topic = str(self.get_parameter('initial_pose_topic').value).strip() or '/initialpose'
-        self._terminal_stop_command_topic = str(
-            self.get_parameter('terminal_stop_command_topic').value
-        ).strip()
-        self._terminal_stop_safe_topic = str(
-            self.get_parameter('terminal_stop_safe_topic').value
-        ).strip()
-        self._terminal_stop_burst_count = max(
-            1,
-            int(self.get_parameter('terminal_stop_burst_count').value),
-        )
-        self._terminal_stop_burst_period_sec = max(
-            0.01,
-            float(self.get_parameter('terminal_stop_burst_period_sec').value),
-        )
         history_size = max(8, int(self.get_parameter('processed_command_history_size').value))
 
         self._plan = self._load_patrol_plan()
@@ -1019,16 +1001,6 @@ class RobotManualCommandExecutor(Node):
             self._initial_pose_topic,
             10,
         )
-        self._terminal_stop_command_publisher = (
-            self.create_publisher(Twist, self._terminal_stop_command_topic, 10)
-            if self._terminal_stop_command_topic
-            else None
-        )
-        self._terminal_stop_safe_publisher = (
-            self.create_publisher(Twist, self._terminal_stop_safe_topic, 10)
-            if self._terminal_stop_safe_topic
-            else None
-        )
 
         self._processed_command_ids: set[str] = set()
         self._processed_command_order: deque[str] = deque(maxlen=history_size)
@@ -1057,8 +1029,6 @@ class RobotManualCommandExecutor(Node):
         self._patrol_state_wait: dict[str, Any] | None = None
         self._navigation_cancel_reason = ''
         self._resume_release_pending = False
-        self._terminal_stop_timer = None
-        self._terminal_stop_remaining_publishes = 0
         self._control_state = ControlStateSnapshot(
             mode=ControlMode.NORMAL,
             active_activity=MotionActivity.IDLE,
@@ -3394,13 +3364,6 @@ class RobotManualCommandExecutor(Node):
         if self._active_context is None:
             return
 
-        if status in TERMINAL_STATUSES:
-            if self._pending_context is not None:
-                self._cancel_terminal_stop_timer()
-                self._publish_terminal_stop_command_once()
-            else:
-                self._publish_terminal_stop_burst()
-
         if should_restore_paused_manual_navigation_after_failed_resume(
             self._active_context,
             status=status,
@@ -3508,42 +3471,6 @@ class RobotManualCommandExecutor(Node):
     def _write_status(self, payload: dict[str, Any]) -> None:
         write_json_atomic(self._status_path, payload)
         self._last_status_payload = payload
-
-    def _publish_terminal_stop_command_once(self) -> None:
-        zero_twist = Twist()
-        if self._terminal_stop_command_publisher is not None:
-            self._terminal_stop_command_publisher.publish(zero_twist)
-        if self._terminal_stop_safe_publisher is not None:
-            self._terminal_stop_safe_publisher.publish(zero_twist)
-
-    def _cancel_terminal_stop_timer(self) -> None:
-        if self._terminal_stop_timer is None:
-            return
-        self._terminal_stop_timer.cancel()
-        self.destroy_timer(self._terminal_stop_timer)
-        self._terminal_stop_timer = None
-        self._terminal_stop_remaining_publishes = 0
-
-    def _handle_terminal_stop_timer(self) -> None:
-        if self._terminal_stop_remaining_publishes <= 0:
-            self._cancel_terminal_stop_timer()
-            return
-
-        self._publish_terminal_stop_command_once()
-        self._terminal_stop_remaining_publishes -= 1
-        if self._terminal_stop_remaining_publishes <= 0:
-            self._cancel_terminal_stop_timer()
-
-    def _publish_terminal_stop_burst(self) -> None:
-        self._cancel_terminal_stop_timer()
-        self._publish_terminal_stop_command_once()
-        self._terminal_stop_remaining_publishes = self._terminal_stop_burst_count - 1
-        if self._terminal_stop_remaining_publishes <= 0:
-            return
-        self._terminal_stop_timer = self.create_timer(
-            self._terminal_stop_burst_period_sec,
-            self._handle_terminal_stop_timer,
-        )
 
     def _build_pose_stamped(self, pose: Pose2D) -> PoseStamped:
         return build_latest_pose_stamped(
