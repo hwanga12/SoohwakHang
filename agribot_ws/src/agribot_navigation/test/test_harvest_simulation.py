@@ -49,7 +49,7 @@ def test_compute_basket_pose_default_height_keeps_tomato_above_placeholder_floor
 
     basket_pose = compute_basket_pose(pose, HarvestAnimationConfig(), basket_slot_index=0)
 
-    assert basket_pose.x == pytest.approx(-1.86)
+    assert basket_pose.x == pytest.approx(-2.14)
     assert basket_pose.y == pytest.approx(3.975)
     assert basket_pose.z == pytest.approx(0.26)
 

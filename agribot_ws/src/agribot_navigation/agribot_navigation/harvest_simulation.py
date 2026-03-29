@@ -23,7 +23,7 @@ class HarvestAnimationConfig:
     carry_forward_m: float = -0.24
     carry_lateral_m: float = 0.0
     carry_z_m: float = 0.46
-    basket_forward_m: float = 0.14
+    basket_forward_m: float = -0.14
     basket_lateral_m: float = 0.0
     # The basket floor sits near z=0.23 in world coordinates when base_link is
     # on the ground, so keep the tomato center just above it.

@@ -13,7 +13,7 @@ harvest_action_server:
     alignment_settle_sec: 0.75
     picking_duration_sec: 1.0
     verify_duration_sec: 0.6
-    basket_stow_duration_sec: 0.8
+    basket_stow_duration_sec: 1.2
     return_mode_override: ""
     auto_resume_patrol: true
     phase_retry_limit: 1
@@ -39,7 +39,7 @@ harvest_action_server:
     harvest_carry_forward_m: -0.24
     harvest_carry_lateral_m: 0.0
     harvest_carry_z_m: 0.46
-    harvest_basket_forward_m: 0.14
+    harvest_basket_forward_m: -0.14
     harvest_basket_lateral_m: 0.0
     harvest_basket_z_m: 0.26
     harvest_visual_basket_slot_count: 2
