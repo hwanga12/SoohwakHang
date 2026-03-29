@@ -48,9 +48,28 @@ def main() -> int:
     publisher = node.create_publisher(IoTCommand, args.topic, 10)
     try:
         min_subscribers = max(1, int(args.min_subscribers))
-        deadline = time.monotonic() + max(0.5, float(args.discovery_timeout_sec))
-        while time.monotonic() < deadline and publisher.get_subscription_count() < min_subscribers:
+        discovery_timeout_sec = max(0.5, float(args.discovery_timeout_sec))
+        discovery_started_at = time.monotonic()
+        deadline = discovery_started_at + discovery_timeout_sec
+        min_settle_wait_sec = min(1.5, discovery_timeout_sec)
+        stable_window_sec = 0.45
+        last_subscription_count = publisher.get_subscription_count()
+        last_subscription_change_at = discovery_started_at
+
+        while time.monotonic() < deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
+            now = time.monotonic()
+            subscription_count = publisher.get_subscription_count()
+            if subscription_count != last_subscription_count:
+                last_subscription_count = subscription_count
+                last_subscription_change_at = now
+
+            if (
+                subscription_count >= min_subscribers
+                and now - discovery_started_at >= min_settle_wait_sec
+                and now - last_subscription_change_at >= stable_window_sec
+            ):
+                break
 
         subscription_count = publisher.get_subscription_count()
         if subscription_count < min_subscribers:
