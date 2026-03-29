@@ -7,6 +7,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import subprocess
 from typing import Any
 import uuid
@@ -1230,10 +1231,31 @@ class HarvestRouteNode(Node):
         if self._gazebo_partition:
             command_env['GZ_PARTITION'] = self._gazebo_partition
 
+        try:
+            slot_sdf = self._basket_visual_model_sdf.read_text(encoding='utf-8')
+        except OSError as exc:
+            self.get_logger().warning(
+                f'바구니 토마토 visual SDF를 읽지 못해 슬롯을 만들지 못했습니다: '
+                f'{self._basket_visual_model_sdf} ({exc})'
+            )
+            return False
+
+        renamed_slot_sdf, replacement_count = re.subn(
+            r'(<model\s+name=")([^"]+)(")',
+            rf'\1{slot_name}\3',
+            slot_sdf,
+            count=1,
+        )
+        if replacement_count == 0:
+            self.get_logger().warning(
+                f'바구니 토마토 visual SDF에서 model name을 치환하지 못해 슬롯 이름을 강제할 수 없습니다: '
+                f'{self._basket_visual_model_sdf}'
+            )
+            renamed_slot_sdf = slot_sdf
+
         request = (
-            f'name: "{slot_name}", '
             'allow_renaming: false, '
-            f'sdf_filename: "{self._basket_visual_model_sdf}", '
+            f'sdf: {json.dumps(renamed_slot_sdf)}, '
             f'pose: {{position: {{x: {initial_pose.x:.6f}, y: {initial_pose.y:.6f}, z: {initial_pose.z:.6f}}}, '
             'orientation: {x: 0.000000, y: 0.000000, z: 0.000000, w: 1.000000}}}, '
             'relative_to: "world"'
@@ -1267,13 +1289,24 @@ class HarvestRouteNode(Node):
 
         combined_output = f'{completed.stdout}\n{completed.stderr}'.strip().lower()
         if completed.returncode == 0 and 'data: false' not in combined_output:
+            self.get_logger().info(
+                f'바구니 토마토 visual 슬롯을 Gazebo에 준비했습니다: {slot_name}'
+            )
             return True
         if 'already exists' in combined_output or 'entity already exists' in combined_output:
             return True
 
         # 이미 존재하는 경우 Gazebo 응답 문구가 일정하지 않을 수 있어서,
         # 후속 pose 이동이 성공하면 슬롯 생성이 끝난 것으로 간주한다.
-        return self._set_gazebo_entity_pose(slot_name, initial_pose)
+        if self._set_gazebo_entity_pose(slot_name, initial_pose):
+            self.get_logger().info(
+                f'기존 바구니 토마토 visual 슬롯을 재사용합니다: {slot_name}'
+            )
+            return True
+        self.get_logger().warning(
+            f'바구니 토마토 visual 슬롯 생성에 실패했습니다: {slot_name}, response={combined_output}'
+        )
+        return False
 
     def _dispatch_basket_visual_slot_pose(self, entity_name: str, pose: WorldPose) -> bool:
         set_entity_pose_client = getattr(self, '_set_entity_pose_client', None)
