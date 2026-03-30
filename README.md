@@ -1,432 +1,214 @@
-# 🌱 AgriBot — 스마트 농장 자율주행 채소 관리 로봇
+# AgriBot
 
-> Gazebo Harmonic과 ROS 2 Jazzy를 활용하여 비닐하우스/농장 환경을 자율주행하며 토마토·딸기 등의 채소를 관리하고, IoT 기기와 통신하는 로봇 시뮬레이션
+수확해조(AgriBot)는 ROS 2 Jazzy와 Gazebo Harmonic 기반의 스마트팜 자율주행 시뮬레이션 프로젝트입니다.  
+로봇 시뮬레이션, FastAPI 백엔드, React 관제 프론트엔드, PostgreSQL, MQTT 브로커를 함께 사용해 병해 진단, AI 판단 이력, 수확 시나리오, IoT 제어 흐름을 통합합니다.
 
----
+## 핵심 기능
 
-## 🛠 기술 스택
+- 밭 순찰, 관측 지점 이동, 수동 이동, 귀가
+- 병해 진단 데모 및 AI 판단 이력 저장
+- 숙도 및 수확 의사결정(`HARVEST_DECISION`) 조회
+- 개별 수확 / 전체 수확 패트롤 시나리오
+- PostgreSQL 기반 식물, 과실, 미션, 수확, AI 판단 데이터 관리
+- ROS 런타임 파일 브리지 기반 backend-robot 상태 연동
 
-| 항목 | 버전 |
+## 기술 스택
+
+| 구분 | 구성 |
 | --- | --- |
-| **OS** | Ubuntu 24.04 (WSL2 또는 네이티브) |
-| **Framework** | ROS 2 Jazzy |
-| **Simulator** | Gazebo Harmonic |
-| **Language** | Python 3.12 / C++ 17 |
-| **자율주행 프레임워크** | Nav 2 |
-| **이미지 인식** | YOLOv8 |
+| OS / Runtime | Ubuntu 24.04, Python 3.12, Node.js |
+| Robot / Sim | ROS 2 Jazzy, Gazebo Harmonic, Nav2, SLAM Toolbox |
+| Backend | FastAPI, SQLAlchemy, psycopg2, Uvicorn |
+| Frontend | React 18, Vite 6, TypeScript |
+| Data / Infra | PostgreSQL 16, pgAdmin4, Eclipse Mosquitto |
+| AI | Ultralytics YOLO 기반 병해 진단 |
 
----
+## 저장소 구조
 
-## 🚀 빠른 시작 (Quick Start)
-
-### 1. 사전 요구사항
-
-```bash
-# ROS 2 Jazzy
-sudo apt install ros-jazzy-desktop
-
-# Gazebo Harmonic (ROS 통합)
-sudo apt install ros-jazzy-ros-gz
-
-# Navigation2 (자율주행)
-sudo apt install ros-jazzy-navigation2 ros-jazzy-nav2-bringup
-
-# SLAM Toolbox
-sudo apt install ros-jazzy-slam-toolbox
+```text
+S14P21A602/
+├── agribot_ws/   # ROS 2 workspace
+├── backend/      # FastAPI, DB 모델/라우터/서비스, seed, docker-compose
+├── frontend/     # React + Vite 관제 UI
+├── scripts/      # 실행/점검/런타임 보조 스크립트
+├── docs/         # 설계/실행/검증 문서
+├── exec/         # 포팅 매뉴얼, 최신 DB dump
+└── artifacts/    # 모델, 런타임 산출물, 데모 입력 리소스
 ```
 
-### 2. 저장소 클론
+## 사전 요구사항
+
+- ROS 2 Jazzy
+- Gazebo Harmonic 및 `ros-gz`
+- Navigation2, SLAM Toolbox
+- Docker / Docker Compose
+- Python 3.12 + `venv`
+- Node.js / npm
+
+예시 설치:
 
 ```bash
-cd ~
-git clone https://lab.ssafy.com/s14-mobility-smarthome-sub1/S14P21A602.git
-cd S14P21A602
-```
-
-### 3. Git Hook 설치 (Jira 이슈 키 자동 삽입)
-
-```bash
-sh tools/git-hooks/install.sh
-```
-
-> **참고:** 이 훅은 브랜치명에서 Jira 이슈 키(예: `S14P-42`)를 추출하여 커밋 메시지 앞에 자동으로 붙여줍니다.
-> 예시: 브랜치 `feature/S14P-42-login` → 커밋 `"로그인 기능 추가"` → 결과: `"S14P-42 로그인 기능 추가"`
-
-### 4. ROS 2 의존성 자동 설치
-
-```bash
-cd ~/S14P21A602/agribot_ws
-source /opt/ros/jazzy/setup.bash
 sudo apt update
-rosdep update
-rosdep install --from-paths src --ignore-src -r -y
+sudo apt install -y \
+  ros-jazzy-desktop \
+  ros-jazzy-ros-gz \
+  ros-jazzy-navigation2 \
+  ros-jazzy-nav2-bringup \
+  ros-jazzy-slam-toolbox
 ```
 
-### 5. 워크스페이스 빌드
+## 최초 1회 준비
 
-`--symlink-install` 옵션을 사용하면 Python 코드 수정 시 매번 빌드하지 않아도 반영됩니다.
+### Frontend
 
 ```bash
-colcon build --symlink-install
-source install/setup.bash
+cd frontend
+npm install
+npm run build
 ```
 
-### 6. 환경 변수 설정
-
-`~/.bashrc` 하단에 아래 내용을 추가하고, `source ~/.bashrc`를 한 번만 실행하세요.
+### Backend
 
 ```bash
-# ROS 2
-source /opt/ros/jazzy/setup.bash
-source ~/S14P21A602/agribot_ws/install/setup.bash
-
-# Gazebo 모델 경로
-export GZ_SIM_RESOURCE_PATH=~/S14P21A602/agribot_ws/src/agribot_description/models
-
-# WSL2 GPU 가속 (NVIDIA GPU가 있는 경우)
-export GALLIUM_DRIVER=d3d12
-export MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+../scripts/install_backend_runtime.sh
 ```
 
-### 7. 시뮬레이션 실행 테스트
+### ROS workspace
 
 ```bash
-ros2 launch agribot_bringup simulation.launch.py
-```
-
----
-
-## 📂 프로젝트 구조
-
-### 전체 폴더 구조
-
-```
-S14P21A602/                        ← Git 루트 (GitLab 레포)
-├── README.md                      ← 빠른 시작 가이드
-├── 수확해조_프로젝트_계획_implementation_plan.md
-├── .gitignore
-├── tools/                         ← Git hooks 등 유틸
-│   └── git-hooks/
-└── agribot_ws/                    ← ROS 2 Colcon 워크스페이스
-    └── src/                       ← ⭐ 모든 코드가 여기에!
-        ├── agribot_description/   # 🤖 로봇 모델, 월드, URDF, 런치
-        ├── agribot_navigation/    # 🗺️ 자율주행 (Nav2, SLAM)
-        ├── agribot_perception/    # 📷 센서 처리 (카메라, 라이다)
-        ├── agribot_control/       # 🎮 모터 제어
-        ├── agribot_iot/           # 🌡️ IoT 기기 통신
-        ├── agribot_interfaces/    # 📨 커스텀 msg/srv/action
-        └── agribot_bringup/       # 🚀 전체 시스템 런치
-```
-
-### 패키지별 상세 설명
-
-| 패키지 | 빌드 타입 | 설명 | 담당 역할 |
-| --- | --- | --- | --- |
-| `agribot_description` | ament_python | 로봇 SDF 모델, Gazebo 월드(비닐하우스), URDF/Xacro, RViz 설정, 런치 파일 | 모델링 담당 |
-| `agribot_navigation` | ament_python | Nav2 기반 자율주행, SLAM, AMCL, 경로 계획, 장애물 회피 | 자율주행 담당 |
-| `agribot_perception` | ament_python | 카메라(RGB-D)·라이다(LiDAR) 데이터 전처리, 객체 인식 (OpenCV) | 센서 담당 |
-| `agribot_control` | ament_python | Differential drive 모터 제어, cmd_vel 처리, PID 제어 | 제어 담당 |
-| `agribot_iot` | ament_python | 비닐하우스 IoT 기기 통신 (온습도 센서, 환풍기, 조명 등), MQTT/HTTP 브릿지 | IoT 담당 |
-| `agribot_interfaces` | **ament_cmake** | 커스텀 ROS 메시지(msg), 서비스(srv), 액션(action) 정의 | 통합 담당 |
-| `agribot_bringup` | ament_python | 전체 시스템을 한 번에 실행하는 상위 런치 파일 | 통합 담당 |
-
-### agribot_description 상세 구조
-
-```
-agribot_description/
-├── package.xml
-├── setup.py
-├── models/
-│   ├── agribot/              # 로봇 본체 모델
-│   │   ├── model.sdf         ✅ Git 관리
-│   │   ├── model.config      ✅ Git 관리
-│   │   └── meshes/
-│   │       └── agribot.glb   ✅ Git 관리 (100MB 이하)
-│   └── greenhouse/           # 비닐하우스 환경 모델
-├── worlds/
-│   └── farm_world.sdf        # Gazebo 시뮬레이션 월드
-├── urdf/                     # URDF/Xacro (RViz용)
-├── launch/
-│   └── spawn_agribot.launch.py
-├── rviz/                     # RViz 시각화 설정
-└── config/                   # 파라미터 YAML
-```
-
-### agribot_interfaces 커스텀 메시지/서비스
-
-> ⚠️ 이 패키지만 **ament_cmake** 빌드 타입입니다 (msg/srv 컴파일이 필요하기 때문)
-> 
-
-| 타입 | 파일명 | 설명 |
-| --- | --- | --- |
-| msg | `CropStatus.msg` | `crop_id`, `zone_id`, `plant_id`, `tomato_id`, 작물 이름, 상태값, 위치 |
-| msg | `PlantObservation.msg` | 관측 ID, 식물/과실 ID, class, confidence, health score, pose, image path |
-| msg | `RobotStatus.msg` | 로봇 모드, 상태, pose, 속도, 에러 정보 |
-| msg | `HarvestEvent.msg` | 수확 이벤트 ID, plant/fruit ID, 성공 여부, 실패 사유, 바구니 수량 |
-| msg | `MissionStatus.msg` | 미션 ID, 타입, 단계, 진행률, 재시도 횟수 |
-| msg | `IoTDeviceState.msg` | 장치 종류, 구역, 현재 상태, 열림 비율, 속도, 가용 여부 |
-| msg | `IoTCommand.msg` | IoT 기기 ID, 명령 유형, 목표 값, 단위 |
-| msg | `EnvironmentData.msg` | 온도, 습도, 토양 수분, 조도, CO2 농도, 구역 ID |
-| srv | `SetHumidity.srv` | 구역별 목표 습도 설정 요청 → 성공 여부/현재 습도 응답 |
-| srv | `ExecuteActuation.srv` | 급수/커튼/환기/영양제 실행 요청 → 접수 여부/상태 응답 |
-| action | `RunPatrol.action` | 장시간 순찰 실행/피드백/결과 인터페이스 |
-| action | `HarvestTomato.action` | 접근-정렬-수확-적재 작업 인터페이스 |
-
----
-
-## 🗃️ Git 관리 전략
-
-### ✅ Git에 올려야 하는 것 (Commit 대상)
-
-`src/` 폴더 안의 내용만 추적합니다:
-- 소스 코드 (`.py`, `.cpp`)
-- 패키지 설정 (`package.xml`, `setup.py`, `CMakeLists.txt`)
-- 런치 파일 (`launch/`)
-- 설정 파일 (`config/*.yaml`)
-- 로봇/환경 모델 (`models/`, `urdf/`, `worlds/`)
-- 문서 (`README.md`, `*.md`)
-- `.gitignore`, `README.md`
-
-### ❌ 절대 올리면 안 되는 것 (Commit 금지)
-
-| 폴더/파일 | 이유 |
-| --- | --- |
-| `build/` | `colcon build` 하면 자동 생성. 팀원마다 환경이 달라 충돌 발생 |
-| `install/` | 빌드 산출물. 자동 생성 |
-| `log/` | 빌드 로그. 용량만 차지 |
-| `__pycache__/` | Python 캐시. 자동 생성 |
-| `*.bag`, `*.db3` | ROS bag 파일. 대용량 |
-
-### 대용량 3D 모델 (.glb) 관리
-
-| 방법 | 추천도 | 설명 |
-| --- | --- | --- |
-| **직접 커밋** | ⭐⭐⭐ | 총 100MB 이하면 GitLab이 충분히 감당 가능. **SSAFY 규모에서 가장 현실적** |
-| Git LFS | ⭐⭐ | 정석이지만 SSAFY GitLab 서버에서 LFS 활성화 + 팀원 전원 설정 필요. 설정 비용이 과함 |
-| 외부 공유 (구글 드라이브) | ⭐ | “링크 어디였지?” 혼란 발생 확률 높음 |
-
-> **💡 결론:** `.glb` 파일 총합이 100MB 이하이면 직접 커밋, 500MB 이상이면 Git LFS를 고려하세요.
-> 만약 무거운 배경(World) 모델이 있다면, 메인 로봇 모델은 직접 커밋 + 무거운 배경은 외부 저장소 + 다운로드 스크립트(`download_models.sh`)를 만드는 하이브리드 방식도 좋습니다.
-
-## Git LFS 빠른 가이드
-
-## 1. Git LFS 설치 및 초기화
-
-먼저 내 컴퓨터에 LFS가 설치되어 있어야 합니다. (팀원들도 한 번씩은 해야 합니다.)
-
-```bash
-# LFS 설치 (Ubuntu 기준)
-sudo apt install git-lfs
-
-# Git LFS 활성화 (계정당 한 번만 수행)
-git lfs install
-```
-
-## 2. 관리할 에셋 확장자 지정
-
-어떤 파일들을 LFS로 관리할지 프로젝트 폴더에서 정해줘야 합니다. 보통 Gazebo에서 쓰는 대용량 파일들을 등록합니다.
-
-```bash
-# .stl, .dae, .png 같은 파일들을 LFS 관리 대상으로 등록
-git lfs track "*.stl"
-git lfs track "*.dae"
-git lfs track "*.png"
-git lfs track "*.jpg"
-
-# 설정 저장 (매우 중요: .gitattributes 파일이 생성됩니다)
-git add .gitattributes
-```
-
-## 3. 평소처럼 사용하기
-
-설정이 끝났다면 평소 Git 사용법과 똑같습니다.
-
-```bash
-git add src/my_robot_description/meshes/huge_model.dae
-git commit -m "Add robot mesh assets with LFS"
-git push origin main
-```
-
-## 4. 팀원이 코드를 받을 때
-
-팀원이 `git clone`을 하면 LFS 파일들도 자동으로 다운로드됩니다. 만약 파일이 깨져 보이거나 포인터(텍스트)만 보인다면 아래 명령어를 입력하면 됩니다.
-
-```bash
-git lfs pull
-```
-
----
-
-### ⚠️ 주의사항
-
-- **`.gitattributes`를 꼭 커밋하세요:** 이 파일이 깃에 올라가야 다른 팀원들의 컴퓨터도 "아, 이 파일은 LFS로 관리하는구나"라고 인식합니다.
-- **중간에 도입할 경우:** 이미 일반 Git으로 커밋된 큰 파일들은 소급 적용되지 않습니다. 새로 추가하는 파일부터 적용되거나, 기존 이력을 재작성(Migration)해야 합니다.
-
-### .gitignore (전체)
-
-```gitignore
-# ─── ROS 2 빌드 산출물 (가장 중요) ───
-build/
-install/
-log/
-
-# ─── Colcon 메타데이터 ───
-.colcon_*
-
-# ─── Python ───
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-.eggs/
-*.so
-.Python
-env/
-venv/
-.venv/
-
-# ─── C++ / C ───
-*.o
-*.obj
-*.out
-*.app
-*.gch
-*.pch
-*.lib
-*.a
-*.la
-*.lo
-*.dll
-*.dylib
-*.exe
-
-# ─── IDE / 에디터 ───
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-*.bak
-
-# ─── OS ───
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# ─── Gazebo 런타임 캐시 ───
-.gz/
-*.fuel/
-~/.ignition/
-~/.gazebo/
-
-# ─── ROS bag 파일 (대용량) ───
-*.bag
-*.db3
-rosbag2_*/
-
-# ─── 기타 ───
-*.log
-core
-core.*
-```
-
----
-
-## 🌿 Git 브랜치 전략
-
-6명이 병렬로 작업하므로, 브랜치 전략은 단순하고 재현 가능해야 합니다.
-
-| 브랜치 | 역할 | 규칙 |
-|---|---|---|
-| `main` | 발표/제출용 안정 브랜치 | 직접 push 금지, `develop`에서 검증 후 MR |
-| `develop` | 통합 개발 브랜치 | 모든 기능 브랜치의 기본 분기점 |
-| `feature/<JIRA>-<slug>` | 기능 개발 | 예: `feature/S14P-201-nav2-tuning` |
-| `bugfix/<JIRA>-<slug>` | 버그 수정 | 예: `bugfix/S14P-503-alert-save-fix` |
-| `docs/<JIRA>-<slug>` | 문서 수정 | 예: `docs/S14P-603-readme-sync` |
-
-권장 작업 흐름:
-
-```bash
-git checkout develop
-git pull origin develop
-git checkout -b feature/S14P-201-nav2-tuning
-
-# 작업 후
-git add .
-git commit -m "feat: Nav2 AMCL 파라미터 추가"
-git push origin feature/S14P-201-nav2-tuning
-```
-
-Merge Request 규칙:
-
-- Jira 티켓 1개당 브랜치 1개를 사용합니다.
-- MR 제목은 이슈 키로 시작합니다.
-- 실행 방법, 테스트 방법, 스크린샷 또는 로그를 MR 설명에 남깁니다.
-- 팀원 1명 이상 리뷰 후 `develop`에 병합합니다.
-
----
-
-## 👥 6인 협업 분담 예시
-
-| 담당자 | 주 역할 | 담당 패키지 |
-|---|---|---|
-| 팀원 A | 시뮬레이션/월드/통합 실행 환경 | `agribot_description`, `agribot_bringup` |
-| 팀원 B | 자율주행/Nav2/SLAM | `agribot_navigation` |
-| 팀원 C | 인지/데이터셋/추론 | `agribot_perception` |
-| 팀원 D | 미션 매니저/수확/행동 제어 | `agribot_control` |
-| 팀원 E | MQTT/백엔드/API | `agribot_iot`, `backend` |
-| 팀원 F | 프론트엔드/QA/문서화 | `frontend`, 통합 검증 |
-
-상세 티켓 분배와 일정은 `수확해조_프로젝트_계획_implementation_plan.md`를 기준으로 관리하는 것을 권장합니다.
-
----
-
-## 🔧 자주 쓰는 명령어
-
-### 빌드 & 실행
-
-```bash
-cd ~/S14P21A602/agribot_ws
+cd agribot_ws
 source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
 source install/setup.bash
-
-ros2 launch agribot_bringup simulation.launch.py
 ```
 
-### 패키지별 빌드
+## 실행 순서
+
+루트에서 아래 순서대로 실행합니다.
+
+### 1. 공통 환경 및 런타임 초기화
 
 ```bash
-cd ~/S14P21A602/agribot_ws
+cd /home/ssafy/Desktop/pjt/S14P21A602
+source <(./scripts/operator_runtime_health.sh --print-env)
+./scripts/operator_runtime_health.sh --reset-runtime
+```
+
+### 2. Backend
+
+```bash
+./scripts/backend_up.sh
+```
+
+기본 주소:
+
+- API: `http://127.0.0.1:8000`
+- Swagger: `http://127.0.0.1:8000/docs`
+
+### 3. Frontend
+
+```bash
+./scripts/frontend_up.sh
+```
+
+기본 주소:
+
+- UI: `http://127.0.0.1:5173`
+
+### 4. ROS 시뮬레이션
+
+헤드리스/원격 환경에서는 아래 명령을 권장합니다.
+
+```bash
+./scripts/agribot_launch.sh agribot_bringup simulation.launch.py use_iot:=true use_rviz:=false
+```
+
+### 5. Mission Manager
+
+```bash
+./scripts/mission_manager_up.sh
+```
+
+### 6. Harvest Action Server
+
+```bash
+./scripts/harvest_action_server_up.sh
+```
+
+### 7. 상태 점검
+
+```bash
+./scripts/operator_runtime_health.sh
+```
+
+## 데모 흐름
+
+2026-03-30 기준 아래 흐름을 실제로 검증했습니다.
+
+- 프론트 메인 화면 접속
+- `진단하기` 실행 후 수동 이동 상태 추적
+- `수확하기` 실행 후 수확 완료 및 basket count 반영
+- 대시보드 / 로봇 상태 / 수확 통계 / AI 판단 API 정상 응답
+
+주요 확인 API:
+
+```bash
+curl -s http://127.0.0.1:8000/api/v1/dashboard/summary | jq
+curl -s http://127.0.0.1:8000/api/v1/robot/status | jq
+curl -s http://127.0.0.1:8000/api/v1/robot/commands/latest | jq
+curl -s http://127.0.0.1:8000/api/v1/harvests/stats | jq
+curl -s "http://127.0.0.1:8000/api/v1/inference/judgments/latest?fruit_id=farm01_plant_02_tomato_01&judgment_type=HARVEST_DECISION" | jq
+```
+
+## DB 및 데모 데이터
+
+- Docker 실행 정의: `backend/docker-compose.yml`
+- 기본 DB: `agribot_db`
+- 계정: `agribot / password`
+- pgAdmin: `http://127.0.0.1:5050`
+- 데모 데이터 재적재: `backend/seed_demo_data.py`
+- 최신 dump: `exec/db/agribot_db_dump_20260330.sql`
+
+데모 데이터 재생성:
+
+```bash
+cd backend
+.venv/bin/python seed_demo_data.py
+```
+
+## 테스트
+
+### Backend
+
+```bash
+cd backend
+.venv/bin/pytest
+```
+
+### ROS packages
+
+```bash
+cd agribot_ws
 source /opt/ros/jazzy/setup.bash
-colcon build --packages-select agribot_navigation
-source install/setup.bash
+colcon test --packages-select agribot_bringup agribot_navigation
+colcon test-result --verbose
 ```
 
-### ROS 2 디버깅
+## 문서
 
-```bash
-ros2 topic list
-ros2 topic echo /agribot/lidar/scan
-ros2 topic echo /agribot/camera/image
-ros2 node list
-rqt_graph
-```
+- 포팅 매뉴얼: `exec/포팅_매뉴얼.md`
+- 실행/문서 인덱스: `docs/README.md`
+- launch 관련 메모: `docs/README_LAUNCH.md`
+- 운영자 검증 체크리스트: `docs/운영자_미션_E2E_검증_체크리스트.md`
 
-### Git 작업
+## 주의 사항
 
-```bash
-git checkout develop
-git pull origin develop
-git checkout -b feature/S14P-101-sim-bridge-align
-
-git add .
-git commit -m "feat: 센서 브리지 정합성 점검"
-git push origin feature/S14P-101-sim-bridge-align
-```
-
----
-
-## 📄 라이선스
-
-Apache-2.0
+- Backend와 ROS 노드는 반드시 같은 `AGRIBOT_RUNTIME_DIR`를 사용해야 합니다.
+- Frontend는 정적 파일 운영 배포 구성이 아니라 Vite dev server 기준입니다.
+- Backend는 Nginx/Apache 없이 Uvicorn으로 실행합니다.
+- 시뮬레이터 GUI/EGL 경고가 있어도 headless 환경에서는 core ROS 노드와 file bridge가 정상 기동할 수 있습니다.
