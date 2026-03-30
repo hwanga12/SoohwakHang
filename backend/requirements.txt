@@ -1,0 +1,6 @@
+fastapi==0.135.2
+pydantic==2.12.5
+psycopg2-binary==2.9.11
+sqlalchemy==2.0.48
+ultralytics==8.4.27
+uvicorn==0.42.0

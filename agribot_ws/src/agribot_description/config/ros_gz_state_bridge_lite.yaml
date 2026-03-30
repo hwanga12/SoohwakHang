@@ -1,0 +1,56 @@
+# 경량 실행용 bridge 설정이다. 최소 토픽만 남겨 Gazebo 부하를 낮출 때 사용한다.
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
+  subscriber_queue: 1
+  publisher_queue: 1
+
+- ros_topic_name: "/agribot/imu"
+  gz_topic_name: "/agribot/imu"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"
+  direction: GZ_TO_ROS
+  subscriber_queue: 1
+  publisher_queue: 1
+
+- ros_topic_name: "/cmd_vel_safe"
+  gz_topic_name: "/cmd_vel_safe"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+  subscriber_queue: 1
+  publisher_queue: 1
+
+- ros_topic_name: "/odom_raw"
+  gz_topic_name: "/odom"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+  subscriber_queue: 1
+  publisher_queue: 1
+
+- ros_topic_name: "/agribot/harvest_arm_joint/cmd_pos"
+  gz_topic_name: "/agribot/harvest_arm_joint/cmd_pos"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+  subscriber_queue: 1
+  publisher_queue: 1
+
+- ros_topic_name: "/agribot/harvest_basket_slot_01/cmd_pos"
+  gz_topic_name: "/agribot/harvest_basket_slot_01/cmd_pos"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+  subscriber_queue: 1
+  publisher_queue: 1
+
+- ros_topic_name: "/agribot/harvest_basket_slot_02/cmd_pos"
+  gz_topic_name: "/agribot/harvest_basket_slot_02/cmd_pos"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+  subscriber_queue: 1
+  publisher_queue: 1

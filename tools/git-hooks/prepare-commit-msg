@@ -3,18 +3,17 @@
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
 # Jira 이슈 키 추출
-ISSUE_KEY=$(echo "$BRANCH" | grep -oE '[A-Z0-9]{2,}-[0-9]+' | head -n 1)
+RAW_KEY=$(echo "$BRANCH" | grep -oE '[A-Z0-9]{2,}-[0-9]+' | head -n 1)
 
 MSG_FILE="$1"
 
 # 이슈키가 없으면 종료
-[ -z "$ISSUE_KEY" ] && exit 0
+[ -z "$RAW_KEY" ] && exit 0
+
+ISSUE_KEY="[$RAW_KEY]"
 
 # 이미 이슈키가 메시지에 있으면 종료
-grep -q "$ISSUE_KEY" "$MSG_FILE" && exit 0
-
-# 첫 줄 가져오기
-FIRST_LINE=$(head -n 1 "$MSG_FILE")
+grep -q "$RAW_KEY" "$MSG_FILE" && exit 0
 
 # 5. 첫 줄 맨 앞에 [이슈키 + 공백] 삽입 (OS 호환성 대응)
 # Mac(BSD sed) 방식 시도 후 실패 시 Linux(GNU sed) 방식으로 재시도

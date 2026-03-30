@@ -1,0 +1,7 @@
+{
+    "python.defaultInterpreterPath": "/home/ssafy/Desktop/pjt/S14P21A602/backend/.venv/bin/python",
+    "python.pythonPath": "/home/ssafy/Desktop/pjt/S14P21A602/backend/.venv/bin/python",
+    "python.analysis.extraPaths": [
+        "/home/ssafy/Desktop/pjt/S14P21A602/backend"
+    ]
+}

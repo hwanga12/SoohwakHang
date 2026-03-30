@@ -1,0 +1,175 @@
+# Mapping-specific sweep plan for the widened four-lane farm_world.
+# This file keeps a lightweight serpentine sweep and skips the sprinkler-blocked center aisle.
+
+schema_version: 1
+frame_id: odom
+zone_id: farm_01
+world_file: agribot_description/worlds/farm_world.sdf
+map_file: agribot_navigation/maps/farm_map.yaml
+home_pose_id: farm_01_home
+coordinate_rationale:
+  description: Coordinates are expressed in odom. The four-lane sweep skips the sprinkler-blocked
+    center aisle.
+  lane_clearances_m:
+    west_outer_aisle: 1.75
+    inner_aisles: 1.75
+    east_outer_aisle: 1.75
+  source_bounds:
+    left_bed_edge_x: -6.25
+    right_bed_edge_x: 6.25
+    front_connector_y: -8.6
+    rear_connector_y: 8.6
+robot_constraints:
+  recommended_travel_speed_mps: 0.4
+  recommended_observation_dwell_sec: 0.0
+  notes:
+  - Keep the robot on widened aisle centers.
+  - Skip the center aisle because the middle sprinklers occupy that gap.
+harvest_routing:
+  approach_margin_from_bed_edge_m: 0.4
+  max_lateral_offset_from_inspect_m: 1.2
+  return_modes:
+    default: home
+    fallback: home
+  notes:
+  - This mapping-specific plan is for sweep coverage only.
+  - Harvest routing should use patrol_waypoints.yaml.
+waypoints:
+- waypoint_id: farm_01_home
+  display_name: Home Pose
+  purpose: home
+  lane_id: staging
+  batchable: false
+  observe_here: false
+  description: Spawn-aligned start pose at the center of the farm.
+  pose:
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    yaw: 0.0
+- waypoint_id: farm_01_lane_01_south
+  display_name: West Outer South
+  purpose: entry
+  lane_id: sweep_lane_01
+  batchable: true
+  observe_here: false
+  description: South start for the west outer aisle.
+  pose:
+    x: -8.6
+    y: 8.0
+    z: 0.0
+    yaw: 0.0
+- waypoint_id: farm_01_lane_01_north
+  display_name: West Outer North
+  purpose: inspect
+  lane_id: sweep_lane_01
+  batchable: true
+  observe_here: false
+  description: North end for the west outer aisle.
+  pose:
+    x: 8.6
+    y: 8.0
+    z: 0.0
+    yaw: 0.0
+- waypoint_id: farm_01_lane_02_north
+  display_name: West Inner North
+  purpose: entry
+  lane_id: sweep_lane_02
+  batchable: true
+  observe_here: false
+  description: North start for the west inner aisle.
+  pose:
+    x: 8.6
+    y: 4.0
+    z: 0.0
+    yaw: 3.1416
+- waypoint_id: farm_01_lane_02_south
+  display_name: West Inner South
+  purpose: inspect
+  lane_id: sweep_lane_02
+  batchable: true
+  observe_here: false
+  description: South end for the west inner aisle.
+  pose:
+    x: -8.6
+    y: 4.0
+    z: 0.0
+    yaw: 3.1416
+- waypoint_id: farm_01_lane_03_south
+  display_name: East Inner South
+  purpose: entry
+  lane_id: sweep_lane_03
+  batchable: true
+  observe_here: false
+  description: South start for the east inner aisle.
+  pose:
+    x: -8.6
+    y: -4.0
+    z: 0.0
+    yaw: 0.0
+- waypoint_id: farm_01_lane_03_north
+  display_name: East Inner North
+  purpose: inspect
+  lane_id: sweep_lane_03
+  batchable: true
+  observe_here: false
+  description: North end for the east inner aisle.
+  pose:
+    x: 8.6
+    y: -4.0
+    z: 0.0
+    yaw: 0.0
+- waypoint_id: farm_01_lane_04_north
+  display_name: East Outer North
+  purpose: entry
+  lane_id: sweep_lane_04
+  batchable: true
+  observe_here: false
+  description: North start for the east outer aisle.
+  pose:
+    x: 8.6
+    y: -8.0
+    z: 0.0
+    yaw: 3.1416
+- waypoint_id: farm_01_lane_04_south
+  display_name: East Outer South
+  purpose: inspect
+  lane_id: sweep_lane_04
+  batchable: true
+  observe_here: false
+  description: South end for the east outer aisle.
+  pose:
+    x: -8.6
+    y: -8.0
+    z: 0.0
+    yaw: 3.1416
+routes:
+- route_id: farm_01_serpentine_sweep
+  display_name: Rectangular Farm Four-Lane Sweep
+  zone_id: farm_01
+  lane_side: full
+  description: Sweep the widened four-lane layout while skipping the sprinkler-blocked
+    center aisle.
+  entry_pose_id: farm_01_lane_01_south
+  inspect_pose_ids:
+  - farm_01_lane_01_north
+  - farm_01_lane_02_north
+  - farm_01_lane_02_south
+  - farm_01_lane_03_south
+  - farm_01_lane_03_north
+  - farm_01_lane_04_north
+  - farm_01_lane_04_south
+  turn_pose_id: farm_01_lane_04_south
+  exit_pose_id: farm_01_lane_04_south
+  observed_plant_ids: []
+  observed_tomato_ids: []
+default_patrol_sequence:
+- farm_01_home
+- farm_01_lane_01_south
+- farm_01_lane_01_north
+- farm_01_lane_02_north
+- farm_01_lane_02_south
+- farm_01_lane_03_south
+- farm_01_lane_03_north
+- farm_01_lane_04_north
+- farm_01_lane_04_south

@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "agribot_db_local",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "agribot_db",
+      "Username": "agribot",
+      "Comment": "Local Agribot PostgreSQL in docker compose",
+      "ConnectionParameters": {}
+    }
+  }
+}
