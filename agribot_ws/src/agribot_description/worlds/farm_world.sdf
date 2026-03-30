@@ -85,7 +85,9 @@
 
     <include>
       <uri>model://agribot</uri>
-      <pose>0 0 0.0 0 0 1.5708</pose>
+      <!-- Spawn just above the ground so the drivetrain does not pick up
+           wheel spin from a large drop on startup. -->
+      <pose>0 0 0.001 0 0 1.5708</pose>
     </include>
 
     <include>

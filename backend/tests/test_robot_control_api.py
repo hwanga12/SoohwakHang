@@ -389,7 +389,7 @@ def test_read_layers_payload_exposes_dual_observation_candidates_for_center_toma
     )
     assert center_candidate["navigation_pose"]["x"] == pytest.approx(0.0)
     assert center_candidate["navigation_pose"]["y"] == pytest.approx(4.0)
-    assert center_candidate["approach_pose"]["x"] == pytest.approx(1.7)
+    assert center_candidate["approach_pose"]["x"] == pytest.approx(1.85)
     assert center_candidate["approach_pose"]["y"] == pytest.approx(4.0)
 
 
@@ -426,12 +426,12 @@ def test_read_layers_payload_spreads_center_lane_display_markers_toward_each_cro
         if candidate["inspect_waypoint_id"] == "farm_01_lane_center_inspect_04"
     )
 
-    assert plant_14_center_candidate["approach_pose"]["x"] == pytest.approx(-1.7)
-    assert plant_15_center_candidate["approach_pose"]["x"] == pytest.approx(1.7)
+    assert plant_14_center_candidate["approach_pose"]["x"] == pytest.approx(-1.85)
+    assert plant_15_center_candidate["approach_pose"]["x"] == pytest.approx(1.85)
     assert abs(
         plant_15_center_candidate["approach_pose"]["x"]
         - plant_14_center_candidate["approach_pose"]["x"]
-    ) == pytest.approx(3.4)
+    ) == pytest.approx(3.7)
 
 
 def test_publish_navigate_command_keeps_all_observation_candidates_in_bridge_payload() -> None:

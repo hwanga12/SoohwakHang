@@ -61,6 +61,10 @@ class TreatmentCommandDispatcher:
         ).strip() or '/iot/commands/manual'
         self._automatic_command_topic = os.environ.get(
             'AGRIBOT_IOT_AUTOMATIC_COMMAND_TOPIC',
+            '/iot/commands/auto',
+        ).strip() or '/iot/commands/auto'
+        self._dispatch_command_topic = os.environ.get(
+            'AGRIBOT_IOT_DISPATCH_COMMAND_TOPIC',
             '/iot/commands/dispatch',
         ).strip() or '/iot/commands/dispatch'
         self._dispatch_timeout_sec = max(
@@ -157,7 +161,7 @@ class TreatmentCommandDispatcher:
     ) -> ActuationDispatchResult:
         normalized_device_type = device_type.strip().lower()
         if normalized_device_type == 'sprinkler':
-            topic = self._automatic_command_topic
+            topic = self._dispatch_command_topic
             min_subscribers = self._dispatch_min_subscribers
         else:
             topic = self._manual_command_topic

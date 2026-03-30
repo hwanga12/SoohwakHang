@@ -27,6 +27,11 @@ def generate_launch_description():
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_agribot_navigation = get_package_share_directory('agribot_navigation')
     graphics_env_actions = build_graphics_environment_actions()
+    default_gz_partition = (
+        os.getenv('AGRIBOT_GZ_PARTITION')
+        or os.getenv('GZ_PARTITION')
+        or 'agribot_sim_local'
+    )
 
     default_world = os.path.join(
         pkg_agribot_description,
@@ -114,7 +119,7 @@ def generate_launch_description():
 
     gz_partition_arg = DeclareLaunchArgument(
         'gz_partition',
-        default_value='agribot_sim',
+        default_value=default_gz_partition,
         description='Gazebo partition name.'
     )
 

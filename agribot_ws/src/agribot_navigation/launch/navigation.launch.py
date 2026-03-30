@@ -17,6 +17,7 @@ try:
     )
     from agribot_bringup.shutdown_cleanup import (
         build_shutdown_cleanup_handler,
+        ensure_launch_session_id_env,
         resolve_launch_session_id,
     )
 except ModuleNotFoundError:
@@ -28,6 +29,7 @@ except ModuleNotFoundError:
     )
     from agribot_bringup.shutdown_cleanup import (
         build_shutdown_cleanup_handler,
+        ensure_launch_session_id_env,
         resolve_launch_session_id,
     )
 
@@ -35,7 +37,7 @@ except ModuleNotFoundError:
 def generate_launch_description():
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_agribot_navigation = get_package_share_directory('agribot_navigation')
-    launch_session_id = resolve_launch_session_id()
+    launch_session_id = ensure_launch_session_id_env(resolve_launch_session_id())
     launch_env_actions = build_launch_session_environment_actions(launch_session_id)
     shutdown_cleanup_handler = build_shutdown_cleanup_handler(launch_session_id)
 

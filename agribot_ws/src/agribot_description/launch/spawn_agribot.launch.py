@@ -46,7 +46,12 @@ def generate_launch_description():
     # Package paths
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
-    gz_partition = LaunchConfiguration('gz_partition', default='agribot_sim')
+    default_gz_partition = (
+        os.getenv('AGRIBOT_GZ_PARTITION')
+        or os.getenv('GZ_PARTITION')
+        or 'agribot_sim_local'
+    )
+    gz_partition = LaunchConfiguration('gz_partition')
 
     # Set Gazebo resource path to find models
     gz_resource_path = SetEnvironmentVariable(
@@ -61,7 +66,20 @@ def generate_launch_description():
         name='GZ_PARTITION',
         value=gz_partition,
     )
+    gz_ip_env = SetEnvironmentVariable(
+        name='GZ_IP',
+        value=os.getenv('GZ_IP', '127.0.0.1'),
+    )
+    ign_ip_env = SetEnvironmentVariable(
+        name='IGN_IP',
+        value=os.getenv('IGN_IP', '127.0.0.1'),
+    )
     # Launch arguments
+    gz_partition_arg = DeclareLaunchArgument(
+        'gz_partition',
+        default_value=default_gz_partition,
+        description='Gazebo partition name.',
+    )
     world_arg = DeclareLaunchArgument(
         'world',
         default_value=os.path.join(
@@ -299,6 +317,9 @@ def generate_launch_description():
         *graphics_env_actions,
         gz_resource_path,
         gz_partition_env,
+        gz_ip_env,
+        ign_ip_env,
+        gz_partition_arg,
         world_arg,
         gui_config_arg,
         gz_args_prefix_arg,

@@ -13,6 +13,7 @@ from models import (
     ActuationCommand,
     ActuationLog,
     Alert,
+    AiJudgment,
     CropObservation,
     EnvironmentSample,
     Fruit,
@@ -24,6 +25,11 @@ from models import (
     Zone,
 )
 from robot_map_service import _load_crop_instances, _load_iot_devices, read_map_payload
+from services.ai_judgments.policy import (
+    build_disease_interpretation,
+    build_harvest_decision_interpretation,
+    build_ripeness_interpretation,
+)
 
 ROBOT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 PATROL_MISSION_ID = uuid.UUID("22222222-2222-2222-2222-222222222222")
@@ -156,6 +162,10 @@ def _ripeness_stage(fruit_id: str) -> str:
     return "TURNING"
 
 
+def _ripeness_label(*, ready_to_harvest: bool) -> str:
+    return "ripe" if ready_to_harvest else "turning"
+
+
 def _reset_schema(db: Any) -> None:
     db.execute(
         text(
@@ -238,6 +248,7 @@ def _build_dataset() -> dict[str, Any]:
     fruits: list[Fruit] = []
     observations: list[CropObservation] = []
     alerts: list[Alert] = []
+    ai_judgments: list[AiJudgment] = []
     actuation_commands: list[ActuationCommand] = []
     actuation_logs: list[ActuationLog] = []
     harvest_events: list[HarvestEvent] = []
@@ -342,6 +353,101 @@ def _build_dataset() -> dict[str, Any]:
             )
         )
 
+        disease_raw_label = scenario.finding_label if scenario is not None else "healthy_leaf"
+        disease_confidence = 0.97 if scenario is not None else 0.94
+        disease_interpretation = build_disease_interpretation(
+            disease_raw_label,
+            disease_confidence,
+            extra_evidence=[
+                evidence,
+                f"plant_id={plant_id}",
+                f"fruit_id={fruit_id}",
+            ],
+        )
+        ai_judgments.append(
+            AiJudgment(
+                id=_uuid5(f"ai:disease:{plant_id}"),
+                plant_id=plant_id,
+                fruit_id=fruit_id,
+                zone_id=DEFAULT_ZONE_ID,
+                judgment_type="DISEASE",
+                model_name="tomato_disease_detector",
+                model_version="v1",
+                raw_label=disease_raw_label,
+                canonical_code=disease_interpretation.canonical_code,
+                confidence=disease_confidence,
+                risk_level=disease_interpretation.risk_level,
+                recommended_action_code=disease_interpretation.recommended_action_code,
+                requires_approval=disease_interpretation.requires_approval,
+                payload_json=disease_interpretation.payload_json,
+                image_url=image_url,
+                created_at=last_observed_at + timedelta(seconds=5),
+            )
+        )
+
+        ripeness_raw_label = _ripeness_label(ready_to_harvest=ready_to_harvest)
+        ripeness_confidence = 0.94
+        ripeness_interpretation = build_ripeness_interpretation(
+            ripeness_raw_label,
+            ripeness_confidence,
+            extra_evidence=[
+                f"fruit_status={fruit_status}",
+                f"ripeness_stage={ripeness_stage}",
+            ],
+        )
+        ai_judgments.append(
+            AiJudgment(
+                id=_uuid5(f"ai:ripeness:{fruit_id}"),
+                plant_id=plant_id,
+                fruit_id=fruit_id,
+                zone_id=DEFAULT_ZONE_ID,
+                judgment_type="RIPENESS",
+                model_name="ripeness_classifier_v1",
+                model_version="v1",
+                raw_label=ripeness_raw_label,
+                canonical_code=ripeness_interpretation.canonical_code,
+                confidence=ripeness_confidence,
+                risk_level=ripeness_interpretation.risk_level,
+                recommended_action_code=ripeness_interpretation.recommended_action_code,
+                requires_approval=ripeness_interpretation.requires_approval,
+                payload_json=ripeness_interpretation.payload_json,
+                image_url=image_url,
+                created_at=last_observed_at + timedelta(seconds=10),
+            )
+        )
+
+        harvest_interpretation = build_harvest_decision_interpretation(
+            disease_judgment={
+                "canonical_code": disease_interpretation.canonical_code,
+                "risk_level": disease_interpretation.risk_level,
+            },
+            ripeness_judgment={
+                "canonical_code": ripeness_interpretation.canonical_code,
+                "risk_level": ripeness_interpretation.risk_level,
+            },
+        )
+        if harvest_interpretation is not None:
+            ai_judgments.append(
+                AiJudgment(
+                    id=_uuid5(f"ai:harvest:{fruit_id}"),
+                    plant_id=plant_id,
+                    fruit_id=fruit_id,
+                    zone_id=DEFAULT_ZONE_ID,
+                    judgment_type="HARVEST_DECISION",
+                    model_name="harvest_decision_fusion",
+                    model_version="v1",
+                    raw_label=harvest_interpretation.canonical_code,
+                    canonical_code=harvest_interpretation.canonical_code,
+                    confidence=min(disease_confidence, ripeness_confidence),
+                    risk_level=harvest_interpretation.risk_level,
+                    recommended_action_code=harvest_interpretation.recommended_action_code,
+                    requires_approval=harvest_interpretation.requires_approval,
+                    payload_json=harvest_interpretation.payload_json,
+                    image_url=image_url,
+                    created_at=last_observed_at + timedelta(seconds=15),
+                )
+            )
+
         if scenario is not None:
             alert_id = _uuid5(f"alert:{plant_id}")
             alerts.append(
@@ -436,6 +542,7 @@ def _build_dataset() -> dict[str, Any]:
         "environment_samples": environment_samples,
         "observations": observations,
         "alerts": alerts,
+        "ai_judgments": ai_judgments,
         "actuation_commands": actuation_commands,
         "actuation_logs": actuation_logs,
         "harvest_events": harvest_events,
@@ -455,6 +562,7 @@ def _print_summary(dataset: dict[str, Any], *, dry_run: bool) -> None:
         f"environment:{len(dataset['environment_samples'])}, "
         f"observations:{len(dataset['observations'])}, "
         f"alerts:{len(dataset['alerts'])}, "
+        f"ai_judgments:{len(dataset['ai_judgments'])}, "
         f"commands:{len(dataset['actuation_commands'])}, "
         f"logs:{len(dataset['actuation_logs'])}, "
         f"harvest_events:{len(dataset['harvest_events'])}"
@@ -484,6 +592,7 @@ def _apply_dataset(dataset: dict[str, Any]) -> None:
         db.add_all(dataset["environment_samples"])
         db.add_all(dataset["observations"])
         db.add_all(dataset["alerts"])
+        db.add_all(dataset["ai_judgments"])
         db.add_all(dataset["actuation_commands"])
         db.add_all(dataset["actuation_logs"])
         db.add_all(dataset["harvest_events"])

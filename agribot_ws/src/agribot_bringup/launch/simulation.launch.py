@@ -56,6 +56,8 @@ except ModuleNotFoundError:
 
 
 def generate_launch_description():
+    default_gz_ip = os.environ.get('GZ_IP', '127.0.0.1')
+    default_ign_ip = os.environ.get('IGN_IP', '127.0.0.1')
     runtime_dir = LaunchConfiguration('runtime_dir')
     simulation_defaults = resolve_performance_defaults('simulation')
     spawn_defaults = resolve_performance_defaults('spawn')
@@ -75,6 +77,8 @@ def generate_launch_description():
     env_vars = [
         *build_launch_session_environment_actions(launch_session_id),
         SetEnvironmentVariable('GZ_PARTITION', gz_partition),
+        SetEnvironmentVariable('GZ_IP', default_gz_ip),
+        SetEnvironmentVariable('IGN_IP', default_ign_ip),
         SetEnvironmentVariable('AGRIBOT_RUNTIME_DIR', runtime_dir),
         # Ensure agribot_interfaces python bindings are found
         SetEnvironmentVariable(
