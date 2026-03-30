@@ -19,6 +19,7 @@ from models import (
 )
 from robot_map_service import _load_crop_instances
 from services.actuation.schemas import ActuationDispatchResult, DiseaseTreatmentPlan, Point3D
+from services.ai_judgments.service import AiJudgmentService
 from services.perception.schemas import ThinInferenceConfirmRequest
 
 
