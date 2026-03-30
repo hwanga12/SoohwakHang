@@ -1,0 +1,10 @@
+{
+  "farm01_plant_18": {
+    "fruit_id": "farm01_plant_18_tomato_01",
+    "image_path": "638292_20211024_2_1_a5_3_2_12_2_79.jpg",
+    "expected_label": "tomato_powdery_mildew_disease",
+    "preliminary_label": "tomato_powdery_mildew_disease",
+    "preliminary_confidence": 0.95,
+    "description": "시연용 토마토 흰가루병 입력"
+  }
+}

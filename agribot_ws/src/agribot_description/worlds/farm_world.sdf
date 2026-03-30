@@ -1,0 +1,354 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="farm_world">
+    <physics name="2ms" type="ignored">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <!-- Keep the Gazebo top view aligned with the frontend map by using
+         the same top-down pitch plus a 90 deg yaw offset. -->
+    <gui fullscreen="0">
+      <camera name="frontend_aligned_camera">
+        <pose>0 0 22 0 1.56 1.5708</pose>
+        <view_controller>orbit</view_controller>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <pose>0 0 0 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+          <material><ambient>0.4 0.3 0.2 1</ambient><diffuse>0.5 0.4 0.3 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Invisible boundary walls -> Outer 20x20m mapped border -->
+    <model name="invisible_boundaries">
+      <static>true</static>
+      <link name="link">
+        <collision name="north_wall"><pose>0 10 0.5 0 0 0</pose><geometry><box><size>20 0.5 1</size></box></geometry></collision>
+        <visual name="north_v"><pose>0 10 0.5 0 0 0</pose><geometry><box><size>20 0.5 1</size></box></geometry><material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material><transparency>0.8</transparency><cast_shadows>false</cast_shadows></visual>
+
+        <collision name="south_wall"><pose>0 -10 0.5 0 0 0</pose><geometry><box><size>20 0.5 1</size></box></geometry></collision>
+        <visual name="south_v"><pose>0 -10 0.5 0 0 0</pose><geometry><box><size>20 0.5 1</size></box></geometry><material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material><transparency>0.8</transparency><cast_shadows>false</cast_shadows></visual>
+
+        <collision name="east_wall"><pose>10 0 0.5 0 0 0</pose><geometry><box><size>0.5 20 1</size></box></geometry></collision>
+        <visual name="east_v"><pose>10 0 0.5 0 0 0</pose><geometry><box><size>0.5 20 1</size></box></geometry><material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material><transparency>0.8</transparency><cast_shadows>false</cast_shadows></visual>
+
+        <collision name="west_wall"><pose>-10 0 0.5 0 0 0</pose><geometry><box><size>0.5 20 1</size></box></geometry></collision>
+        <visual name="west_v"><pose>-10 0 0.5 0 0 0</pose><geometry><box><size>0.5 20 1</size></box></geometry><material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material><transparency>0.8</transparency><cast_shadows>false</cast_shadows></visual>
+      </link>
+    </model>
+
+    <!-- 4 symmetric crop-row boundaries with widened aisles. -->
+    <model name="crop_rows">
+      <static>true</static>
+      <link name="link">
+        <collision name="row_c_-6.0"><pose>-6.0 0 0.5 0 0 0</pose><geometry><box><size>0.5 14.0 1</size></box></geometry></collision>
+        <visual name="row_v_-6.0"><pose>-6.0 0 0.5 0 0 0</pose><geometry><box><size>0.5 14.0 1</size></box></geometry><material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material><transparency>0.8</transparency><cast_shadows>false</cast_shadows></visual>
+        <collision name="row_c_-2.0"><pose>-2.0 0 0.5 0 0 0</pose><geometry><box><size>0.5 14.0 1</size></box></geometry></collision>
+        <visual name="row_v_-2.0"><pose>-2.0 0 0.5 0 0 0</pose><geometry><box><size>0.5 14.0 1</size></box></geometry><material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material><transparency>0.8</transparency><cast_shadows>false</cast_shadows></visual>
+        <collision name="row_c_2.0"><pose>2.0 0 0.5 0 0 0</pose><geometry><box><size>0.5 14.0 1</size></box></geometry></collision>
+        <visual name="row_v_2.0"><pose>2.0 0 0.5 0 0 0</pose><geometry><box><size>0.5 14.0 1</size></box></geometry><material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material><transparency>0.8</transparency><cast_shadows>false</cast_shadows></visual>
+        <collision name="row_c_6.0"><pose>6.0 0 0.5 0 0 0</pose><geometry><box><size>0.5 14.0 1</size></box></geometry></collision>
+        <visual name="row_v_6.0"><pose>6.0 0 0.5 0 0 0</pose><geometry><box><size>0.5 14.0 1</size></box></geometry><material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material><transparency>0.8</transparency><cast_shadows>false</cast_shadows></visual>
+      </link>
+    </model>
+
+    <include>
+      <uri>model://field_streaks</uri>
+      <pose>0 0 0.05 0 0 0</pose>
+    </include>
+
+    <include>
+      <uri>model://agribot</uri>
+      <!-- Spawn just above the ground so the drivetrain does not pick up
+           wheel spin from a large drop on startup. -->
+      <pose>0 0 0.001 0 0 1.5708</pose>
+    </include>
+
+    <include>
+      <name>tomato_0</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-6.0 -6.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_1</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-2.0 -6.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_2</name>
+      <uri>model://tomato_plant</uri>
+      <pose>2.0 -6.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_3</name>
+      <uri>model://tomato_plant</uri>
+      <pose>6.0 -6.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_4</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-6.0 -4.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_5</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-2.0 -4.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_6</name>
+      <uri>model://tomato_plant</uri>
+      <pose>2.0 -4.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_7</name>
+      <uri>model://tomato_plant</uri>
+      <pose>6.0 -4.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_8</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-6.0 -2.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_9</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-2.0 -2.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_10</name>
+      <uri>model://tomato_plant</uri>
+      <pose>2.0 -2.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_11</name>
+      <uri>model://tomato_plant</uri>
+      <pose>6.0 -2.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_12</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-6.0 2.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_13</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-2.0 2.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_14</name>
+      <uri>model://tomato_plant</uri>
+      <pose>2.0 2.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_15</name>
+      <uri>model://tomato_plant</uri>
+      <pose>6.0 2.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_16</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-6.0 4.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_17</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-2.0 4.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_18</name>
+      <uri>model://tomato_plant</uri>
+      <pose>2.0 4.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_19</name>
+      <uri>model://tomato_plant</uri>
+      <pose>6.0 4.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_20</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-6.0 6.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_21</name>
+      <uri>model://tomato_plant</uri>
+      <pose>-2.0 6.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_22</name>
+      <uri>model://tomato_plant</uri>
+      <pose>2.0 6.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>tomato_23</name>
+      <uri>model://tomato_plant</uri>
+      <pose>6.0 6.0 0.05 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_01_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 -6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_02_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 -6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_03_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 -6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_04_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 -6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_05_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 -4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_06_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 -4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_07_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 -4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_08_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 -4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_09_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 -2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_10_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 -2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_11_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 -2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_12_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 -2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_13_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_14_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_15_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_16_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 2.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_17_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_18_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_19_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_20_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 4.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_21_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-6.0 6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_22_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>-2.0 6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_23_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>2.0 6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>farm01_plant_24_tomato_01</name>
+      <uri>model://tomato</uri>
+      <pose>6.0 6.0 0.34 0 0 0</pose>
+    </include>
+    <include>
+      <name>sprinkler_0</name>
+      <uri>model://sprinkler</uri>
+      <pose>-6.0 0.0 0.0 0 0 0</pose>
+    </include>
+    <include>
+      <name>sprinkler_1</name>
+      <uri>model://sprinkler</uri>
+      <pose>-2.0 0.0 0.0 0 0 0</pose>
+    </include>
+    <include>
+      <name>sprinkler_2</name>
+      <uri>model://sprinkler</uri>
+      <pose>2.0 0.0 0.0 0 0 0</pose>
+    </include>
+    <include>
+      <name>sprinkler_3</name>
+      <uri>model://sprinkler</uri>
+      <pose>6.0 0.0 0.0 0 0 0</pose>
+    </include>
+  </world>
+</sdf>

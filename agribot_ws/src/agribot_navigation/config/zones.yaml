@@ -1,0 +1,25 @@
+# Single source of truth for greenhouse zone IDs.
+# Even with one greenhouse object, keep one explicit zone so ROS topics,
+# IoT mappings, plant metadata, and backend rows all reuse the same zone_id.
+
+schema_version: 1
+frame_id: map
+default_zone_id: farm_01
+
+zones:
+  - zone_id: farm_01
+    display_name: Farm 01
+    description: Single operational zone covering the rectangular farm_world.sdf test field.
+    representative_pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+    bounds:
+      min_x: -10.0
+      max_x: 10.0
+      min_y: -10.0
+      max_y: 10.0
+    source:
+      world_file: agribot_description/worlds/farm_world.sdf
+      layout: rectangular_farm

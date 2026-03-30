@@ -1,0 +1,14 @@
+{
+  "site_package_search_strategy": "pep561",
+  "search_path": [
+    "."
+  ],
+  "source_directories": [
+    {
+      "import_root": ".",
+      "source": "."
+    }
+  ],
+  "python_version": "3.12",
+  "virtual_environment": "backend/.venv"
+}
