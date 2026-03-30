@@ -1,6 +1,21 @@
 export type SemanticAssetKind = 'plant' | 'sprinkler'
 export type SemanticAssetStatus = 'normal' | 'target' | 'attention' | 'handled'
 
+export type SemanticPose = {
+  x: number
+  y: number
+  z: number
+  yaw: number
+  frameId: string
+}
+
+export type SemanticObservationCandidate = {
+  inspectWaypointId?: string
+  inspectWaypointName?: string
+  navigationPose: SemanticPose
+  approachPose?: SemanticPose
+}
+
 export type SemanticAsset = {
   id: string
   linkedId?: string
@@ -13,6 +28,11 @@ export type SemanticAsset = {
     x: number
     y: number
   }
+  navigationPose?: SemanticPose
+  approachPose?: SemanticPose
+  inspectWaypointId?: string
+  inspectWaypointName?: string
+  observationCandidates?: SemanticObservationCandidate[]
   status: SemanticAssetStatus
 }
 
@@ -88,8 +108,8 @@ function buildSprinklerAssets(): SemanticAsset[] {
     id: `sprinkler_${index}`,
     linkedId: 'farm_01_watering',
     kind: 'sprinkler',
-    label: `${index}번 급수 헤드`,
-    shortLabel: `H${index}`,
+    label: `${index + 1}번 급수 헤드`,
+    shortLabel: `S${index + 1}`,
     zoneId: 'farm_01',
     description: '물주기나 영양제 주기를 직접 실행할 수 있는 급수 포인트',
     position: {

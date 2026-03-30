@@ -8,6 +8,8 @@ Usage:
 """
 
 import os
+from pathlib import Path
+import sys
 import uuid
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -16,6 +18,18 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+try:
+    from agribot_bringup.launch_profile import (
+        build_graphics_environment_actions,
+    )
+except ModuleNotFoundError:
+    bringup_package_root = Path(__file__).resolve().parents[2] / 'agribot_bringup'
+    if str(bringup_package_root) not in sys.path:
+        sys.path.append(str(bringup_package_root))
+    from agribot_bringup.launch_profile import (
+        build_graphics_environment_actions,
+    )
 
 
 def load_file(package_name, file_path):
@@ -54,6 +68,16 @@ def generate_launch_description():
             pkg_agribot_description, 'worlds', 'farm_world.sdf'
         ),
         description='Path to the Gazebo world file'
+    )
+    gui_config_arg = DeclareLaunchArgument(
+        'gui_config',
+        default_value=os.path.join(
+            pkg_agribot_description, 'config', 'frontend_aligned_gui.config'
+        ),
+        description=(
+            'Path to the Gazebo GUI config file. '
+            'Use a repo-managed config so local ~/.gz GUI camera caches do not rotate the farm view.'
+        ),
     )
     gz_args_prefix_arg = DeclareLaunchArgument(
         'gz_args_prefix',
@@ -95,16 +119,9 @@ def generate_launch_description():
         description='Launch RGB-D camera bridges. Disable during LiDAR-only mapping to reduce load.',
     )
 
-    gpu_env_actions = []
-    if os.path.exists('/usr/bin/nvidia-smi'):
-        gpu_env_actions = [
-            SetEnvironmentVariable('DRI_PRIME', '1'),
-            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
-            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
-            SetEnvironmentVariable('__VK_LAYER_NV_optimus', 'NVIDIA_only'),
-            SetEnvironmentVariable('GBM_BACKEND', 'nvidia-drm'),
-            SetEnvironmentVariable('GZ_SIM_RENDER_ENGINE', 'ogre2'),
-        ]
+    graphics_env_actions = build_graphics_environment_actions(
+        include_gazebo_renderer=True,
+    )
 
     # Gazebo Harmonic simulation
     gz_sim = IncludeLaunchDescription(
@@ -114,7 +131,15 @@ def generate_launch_description():
         launch_arguments={
             # Start the simulation immediately so bridged sensor topics publish
             # without requiring a manual "play" click in the Gazebo GUI.
-            'gz_args': [LaunchConfiguration('gz_args_prefix'), ' ', LaunchConfiguration('world')],
+            # A repo-owned GUI config is passed explicitly so local ~/.gz GUI
+            # caches never override the initial farm camera direction.
+            'gz_args': [
+                LaunchConfiguration('gz_args_prefix'),
+                ' --gui-config ',
+                LaunchConfiguration('gui_config'),
+                ' ',
+                LaunchConfiguration('world'),
+            ],
         }.items(),
     )
 
@@ -138,6 +163,11 @@ def generate_launch_description():
             '/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry',
             # Joint States — GZ → ROS
             '/world/farm_world/model/agribot/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
+            # Harvest arm position command — ROS → GZ
+            '/agribot/harvest_arm_joint/cmd_pos@std_msgs/msg/Float64]gz.msgs.Double',
+            # Harvest basket preview slots — ROS → GZ
+            '/agribot/harvest_basket_slot_01/cmd_pos@std_msgs/msg/Float64]gz.msgs.Double',
+            '/agribot/harvest_basket_slot_02/cmd_pos@std_msgs/msg/Float64]gz.msgs.Double',
         ],
         remappings=[
             ('/clock', '/clock_raw'),
@@ -188,6 +218,9 @@ def generate_launch_description():
         name='ros_gz_lidar_bridge',
         arguments=[
             '/agribot/lidar@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
+        ],
+        remappings=[
+            ('/agribot/lidar', '/agribot/lidar_raw'),
         ],
         output='screen',
     )
@@ -263,10 +296,11 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        *gpu_env_actions,
+        *graphics_env_actions,
         gz_resource_path,
         gz_partition_env,
         world_arg,
+        gui_config_arg,
         gz_args_prefix_arg,
         publish_map_to_odom_tf_arg,
         publish_odom_tf_arg,

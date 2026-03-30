@@ -24,6 +24,7 @@ import {
   Wind,
   FlaskConical,
   Router,
+  X,
   Circle,
   LucideIcon,
   LucideProps
@@ -64,6 +65,7 @@ const iconMap: Record<string, LucideIcon> = {
   'navigation': Navigation,
   'add': Plus,
   'remove': Minus,
+  'close': X,
   'my_location': Locate,
   'route': Route,
   'battery_charging_80': BatteryCharging,
@@ -104,4 +106,3 @@ export function AppIcon({
     />
   )
 }
-

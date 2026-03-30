@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api/client'
 import {
   farmSemanticScene,
   type SemanticAsset,
+  type SemanticObservationCandidate,
   type SemanticGuideLine,
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
@@ -15,6 +16,12 @@ export type HealthTone = 'healthy' | 'warning' | 'critical'
 export type QuerySourceMap = Partial<Record<string, DataSource>>
 
 type UnknownRecord = Record<string, unknown>
+
+type CachedGetEntry = {
+  expiresAt: number
+  pending: Promise<unknown> | null
+  value: unknown
+}
 
 type PageDebugMeta = {
   querySources: QuerySourceMap
@@ -79,6 +86,13 @@ export type RobotTargetPose = {
   frameId: string
 }
 
+export type RobotObservationGoalCandidate = {
+  inspectWaypointId: string
+  inspectWaypointName: string | null
+  navigationPose: RobotTargetPose | null
+  finalTargetPose: RobotTargetPose
+}
+
 export type RobotMapData = {
   source: DataSource
   mapId: string
@@ -102,6 +116,11 @@ export type RobotCommandStatus = {
   requestedCommandType: string
   commandType: string
   preemptCurrentNavigation: boolean
+  targetPose: RobotTargetPose | null
+  routeTargetPose: RobotTargetPose | null
+  finalTargetPose: RobotTargetPose | null
+  targetWaypointId: string | null
+  navigationPhase: '' | 'route_anchor' | 'final_observation'
   status: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
   message: string
   error: string
@@ -112,6 +131,27 @@ export type RobotCommandStatus = {
   startedAt: string
   completedAt: string
   controlState: RobotControlState | null
+}
+
+export type RobotNavigationPreviewPoint = {
+  x: number
+  y: number
+  z: number
+  yaw: number
+  frameId: string
+}
+
+export type RobotNavigationPreview = {
+  source: DataSource
+  available: boolean
+  robotId: string
+  mapId: string
+  frameId: string
+  previewKind: 'none' | 'local_plan' | 'global_plan'
+  points: RobotNavigationPreviewPoint[]
+  activeTopic: string | null
+  updatedAt: string
+  note: string
 }
 
 export type RobotCommandDispatch = {
@@ -127,10 +167,16 @@ export type RobotCommandDispatch = {
 export type DemoDiagnosisResult = {
   observationId: string
   finalLabel: string
+  displayLabel: string
   finalConfidence: number
   imagePath: string
+  imageUrl: string
   reviewedAt: string
   decisionSource: string
+  detail: string
+  healthPercent: number
+  recommendedAction: string
+  diagnosisNeeded: boolean
 }
 
 export type MissionDispatch = {
@@ -220,6 +266,7 @@ export type RobotPageData = {
   map: RobotMapData
   scene: SemanticScene
   robotPose: RobotTargetPose
+  navigationPreview: RobotNavigationPreview
   latestCommandStatus: RobotCommandStatus
 }
 
@@ -278,6 +325,20 @@ export type PlantObservationFeed = {
   plantId: string
   plantName: string
   items: PlantObservationEntry[]
+}
+
+export type LiveCameraSnapshot = {
+  source: DataSource
+  available: boolean
+  isStale: boolean
+  capturedAt: string
+  imageUrl: string
+  plantId: string | null
+  fruitId: string | null
+  observationId: string | null
+  observationImageUrl: string
+  detectionLabel: string
+  detectionConfidence: number | null
 }
 
 export type DeviceCard = {
@@ -547,6 +608,16 @@ const PLANT_DIAGNOSIS_KEYWORDS = [
   '이상',
 ]
 
+const PLANT_NON_DIAGNOSIS_KEYWORDS = [
+  'healthy_leaf',
+  'healthy',
+  'normal',
+  '정상 잎',
+  '정상',
+  'ripe_tomato',
+  '수확 가능 토마토',
+]
+
 function extractPlantId(value: unknown) {
   const normalized = readString(value)
   if (!normalized) {
@@ -567,6 +638,16 @@ export function plantNeedsDiagnosis(plant?: {
     return false
   }
 
+  const latestState = normalizeSearchText(
+    plant.latestLabel,
+    plant.latestDisplayLabel,
+    plant.status,
+  )
+
+  if (latestState && includesAnyKeyword(latestState, PLANT_NON_DIAGNOSIS_KEYWORDS)) {
+    return false
+  }
+
   const normalized = normalizeSearchText(
     plant.latestLabel,
     plant.latestDisplayLabel,
@@ -579,6 +660,122 @@ export function plantNeedsDiagnosis(plant?: {
   }
 
   return includesAnyKeyword(normalized, PLANT_DIAGNOSIS_KEYWORDS)
+}
+
+function displayLabelForDiagnosis(label: string) {
+  const normalized = label.trim().toLowerCase()
+
+  if (!normalized) {
+    return '진단 결과'
+  }
+
+  if (normalized.includes('healthy')) {
+    return '정상 잎'
+  }
+
+  if (normalized.includes('ripe')) {
+    return '수확 가능 토마토'
+  }
+
+  if (normalized.includes('powder')) {
+    return '토마토 흰가루병'
+  }
+
+  if (normalized.includes('gray_mold') || normalized.includes('gray mold')) {
+    return '토마토 잿빛곰팡이병'
+  }
+
+  if (normalized.includes('blossom') || normalized.includes('rot')) {
+    return '배꼽썩음병'
+  }
+
+  if (normalized.includes('blight')) {
+    return '토마토 역병'
+  }
+
+  if (normalized.includes('wilt')) {
+    return '토마토 시듦병'
+  }
+
+  if (normalized.includes('spot')) {
+    return '토마토 반점병'
+  }
+
+  return label
+}
+
+function healthPercentForDiagnosis(label: string) {
+  const normalized = label.trim().toLowerCase()
+
+  if (!normalized) {
+    return 55
+  }
+
+  if (normalized.includes('healthy')) {
+    return 96
+  }
+
+  if (normalized.includes('ripe')) {
+    return 92
+  }
+
+  if (normalized.includes('gray_mold') || normalized.includes('gray mold')) {
+    return 34
+  }
+
+  if (normalized.includes('powder')) {
+    return 38
+  }
+
+  if (normalized.includes('blossom') || normalized.includes('rot')) {
+    return 41
+  }
+
+  if (normalized.includes('blight')) {
+    return 35
+  }
+
+  if (normalized.includes('wilt') || normalized.includes('spot')) {
+    return 44
+  }
+
+  return 52
+}
+
+function recommendedActionForDiagnosis(label: string, displayLabel: string) {
+  const normalized = label.trim().toLowerCase()
+
+  if (!normalized) {
+    return '추가 관찰 유지'
+  }
+
+  if (normalized.includes('healthy')) {
+    return '추가 관찰 유지'
+  }
+
+  if (normalized.includes('ripe')) {
+    return '수확 요청 가능'
+  }
+
+  return `${displayLabel} 수동 검토`
+}
+
+function detailForDiagnosis(label: string, displayLabel: string, treatmentReason: string) {
+  if (treatmentReason) {
+    return treatmentReason
+  }
+
+  const normalized = label.trim().toLowerCase()
+
+  if (normalized.includes('healthy')) {
+    return '정상 생육 패턴이 확인되었습니다.'
+  }
+
+  if (normalized.includes('ripe')) {
+    return '수확 가능한 성숙 상태가 확인되었습니다.'
+  }
+
+  return `${displayLabel} 징후가 확인되었습니다.`
 }
 
 function isFieldRelevantText(...values: unknown[]) {
@@ -710,6 +907,36 @@ function readSemanticAsset(payload: unknown): SemanticAsset | null {
   }
 
   const status = readString(payload.status)
+  const fallbackPose = {
+    x: readNumber(position.x),
+    y: readNumber(position.y),
+    z: 0,
+    yaw: 0,
+    frameId: 'map',
+  }
+  const observationCandidates = Array.isArray(payload.observation_candidates)
+    ? payload.observation_candidates
+      .map((candidatePayload): SemanticObservationCandidate | null => {
+        if (!isRecord(candidatePayload)) {
+          return null
+        }
+
+        const navigationPose = readRobotTargetPose(
+          candidatePayload.navigation_pose,
+          fallbackPose,
+        )
+
+        return {
+          inspectWaypointId: readString(candidatePayload.inspect_waypoint_id),
+          inspectWaypointName: readString(candidatePayload.inspect_waypoint_name),
+          navigationPose,
+          approachPose: candidatePayload.approach_pose
+            ? readRobotTargetPose(candidatePayload.approach_pose, navigationPose)
+            : undefined,
+        }
+      })
+      .filter((candidate): candidate is SemanticObservationCandidate => candidate !== null)
+    : []
 
   return {
     id: readString(payload.id) || `${kind}-${readNumber(position.x)}-${readNumber(position.y)}`,
@@ -723,6 +950,15 @@ function readSemanticAsset(payload: unknown): SemanticAsset | null {
       x: readNumber(position.x),
       y: readNumber(position.y),
     },
+    navigationPose: payload.navigation_pose
+      ? readRobotTargetPose(payload.navigation_pose, fallbackPose)
+      : undefined,
+    approachPose: payload.approach_pose
+      ? readRobotTargetPose(payload.approach_pose, fallbackPose)
+      : undefined,
+    inspectWaypointId: readString(payload.inspect_waypoint_id),
+    inspectWaypointName: readString(payload.inspect_waypoint_name),
+    observationCandidates: observationCandidates.length > 0 ? observationCandidates : undefined,
     status:
       status === 'attention' || status === 'target' || status === 'handled'
         ? status
@@ -851,6 +1087,11 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
   }
 
   const normalizedStatus = normalizeTaskStatus(record.status)
+  const rawNavigationPhase = readString(record.navigation_phase)
+  const navigationPhase =
+    rawNavigationPhase === 'route_anchor' || rawNavigationPhase === 'final_observation'
+      ? rawNavigationPhase
+      : ''
 
   return {
     source: toQuerySource(payload),
@@ -859,6 +1100,17 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
     requestedCommandType: readString(record.requested_command_type),
     commandType: readString(record.command_type),
     preemptCurrentNavigation: readBoolean(record.preempt_current_navigation, false),
+    targetPose: record.target_pose
+      ? readRobotTargetPose(record.target_pose, robotFallbackPose)
+      : null,
+    routeTargetPose: record.route_target_pose
+      ? readRobotTargetPose(record.route_target_pose, robotFallbackPose)
+      : null,
+    finalTargetPose: record.final_target_pose
+      ? readRobotTargetPose(record.final_target_pose, robotFallbackPose)
+      : null,
+    targetWaypointId: readString(record.target_waypoint_id) || null,
+    navigationPhase,
     status: normalizedStatus,
     message: readString(record.message) || readString(record.note) || '명령 상태 정보가 준비되지 않았습니다.',
     error: readString(record.error),
@@ -869,6 +1121,47 @@ function readRobotCommandStatus(payload: unknown): RobotCommandStatus | null {
     startedAt: readString(record.started_at),
     completedAt: readString(record.completed_at),
     controlState: readRobotControlState(record.control_state),
+  }
+}
+
+function readRobotNavigationPreview(payload: unknown): RobotNavigationPreview | null {
+  const record = readRecord(payload)
+  if (!record) {
+    return null
+  }
+
+  const rawPreviewKind = readString(record.preview_kind)
+  const previewKind =
+    rawPreviewKind === 'local_plan' || rawPreviewKind === 'global_plan'
+      ? rawPreviewKind
+      : 'none'
+  const points = asArray(record.points)
+    .map((item): RobotNavigationPreviewPoint | null => {
+      const point = readRecord(item)
+      if (!point) {
+        return null
+      }
+      return {
+        x: readNumber(point.x, 0),
+        y: readNumber(point.y, 0),
+        z: readNumber(point.z, 0),
+        yaw: readNumber(point.yaw, 0),
+        frameId: readString(point.frame_id) || 'map',
+      }
+    })
+    .filter((item): item is RobotNavigationPreviewPoint => item !== null)
+
+  return {
+    source: toQuerySource(payload),
+    available: readBoolean(record.available, points.length >= 2),
+    robotId: readString(record.robot_id) || 'AGR-02',
+    mapId: readString(record.map_id) || 'farm_map',
+    frameId: readString(record.frame_id) || 'map',
+    previewKind,
+    points,
+    activeTopic: readString(record.active_topic) || null,
+    updatedAt: readString(record.updated_at),
+    note: readString(record.note) || '예상 경로 정보가 준비되지 않았습니다.',
   }
 }
 
@@ -942,10 +1235,47 @@ async function safeGet(path: string) {
   }
 }
 
+const requestCache = new Map<string, CachedGetEntry>()
+const ROBOT_RUNTIME_CACHE_TTL_MS = 300
+const ROBOT_STATIC_CACHE_TTL_MS = 15_000
+
+async function safeGetCached(path: string, ttlMs: number) {
+  const now = Date.now()
+  const cachedEntry = requestCache.get(path)
+
+  if (cachedEntry && cachedEntry.expiresAt > now) {
+    return cachedEntry.value
+  }
+
+  if (cachedEntry?.pending) {
+    return cachedEntry.pending
+  }
+
+  const pending = safeGet(path).then((payload) => {
+    const expiresAt = payload === null ? Date.now() + Math.min(ttlMs, 1_000) : Date.now() + ttlMs
+    requestCache.set(path, {
+      expiresAt,
+      pending: null,
+      value: payload,
+    })
+    return payload
+  })
+
+  requestCache.set(path, {
+    expiresAt: now + ttlMs,
+    pending,
+    value: cachedEntry?.value ?? null,
+  })
+
+  return pending
+}
+
 async function postWithFallback(
   attempts: Array<{ path: string; body: unknown }>,
   successFallback: string,
 ) {
+  let lastNon404Error: unknown = null
+
   for (const attempt of attempts) {
     try {
       const response = await apiClient.post(attempt.path, attempt.body)
@@ -953,8 +1283,20 @@ async function postWithFallback(
       const payload = unwrapPayload(response.data)
 
       if (isRecord(payload)) {
+        const commandStatus = readString(payload.command_status).trim().toUpperCase()
+        const result = readString(payload.result).trim().toUpperCase()
+        const status = readString(payload.status).trim().toLowerCase()
+        if (commandStatus === 'FAILED' || result === 'FAILED' || status === 'failed') {
+          throw new Error(
+            readString(payload.result_message)
+            || readString(payload.detail_message)
+            || readString(payload.message)
+            || successFallback,
+          )
+        }
         return (
           readString(payload.message)
+          || readString(payload.result_message)
           || readString(payload.status)
           || readString(payload.command_type)
           || successFallback
@@ -973,7 +1315,12 @@ async function postWithFallback(
       }
 
       markRouteFailed('POST', attempt.path)
+      lastNon404Error = error
     }
+  }
+
+  if (lastNon404Error) {
+    throw new Error(readApiErrorMessage(lastNon404Error, successFallback))
   }
 
   throw new Error('연결 가능한 API 엔드포인트를 찾지 못했습니다.')
@@ -1188,10 +1535,10 @@ export const dashboardFallback: DashboardPageData = {
 }
 
 const robotFallbackPose: RobotTargetPose = {
-  x: 2,
-  y: -5.9,
+  x: 0,
+  y: 0,
   z: 0,
-  yaw: 0,
+  yaw: Math.PI / 2,
   frameId: 'map',
 }
 
@@ -1224,6 +1571,11 @@ const robotFallbackCommandStatus: RobotCommandStatus = {
   requestedCommandType: '',
   commandType: '',
   preemptCurrentNavigation: false,
+  targetPose: null,
+  routeTargetPose: null,
+  finalTargetPose: null,
+  targetWaypointId: null,
+  navigationPhase: '',
   status: 'idle',
   message: '이동 명령 상태를 아직 받지 못했습니다.',
   error: '',
@@ -1236,6 +1588,19 @@ const robotFallbackCommandStatus: RobotCommandStatus = {
   controlState: null,
 }
 
+const robotFallbackNavigationPreview: RobotNavigationPreview = {
+  source: 'fallback',
+  available: false,
+  robotId: 'AGR-02',
+  mapId: 'farm_map',
+  frameId: 'map',
+  previewKind: 'none',
+  points: [],
+  activeTopic: null,
+  updatedAt: '',
+  note: '실시간 예상 경로 스냅샷이 아직 없습니다.',
+}
+
 export const robotFallback: RobotPageData = {
   source: 'fallback',
   debug: {
@@ -1244,17 +1609,18 @@ export const robotFallback: RobotPageData = {
       '/robot/pose': 'fallback',
       '/robot/map': 'fallback',
       '/robot/map/layers': 'fallback',
+      '/robot/navigation-preview': 'fallback',
       '/robot/commands/latest': 'fallback',
       '/zones': 'fallback',
     },
   },
   waypoint: 'inspection_b12',
   zoneLabel: 'Farm 01',
-  poseLabel: 'map 기준 x 2.0 / y -5.9',
+  poseLabel: 'map 기준 x 0.0 / y 0.0',
   pose: {
-    x: 2.0,
-    y: -5.9,
-    yawDeg: 0,
+    x: 0.0,
+    y: 0.0,
+    yawDeg: 90,
     linearSpeedMps: 1.1,
     updatedAt: '',
   },
@@ -1285,6 +1651,7 @@ export const robotFallback: RobotPageData = {
   map: robotFallbackMap,
   scene: farmSemanticScene,
   robotPose: robotFallbackPose,
+  navigationPreview: robotFallbackNavigationPreview,
   latestCommandStatus: robotFallbackCommandStatus,
 }
 
@@ -1321,7 +1688,7 @@ export const plantsFallback: PlantsPageData = {
       detail: '수확 후보를 다시 확인하는 발표용 샘플 카드입니다.',
       diagnosisLabel: '수확 후보 재확인',
       detectedAt: '09:38',
-      imageUrl: '/mock-images/harvest-closeup.png',
+      imageUrl: '/mock-images/healthy-default.jpg',
     },
   ],
   plants: [
@@ -1338,7 +1705,7 @@ export const plantsFallback: PlantsPageData = {
       status: '수확 후보',
       latestLabel: '',
       latestDisplayLabel: '',
-      latestImageUrl: '/mock-images/harvest-closeup.png',
+      latestImageUrl: '/mock-images/healthy-default.jpg',
     },
     {
       name: '토마토 06',
@@ -1383,7 +1750,7 @@ export const plantsFallback: PlantsPageData = {
       status: '순찰 관찰',
       latestLabel: '',
       latestDisplayLabel: '',
-      latestImageUrl: '/mock-images/harvest-closeup.png',
+      latestImageUrl: '/mock-images/healthy-default.jpg',
     },
   ],
 }
@@ -1393,6 +1760,20 @@ export const emptyPlantObservationFeed: PlantObservationFeed = {
   plantId: '',
   plantName: '',
   items: [],
+}
+
+export const emptyLiveCameraSnapshot: LiveCameraSnapshot = {
+  source: 'fallback',
+  available: false,
+  isStale: true,
+  capturedAt: '',
+  imageUrl: '',
+  plantId: null,
+  fruitId: null,
+  observationId: null,
+  observationImageUrl: '',
+  detectionLabel: '',
+  detectionConfidence: null,
 }
 
 export const environmentFallback: EnvironmentPageData = {
@@ -1734,14 +2115,23 @@ export async function getDashboardPageData(): Promise<DashboardPageData> {
 }
 
 export async function getRobotPageData(): Promise<RobotPageData> {
-  const [statusPayload, posePayload, zonesPayload, mapPayload, layersPayload, commandStatusPayload] =
+  const [
+    statusPayload,
+    posePayload,
+    zonesPayload,
+    mapPayload,
+    layersPayload,
+    navigationPreviewPayload,
+    commandStatusPayload,
+  ] =
     await Promise.all([
-      safeGet('/robot/status'),
-      safeGet('/robot/pose'),
-      safeGet('/zones'),
-      safeGet('/robot/map'),
-      safeGet('/robot/map/layers'),
-      safeGet('/robot/commands/latest'),
+      safeGetCached('/robot/status', ROBOT_RUNTIME_CACHE_TTL_MS),
+      safeGetCached('/robot/pose', ROBOT_RUNTIME_CACHE_TTL_MS),
+      safeGetCached('/zones', ROBOT_STATIC_CACHE_TTL_MS),
+      safeGetCached('/robot/map', ROBOT_STATIC_CACHE_TTL_MS),
+      safeGetCached('/robot/map/layers', ROBOT_STATIC_CACHE_TTL_MS),
+      safeGetCached('/robot/navigation-preview', ROBOT_RUNTIME_CACHE_TTL_MS),
+      safeGetCached('/robot/commands/latest', ROBOT_RUNTIME_CACHE_TTL_MS),
     ])
 
   const querySources: QuerySourceMap = {
@@ -1749,6 +2139,7 @@ export async function getRobotPageData(): Promise<RobotPageData> {
     '/robot/pose': toQuerySource(posePayload),
     '/robot/map': toQuerySource(mapPayload),
     '/robot/map/layers': toQuerySource(layersPayload),
+    '/robot/navigation-preview': toQuerySource(navigationPreviewPayload),
     '/robot/commands/latest': toQuerySource(commandStatusPayload),
     '/zones': toQuerySource(zonesPayload),
   }
@@ -1760,6 +2151,8 @@ export async function getRobotPageData(): Promise<RobotPageData> {
   const robotPose = readRobotTargetPose(poseRecord, robotFallbackPose)
   const mapData = readRobotMapData(mapPayload) ?? robotFallbackMap
   const scene = readSemanticScene(layersPayload) ?? robotFallback.scene
+  const navigationPreview =
+    readRobotNavigationPreview(navigationPreviewPayload) ?? robotFallback.navigationPreview
   const commandStatus = readRobotCommandStatus(commandStatusPayload) ?? robotFallback.latestCommandStatus
   const zones = asArray(zonesPayload)
   const metrics = [...robotFallback.metrics]
@@ -1858,6 +2251,7 @@ export async function getRobotPageData(): Promise<RobotPageData> {
     map: mapData,
     scene,
     robotPose,
+    navigationPreview,
     latestCommandStatus: commandStatus,
   }
 }
@@ -2023,7 +2417,7 @@ export async function getPlantsPageData(): Promise<PlantsPageData> {
                 : baseRecommendedAction,
           health,
           tone,
-          status: diagnosisNeeded ? '진단 필요' : baseStatus,
+          status: diagnosisNeeded ? '조치 필요' : baseStatus,
           latestLabel,
           latestDisplayLabel,
           latestImageUrl: resolveApiMediaUrl(
@@ -2104,6 +2498,25 @@ export async function getPlantObservations(plantId: string): Promise<PlantObserv
     plantId: readString(record?.plant_id) || plantId,
     plantName: readString(record?.plant_name) || '',
     items: parsedItems,
+  }
+}
+
+export async function getLiveCameraSnapshot(): Promise<LiveCameraSnapshot> {
+  const payload = await safeGet('/camera/latest')
+  const record = readRecord(payload)
+
+  return {
+    source: toQuerySource(payload),
+    available: readBoolean(record?.available),
+    isStale: readBoolean(record?.is_stale, true),
+    capturedAt: readString(record?.captured_at),
+    imageUrl: resolveApiMediaUrl(readString(record?.image_url)),
+    plantId: readString(record?.plant_id) || null,
+    fruitId: readString(record?.fruit_id) || null,
+    observationId: readString(record?.observation_id) || null,
+    observationImageUrl: resolveApiMediaUrl(readString(record?.observation_image_url)),
+    detectionLabel: readString(record?.detection_label),
+    detectionConfidence: readOptionalNumber(record?.detection_confidence),
   }
 }
 
@@ -2338,9 +2751,20 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
     '/harvests': toQuerySource(harvestsPayload),
   }
   const live = Object.values(querySources).some((source) => source === 'live')
+  const statsSource = querySources['/harvests/stats']
+  const harvestsSource = querySources['/harvests']
+  const useStatsFallback = statsSource !== 'live'
+  const useHarvestsFallback = harvestsSource !== 'live'
   const stats = readRecord(statsPayload)
   const rows = asArray(harvestsPayload)
-  const metrics = [...harvestFallback.metrics]
+  const metrics = useStatsFallback
+    ? [...harvestFallback.metrics]
+    : [
+        { label: '오늘 수확', value: '0개', meta: '실시간 수확 기록 대기 중', tone: 'accent' as const },
+        { label: '적재율', value: '0개 적재', meta: '바구니 상태를 기다리는 중', tone: 'warning' as const },
+        { label: '성공률', value: '0.0%', meta: '실시간 수확 결과 대기 중', tone: 'accent' as const },
+        { label: '실패 건수', value: '0건', meta: '실시간 실패 기록 대기 중', tone: 'danger' as const },
+      ]
 
   metrics[0] = {
     ...metrics[0],
@@ -2417,24 +2841,34 @@ export async function getHarvestPageData(): Promise<HarvestPageData> {
     basketState:
       readString(stats?.basket_state)
       || readString(stats?.basket_fill_rate)
-      || harvestFallback.basketState,
-    nextSwap: readString(stats?.next_swap_eta) || harvestFallback.nextSwap,
-    basketCount: readNumber(stats?.basket_count, harvestFallback.basketCount),
-    remainingReadyCount: readNumber(stats?.remaining_ready_count, harvestFallback.remainingReadyCount),
+      || (useStatsFallback ? harvestFallback.basketState : '바구니 적재 0개'),
+    nextSwap:
+      readString(stats?.next_swap_eta)
+      || (useStatsFallback ? harvestFallback.nextSwap : 'ready 0개 남음'),
+    basketCount: readNumber(stats?.basket_count, useStatsFallback ? harvestFallback.basketCount : 0),
+    remainingReadyCount: readNumber(
+      stats?.remaining_ready_count,
+      useStatsFallback ? harvestFallback.remainingReadyCount : 0,
+    ),
     lastHarvestedFruitId:
       readString(stats?.last_harvested_fruit_id)
-      || harvestFallback.lastHarvestedFruitId,
-    missionStatus: normalizeTaskStatus(stats?.mission_status),
-    currentPhase: readString(stats?.current_phase) || harvestFallback.currentPhase,
-    activeMissionId: readString(stats?.active_mission_id) || harvestFallback.activeMissionId,
-    activeTargetId: readString(stats?.active_target_id) || harvestFallback.activeTargetId,
-    detailMessage: readString(stats?.detail_message) || harvestFallback.detailMessage,
+      || (useStatsFallback ? harvestFallback.lastHarvestedFruitId : ''),
+    missionStatus: useStatsFallback
+      ? normalizeTaskStatus(stats?.mission_status || harvestFallback.missionStatus)
+      : normalizeTaskStatus(stats?.mission_status),
+    currentPhase: readString(stats?.current_phase) || (useStatsFallback ? harvestFallback.currentPhase : ''),
+    activeMissionId:
+      readString(stats?.active_mission_id) || (useStatsFallback ? harvestFallback.activeMissionId : ''),
+    activeTargetId:
+      readString(stats?.active_target_id) || (useStatsFallback ? harvestFallback.activeTargetId : ''),
+    detailMessage:
+      readString(stats?.detail_message) || (useStatsFallback ? harvestFallback.detailMessage : ''),
     loadedFruitIds:
       readStringArray(stats?.loaded_fruit_ids).length > 0
         ? readStringArray(stats?.loaded_fruit_ids)
-        : harvestFallback.loadedFruitIds,
+        : (useStatsFallback ? harvestFallback.loadedFruitIds : []),
     metrics,
-    batches: batches.length > 0 ? batches : harvestFallback.batches,
+    batches: batches.length > 0 ? batches : (useHarvestsFallback ? harvestFallback.batches : []),
   }
 }
 
@@ -2510,6 +2944,13 @@ export async function sendRobotControlAction(
     return postWithFallback(
       [
         {
+          path: '/robot/control/pause',
+          body: {
+            robot_id: robotId,
+            requested_by: 'frontend-operator',
+          },
+        },
+        {
           path: '/robot/commands',
           body: {
             robot_id: robotId,
@@ -2542,6 +2983,13 @@ export async function sendRobotControlAction(
     return postWithFallback(
       [
         {
+          path: '/robot/control/resume',
+          body: {
+            robot_id: robotId,
+            requested_by: 'frontend-operator',
+          },
+        },
+        {
           path: '/robot/commands',
           body: {
             robot_id: robotId,
@@ -2570,18 +3018,18 @@ export async function sendRobotControlAction(
           body: {
             robot_id: robotId,
             requested_by: 'frontend-operator',
-            command_type: 'return_home',
-          },
-        },
-        {
-          path: '/missions/return-home',
-          body: {
-            robot_id: robotId,
-            requested_by: 'frontend-operator',
+            command_type: 'navigate_to_pose',
+            target_pose: {
+              x: 0,
+              y: 0,
+              z: 0,
+              yaw: 0,
+              frame_id: 'map',
+            },
           },
         },
       ],
-      '홈 복귀 명령을 접수했습니다. 상태 카드에서 진행 상황을 확인하세요.',
+      '가운데 복귀 명령을 접수했습니다. 상태 카드에서 진행 상황을 확인하세요.',
     )
   }
 
@@ -2648,7 +3096,7 @@ export async function stopPatrolMission() {
 }
 
 export async function getLatestRobotCommandStatus(): Promise<RobotCommandStatus> {
-  const payload = await safeGet('/robot/commands/latest')
+  const payload = await safeGetCached('/robot/commands/latest', ROBOT_RUNTIME_CACHE_TTL_MS)
   return readRobotCommandStatus(payload) ?? robotFallback.latestCommandStatus
 }
 
@@ -2674,7 +3122,15 @@ export async function getMissionStatus(missionId: string): Promise<MissionStatus
   }
 }
 
-export async function sendRobotNavigateCommand(targetPose: RobotTargetPose) {
+export async function sendRobotNavigateCommand(
+  targetPose: RobotTargetPose,
+  options?: {
+    inspectWaypointId?: string | null
+    inspectWaypointIds?: string[] | null
+    observationCandidates?: RobotObservationGoalCandidate[] | null
+    plantId?: string | null
+  },
+) {
   try {
     const response = await apiClient.post('/robot/commands', {
       robot_id: 'AGR-02',
@@ -2687,6 +3143,47 @@ export async function sendRobotNavigateCommand(targetPose: RobotTargetPose) {
         yaw: targetPose.yaw,
         frame_id: targetPose.frameId,
       },
+      payload:
+        options?.inspectWaypointId
+        || options?.inspectWaypointIds?.length
+        || options?.observationCandidates?.length
+        || options?.plantId
+          ? {
+              ...(options.inspectWaypointId ? { inspect_waypoint_id: options.inspectWaypointId } : {}),
+              ...(options.inspectWaypointIds?.length
+                ? { inspect_waypoint_ids: options.inspectWaypointIds }
+                : {}),
+              ...(options.observationCandidates?.length
+                ? {
+                    observation_candidates: options.observationCandidates.map((candidate) => ({
+                      inspect_waypoint_id: candidate.inspectWaypointId,
+                      ...(candidate.inspectWaypointName
+                        ? { inspect_waypoint_name: candidate.inspectWaypointName }
+                        : {}),
+                      ...(candidate.navigationPose
+                        ? {
+                            navigation_pose: {
+                              x: candidate.navigationPose.x,
+                              y: candidate.navigationPose.y,
+                              z: candidate.navigationPose.z,
+                              yaw: candidate.navigationPose.yaw,
+                              frame_id: candidate.navigationPose.frameId,
+                            },
+                          }
+                        : {}),
+                      final_target_pose: {
+                        x: candidate.finalTargetPose.x,
+                        y: candidate.finalTargetPose.y,
+                        z: candidate.finalTargetPose.z,
+                        yaw: candidate.finalTargetPose.yaw,
+                        frame_id: candidate.finalTargetPose.frameId,
+                      },
+                    })),
+                  }
+                : {}),
+              ...(options.plantId ? { plant_id: options.plantId } : {}),
+            }
+          : undefined,
     })
     markRouteVerified('POST', '/robot/commands')
     return parseCommandDispatch(response.data, '클릭한 좌표로 이동 요청을 보냈습니다.')
@@ -2725,17 +3222,35 @@ export async function runDemoDiagnosis({
     }
 
     markRouteVerified('POST', '/inference/demo/confirm')
+    const treatmentPlan = readRecord(payload.treatment_plan)
+    const observationId = readString(payload.observation_id)
+    const finalLabel = readString(payload.final_label)
+    const displayLabel = displayLabelForDiagnosis(finalLabel)
+    const treatmentReason = readString(treatmentPlan?.reason)
+    const recommendedAction = recommendedActionForDiagnosis(finalLabel, displayLabel)
+    const diagnosisNeeded = plantNeedsDiagnosis({
+      status: displayLabel,
+      recommendedAction,
+      latestLabel: finalLabel,
+      latestDisplayLabel: displayLabel,
+    })
     return {
-      observationId: readString(payload.observation_id),
-      finalLabel: readString(payload.final_label),
+      observationId,
+      finalLabel,
+      displayLabel,
       finalConfidence: readNumber(payload.final_confidence),
       imagePath: readString(payload.image_path),
+      imageUrl: resolveApiMediaUrl(observationId ? `/api/v1/media/${observationId}` : ''),
       reviewedAt: readString(payload.reviewed_at),
       decisionSource: readString(payload.decision_source),
+      detail: detailForDiagnosis(finalLabel, displayLabel, treatmentReason),
+      healthPercent: healthPercentForDiagnosis(finalLabel),
+      recommendedAction,
+      diagnosisNeeded,
     } satisfies DemoDiagnosisResult
   } catch (error) {
     markRouteFailed('POST', '/inference/demo/confirm')
-    throw new Error(readApiErrorMessage(error, '시연용 병해 진단을 처리하지 못했습니다.'))
+    throw new Error(readApiErrorMessage(error, '시연용 AI 진단을 처리하지 못했습니다.'))
   }
 }
 
@@ -2758,9 +3273,13 @@ export async function sendRobotZoneMove(zoneId: string) {
 export async function requestHarvestMission({
   plantId,
   fruitId,
+  inspectWaypointId,
+  inspectWaypointIds,
 }: {
   plantId: string
   fruitId: string
+  inspectWaypointId?: string | null
+  inspectWaypointIds?: string[] | null
 }) {
   try {
     const response = await apiClient.post('/missions/harvest', {
@@ -2768,6 +3287,8 @@ export async function requestHarvestMission({
       plant_id: plantId,
       fruit_id: fruitId,
       requested_by: 'frontend-operator',
+      ...(inspectWaypointId ? { inspect_waypoint_id: inspectWaypointId } : {}),
+      ...(inspectWaypointIds?.length ? { inspect_waypoint_ids: inspectWaypointIds } : {}),
     })
     markRouteVerified('POST', '/missions/harvest')
     return parseMissionDispatch(response.data, `${fruitId} 수확 요청을 접수했습니다.`)
@@ -2879,14 +3400,14 @@ export async function triggerSprinklerWatering({
         body: {
           zone_id: zoneId,
           device_id: deviceId,
-          target_value: 3.0,
+          target_value: 5.0,
           value_unit: 'sec',
           requested_by: 'frontend-operator',
           request_source: 'farm_command_sprinkler_modal',
         },
       },
     ],
-    `${deviceId} 스프링클러 물주기 요청을 보냈습니다.`,
+    `${deviceId} 스프링클러 물 주기 요청을 보냈습니다.`,
   )
 }
 
@@ -2904,7 +3425,7 @@ export async function triggerSprinklerNutrient({
         body: {
           zone_id: zoneId,
           device_id: deviceId,
-          target_value: 2.5,
+          target_value: 5.0,
           value_unit: 'sec',
           requested_by: 'frontend-operator',
           request_source: 'farm_command_sprinkler_modal',
@@ -2912,6 +3433,6 @@ export async function triggerSprinklerNutrient({
         },
       },
     ],
-    `${deviceId} 스프링클러 영양제 주기 요청을 보냈습니다.`,
+    `${deviceId} 스프링클러 약 주기 요청을 보냈습니다.`,
   )
 }

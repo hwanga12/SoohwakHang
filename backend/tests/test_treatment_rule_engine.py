@@ -47,6 +47,21 @@ def test_powdery_mildew_selects_nearest_sprinkler() -> None:
     assert plan.command_payload['command_type'] == 'spray_pesticide'
 
 
+def test_column_aligned_plant_prefers_same_column_sprinkler() -> None:
+    engine = DiseaseTreatmentRuleEngine()
+
+    plan = engine.evaluate(
+        disease_label='tomato_powdery_mildew_disease',
+        zone_id='farm_01',
+        target_position=Point3D(x=-2.0, y=4.0, z=0.75),
+    )
+
+    assert plan.action_required is True
+    assert plan.status == 'ready'
+    assert plan.selected_sprinkler is not None
+    assert plan.selected_sprinkler.device_id == 'sprinkler_1'
+
+
 def test_calcium_deficiency_without_position_waits_for_target() -> None:
     engine = DiseaseTreatmentRuleEngine()
 

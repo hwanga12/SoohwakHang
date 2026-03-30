@@ -3,7 +3,6 @@
   <model name="tomato">
     <static>true</static>
     <link name="link">
-      <pose>0 0 0 1.5708 0 0</pose>
       <inertial>
         <mass>0.1</mass>
         <inertia>
@@ -15,13 +14,28 @@
           <iyz>0</iyz>
         </inertia>
       </inertial>
+      <collision name="fruit_collision">
+        <pose>0 0 -0.002 0 0 0</pose>
+        <!-- 수확 시각화용 과실은 유지하되, 로봇 주행 통로를 막지 않도록
+             충돌 반경을 최소 수준으로 낮춘다. -->
+        <geometry>
+          <sphere>
+            <radius>0.001</radius>
+          </sphere>
+        </geometry>
+      </collision>
       <visual name="visual">
         <geometry>
           <mesh>
-            <uri>meshes/tomato_gazebo.obj</uri>
-            <scale>0.75 0.75 0.75</scale>
+            <uri>meshes/tomato.glb</uri>
+            <scale>0.03 0.03 0.03</scale>
           </mesh>
         </geometry>
+        <material>
+          <ambient>0.8 0.0 0.0 1</ambient>
+          <diffuse>1.0 0.0 0.0 1</diffuse>
+          <specular>0.5 0.5 0.5 1</specular>
+        </material>
       </visual>
     </link>
   </model>

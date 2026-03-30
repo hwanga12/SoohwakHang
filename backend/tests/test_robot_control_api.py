@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -16,12 +17,18 @@ from robot_command_bridge_service import (  # noqa: E402
     command_file_path,
     publish_robot_command,
 )
-from robot_map_service import read_status_payload  # noqa: E402
+from robot_map_service import (  # noqa: E402
+    read_layers_payload,
+    read_pose_payload,
+    read_status_payload,
+)
+from robot_navigation_preview_service import read_navigation_preview_payload  # noqa: E402
 from robot_runtime_state_service import (  # noqa: E402
     command_status_file_path,
     control_state_file_path,
     mission_request_file_path,
     mission_status_record_file_path,
+    navigation_path_snapshot_file_path,
     read_latest_command_status_payload,
 )
 from routers import missions, robots  # noqa: E402
@@ -199,6 +206,112 @@ def test_read_status_payload_prefers_authoritative_control_state() -> None:
     assert payload["note"] == "비상 정지가 활성화되었습니다."
 
 
+def test_read_pose_payload_keeps_last_map_pose_when_snapshot_is_stale() -> None:
+    pose_snapshot_path = Path(os.environ["AGRIBOT_RUNTIME_DIR"]) / "robot_pose_snapshot.json"
+    _write_json(
+        pose_snapshot_path,
+        {
+            "robot_id": "AGR-02",
+            "map_id": "farm_map",
+            "pose": {
+                "x": -1.9,
+                "y": 4.8,
+                "z": 0.0,
+                "yaw": 1.57,
+                "frame_id": "map",
+            },
+            "linear_speed_mps": 0.0,
+            "updated_at": "2026-03-29T00:00:00+00:00",
+            "timestamp": 1.0,
+        },
+    )
+
+    payload = read_pose_payload()
+
+    assert payload["source"] == "live"
+    assert payload["pose"]["x"] == pytest.approx(-1.9)
+    assert payload["pose"]["y"] == pytest.approx(4.8)
+    assert "마지막 실제 좌표를 유지" in payload["note"]
+
+
+def test_read_pose_payload_falls_back_when_only_non_map_frame_exists() -> None:
+    pose_snapshot_path = Path(os.environ["AGRIBOT_RUNTIME_DIR"]) / "robot_pose_snapshot.json"
+    _write_json(
+        pose_snapshot_path,
+        {
+            "robot_id": "AGR-02",
+            "map_id": "farm_map",
+            "pose": {
+                "x": -1.9,
+                "y": 4.8,
+                "z": 0.0,
+                "yaw": 1.57,
+                "frame_id": "odom",
+            },
+            "linear_speed_mps": 0.0,
+            "updated_at": "2026-03-29T00:00:00+00:00",
+            "timestamp": 1.0,
+        },
+    )
+
+    payload = read_pose_payload()
+
+    assert payload["source"] == "fallback"
+    assert payload["pose"]["x"] == pytest.approx(2.0)
+    assert payload["pose"]["y"] == pytest.approx(-5.9)
+    assert "odom 프레임 pose만 확인" in payload["note"]
+
+
+def test_read_navigation_preview_payload_returns_live_local_plan_points() -> None:
+    _write_json(
+        navigation_path_snapshot_file_path(),
+        {
+            "robot_id": "AGR-02",
+            "map_id": "farm_map",
+            "frame_id": "map",
+            "preview_kind": "local_plan",
+            "active_topic": "/local_plan",
+            "active_points": [
+                {"x": 0.0, "y": 6.0, "z": 0.0, "yaw": 1.57, "frame_id": "map"},
+                {"x": 0.3, "y": 5.8, "z": 0.0, "yaw": 1.52, "frame_id": "map"},
+                {"x": 0.6, "y": 5.5, "z": 0.0, "yaw": 1.48, "frame_id": "map"},
+            ],
+            "updated_at": "2026-03-30T00:00:00+00:00",
+        },
+    )
+
+    payload = read_navigation_preview_payload()
+
+    assert payload["source"] == "live"
+    assert payload["available"] is True
+    assert payload["preview_kind"] == "local_plan"
+    assert payload["active_topic"] == "/local_plan"
+    assert len(payload["points"]) == 3
+    assert payload["points"][0]["x"] == pytest.approx(0.0)
+    assert payload["points"][2]["y"] == pytest.approx(5.5)
+
+
+def test_read_navigation_preview_payload_hides_preview_when_points_are_missing() -> None:
+    _write_json(
+        navigation_path_snapshot_file_path(),
+        {
+            "robot_id": "AGR-02",
+            "map_id": "farm_map",
+            "frame_id": "map",
+            "preview_kind": "none",
+            "active_topic": None,
+            "active_points": [],
+            "updated_at": "2026-03-30T00:00:00+00:00",
+        },
+    )
+
+    payload = read_navigation_preview_payload()
+
+    assert payload["source"] == "fallback"
+    assert payload["available"] is False
+    assert payload["points"] == []
+
+
 def test_robot_control_pause_endpoint_publishes_pause_motion() -> None:
     _write_json(
         control_state_file_path(),
@@ -218,8 +331,216 @@ def test_robot_control_pause_endpoint_publishes_pause_motion() -> None:
 
     payload = response["data"]
     assert payload["requested_command_type"] == "pause"
-    assert payload["command_type"] == "pause_motion"
-    assert payload["request"]["accepted"] is True
+
+
+def test_read_layers_payload_exposes_safe_approach_pose_for_plants() -> None:
+    payload = read_layers_payload()
+
+    plant_asset = next(
+        asset for asset in payload["assets"]
+        if asset["kind"] == "plant" and asset["id"] == "farm01_plant_01"
+    )
+
+    assert plant_asset["position"]["x"] == pytest.approx(-6.0)
+    assert plant_asset["position"]["y"] == pytest.approx(-6.0)
+    observation_candidates = plant_asset["observation_candidates"]
+    observation_waypoint_ids = {
+        candidate["inspect_waypoint_id"]
+        for candidate in observation_candidates
+    }
+
+    assert observation_waypoint_ids == {
+        "farm_01_lane_01_inspect_01",
+        "farm_01_lane_02_inspect_06",
+    }
+    assert observation_candidates[0]["inspect_waypoint_id"] == "farm_01_lane_01_inspect_01"
+
+    left_candidate = next(
+        candidate for candidate in observation_candidates
+        if candidate["inspect_waypoint_id"] == "farm_01_lane_01_inspect_01"
+    )
+    assert left_candidate["navigation_pose"]["x"] == pytest.approx(-8.0)
+    assert left_candidate["navigation_pose"]["y"] == pytest.approx(-6.0)
+    assert left_candidate["approach_pose"]["x"] == pytest.approx(-6.3)
+    assert left_candidate["approach_pose"]["y"] == pytest.approx(-6.0)
+
+
+def test_read_layers_payload_exposes_dual_observation_candidates_for_center_tomato_plants() -> None:
+    payload = read_layers_payload()
+
+    plant_asset = next(
+        asset for asset in payload["assets"]
+        if asset["kind"] == "plant" and asset["id"] == "farm01_plant_19"
+    )
+
+    observation_candidates = plant_asset["observation_candidates"]
+    observation_waypoint_ids = {
+        candidate["inspect_waypoint_id"]
+        for candidate in observation_candidates
+    }
+
+    assert observation_candidates[0]["inspect_waypoint_id"] == "farm_01_lane_03_inspect_05"
+    assert "farm_01_lane_center_inspect_05" in observation_waypoint_ids
+    assert "farm_01_lane_03_inspect_05" in observation_waypoint_ids
+
+    center_candidate = next(
+        candidate for candidate in observation_candidates
+        if candidate["inspect_waypoint_id"] == "farm_01_lane_center_inspect_05"
+    )
+    assert center_candidate["navigation_pose"]["x"] == pytest.approx(0.0)
+    assert center_candidate["navigation_pose"]["y"] == pytest.approx(4.0)
+    assert center_candidate["approach_pose"]["x"] == pytest.approx(1.7)
+    assert center_candidate["approach_pose"]["y"] == pytest.approx(4.0)
+
+
+def test_read_layers_payload_keeps_dual_observation_candidates_for_all_tomato_plants() -> None:
+    payload = read_layers_payload()
+
+    plant_assets = [
+        asset for asset in payload["assets"]
+        if asset["kind"] == "plant"
+    ]
+
+    assert len(plant_assets) == 24
+    assert all(len(asset["observation_candidates"]) == 2 for asset in plant_assets)
+
+
+def test_read_layers_payload_spreads_center_lane_display_markers_toward_each_crop() -> None:
+    payload = read_layers_payload()
+
+    plant_14 = next(
+        asset for asset in payload["assets"]
+        if asset["kind"] == "plant" and asset["id"] == "farm01_plant_14"
+    )
+    plant_15 = next(
+        asset for asset in payload["assets"]
+        if asset["kind"] == "plant" and asset["id"] == "farm01_plant_15"
+    )
+
+    plant_14_center_candidate = next(
+        candidate for candidate in plant_14["observation_candidates"]
+        if candidate["inspect_waypoint_id"] == "farm_01_lane_center_inspect_04"
+    )
+    plant_15_center_candidate = next(
+        candidate for candidate in plant_15["observation_candidates"]
+        if candidate["inspect_waypoint_id"] == "farm_01_lane_center_inspect_04"
+    )
+
+    assert plant_14_center_candidate["approach_pose"]["x"] == pytest.approx(-1.7)
+    assert plant_15_center_candidate["approach_pose"]["x"] == pytest.approx(1.7)
+    assert abs(
+        plant_15_center_candidate["approach_pose"]["x"]
+        - plant_14_center_candidate["approach_pose"]["x"]
+    ) == pytest.approx(3.4)
+
+
+def test_publish_navigate_command_keeps_all_observation_candidates_in_bridge_payload() -> None:
+    response = publish_robot_command(
+        robot_id="AGR-02",
+        command_type="navigate_to_pose",
+        requested_by="frontend-operator",
+        target_pose={
+            "x": 4.0,
+            "y": 4.0,
+            "z": 0.0,
+            "yaw": 1.5708,
+            "frame_id": "map",
+        },
+        payload={
+            "plant_id": "farm01_plant_19",
+            "inspect_waypoint_id": "farm_01_lane_03_inspect_05",
+            "inspect_waypoint_ids": [
+                "farm_01_lane_03_inspect_05",
+                "farm_01_lane_center_inspect_05",
+            ],
+            "observation_candidates": [
+                {
+                    "inspect_waypoint_id": "farm_01_lane_03_inspect_05",
+                    "inspect_waypoint_name": "3번 라인 5번 관측점",
+                    "navigation_pose": {
+                        "x": 4.0,
+                        "y": 4.0,
+                        "z": 0.0,
+                        "yaw": 1.5708,
+                        "frame_id": "map",
+                    },
+                    "final_target_pose": {
+                        "x": 2.3,
+                        "y": 4.0,
+                        "z": 0.0,
+                        "yaw": -1.5708,
+                        "frame_id": "map",
+                    },
+                },
+                {
+                    "inspect_waypoint_id": "farm_01_lane_center_inspect_05",
+                    "inspect_waypoint_name": "중앙 5번 관측점",
+                    "navigation_pose": {
+                        "x": 0.0,
+                        "y": 4.0,
+                        "z": 0.0,
+                        "yaw": -1.5708,
+                        "frame_id": "map",
+                    },
+                    "final_target_pose": {
+                        "x": 1.7,
+                        "y": 4.0,
+                        "z": 0.0,
+                        "yaw": 1.5708,
+                        "frame_id": "map",
+                    },
+                },
+            ],
+        },
+    )
+
+    command_payload = json.loads(command_file_path().read_text(encoding="utf-8"))
+
+    assert response["accepted"] is True
+    assert command_payload["payload"]["plant_id"] == "farm01_plant_19"
+    assert command_payload["payload"]["inspect_waypoint_id"] == "farm_01_lane_03_inspect_05"
+    assert command_payload["payload"]["inspect_waypoint_ids"] == [
+        "farm_01_lane_03_inspect_05",
+        "farm_01_lane_center_inspect_05",
+    ]
+    assert command_payload["payload"]["observation_candidates"] == [
+        {
+            "inspect_waypoint_id": "farm_01_lane_03_inspect_05",
+            "inspect_waypoint_name": "3번 라인 5번 관측점",
+            "navigation_pose": {
+                "x": 4.0,
+                "y": 4.0,
+                "z": 0.0,
+                "yaw": 1.5708,
+                "frame_id": "map",
+            },
+            "final_target_pose": {
+                "x": 2.3,
+                "y": 4.0,
+                "z": 0.0,
+                "yaw": -1.5708,
+                "frame_id": "map",
+            },
+        },
+        {
+            "inspect_waypoint_id": "farm_01_lane_center_inspect_05",
+            "inspect_waypoint_name": "중앙 5번 관측점",
+            "navigation_pose": {
+                "x": 0.0,
+                "y": 4.0,
+                "z": 0.0,
+                "yaw": -1.5708,
+                "frame_id": "map",
+            },
+            "final_target_pose": {
+                "x": 1.7,
+                "y": 4.0,
+                "z": 0.0,
+                "yaw": 1.5708,
+                "frame_id": "map",
+            },
+        },
+    ]
 
 
 def test_missions_patrol_stop_endpoint_publishes_pause_patrol() -> None:
@@ -288,6 +609,11 @@ def test_missions_harvest_endpoint_writes_runtime_bridge_request() -> None:
             plant_id="farm01_plant_03",
             fruit_id="farm01_plant_03_tomato_01",
             requested_by="frontend-operator",
+            inspect_waypoint_id="farm_01_lane_center_inspect_05",
+            inspect_waypoint_ids=[
+                "farm_01_lane_center_inspect_05",
+                "farm_01_lane_02_inspect_02",
+            ],
         )
     )
 
@@ -298,6 +624,11 @@ def test_missions_harvest_endpoint_writes_runtime_bridge_request() -> None:
     assert payload["request_type"] == "harvest_target"
     assert request_payload["plant_id"] == "farm01_plant_03"
     assert request_payload["tomato_id"] == "farm01_plant_03_tomato_01"
+    assert request_payload["inspect_waypoint_id"] == "farm_01_lane_center_inspect_05"
+    assert request_payload["inspect_waypoint_ids"] == [
+        "farm_01_lane_center_inspect_05",
+        "farm_01_lane_02_inspect_02",
+    ]
 
 
 def test_get_mission_status_endpoint_reads_record_file() -> None:

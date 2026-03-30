@@ -23,7 +23,7 @@ function getAlertPreview(imageUrl: string, alertId: string) {
     return '/mock-images/disease-closeup.png'
   }
 
-  return '/mock-images/harvest-closeup.png'
+  return '/mock-images/healthy-default.jpg'
 }
 
 function getPlantPreview(
@@ -41,7 +41,7 @@ function getPlantPreview(
 
   return plantNeedsDiagnosis(plant)
     ? '/mock-images/disease-closeup.png'
-    : '/mock-images/harvest-closeup.png'
+    : '/mock-images/healthy-default.jpg'
 }
 
 export function PlantsPage() {

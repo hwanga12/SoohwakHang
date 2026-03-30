@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -95,6 +95,7 @@ class HarvestRoutingConfig:
     align_standoff_from_crop_m: float
     default_return_mode: str
     fallback_return_mode: str
+    max_lateral_offset_from_inspect_m_by_lane_side: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -180,12 +181,24 @@ def _load_harvest_routing(payload: dict[str, Any]) -> HarvestRoutingConfig:
     return_modes = payload.get('return_modes', {})
     if return_modes is None:
         return_modes = {}
+    max_lateral_offset_by_lane_side = payload.get('max_lateral_offset_from_inspect_m_by_lane_side', {})
+    if max_lateral_offset_by_lane_side is None:
+        max_lateral_offset_by_lane_side = {}
+    if not isinstance(max_lateral_offset_by_lane_side, dict):
+        raise ValueError(
+            'harvest_routing.max_lateral_offset_from_inspect_m_by_lane_side must be a mapping.'
+        )
 
     return HarvestRoutingConfig(
         approach_margin_from_bed_edge_m=float(payload.get('approach_margin_from_bed_edge_m', 0.45)),
         max_lateral_offset_from_inspect_m=float(
             payload.get('max_lateral_offset_from_inspect_m', 2.50)
         ),
+        max_lateral_offset_from_inspect_m_by_lane_side={
+            str(key).strip(): float(value)
+            for key, value in max_lateral_offset_by_lane_side.items()
+            if str(key).strip()
+        },
         align_standoff_from_crop_m=float(payload.get('align_standoff_from_crop_m', 0.65)),
         default_return_mode=str(return_modes.get('default', 'resume_patrol')),
         fallback_return_mode=str(return_modes.get('fallback', 'home')),
@@ -213,6 +226,13 @@ def _validate_references(plan: PatrolPlan) -> None:
 
     if plan.harvest_routing.max_lateral_offset_from_inspect_m <= 0.0:
         raise ValueError('harvest_routing.max_lateral_offset_from_inspect_m must be positive.')
+
+    for lane_side, value in plan.harvest_routing.max_lateral_offset_from_inspect_m_by_lane_side.items():
+        if value < 0.0:
+            raise ValueError(
+                'harvest_routing.max_lateral_offset_from_inspect_m_by_lane_side '
+                f'contains a negative value for {lane_side!r}.'
+            )
 
     if plan.harvest_routing.align_standoff_from_crop_m <= 0.0:
         raise ValueError('harvest_routing.align_standoff_from_crop_m must be positive.')

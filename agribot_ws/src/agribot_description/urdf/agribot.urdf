@@ -27,8 +27,8 @@
       <geometry>
         <cylinder radius="0.06" length="0.03"/>
       </geometry>
-      <material name="dark_grey">
-        <color rgba="0.2 0.2 0.2 1.0"/>
+      <material name="dark_grey_translucent">
+        <color rgba="0.2 0.2 0.2 0.75"/>
       </material>
     </visual>
     <collision>
@@ -55,7 +55,7 @@
       <geometry>
         <cylinder radius="0.06" length="0.03"/>
       </geometry>
-      <material name="dark_grey"/>
+      <material name="dark_grey_translucent"/>
     </visual>
     <collision>
       <geometry>
@@ -78,11 +78,12 @@
   <!-- ==================== CASTER WHEEL ==================== -->
   <link name="caster">
     <visual>
+      <origin xyz="0 0 0" rpy="-1.5708 0 0"/>
       <geometry>
-        <sphere radius="0.03"/>
+        <cylinder radius="0.028" length="0.018"/>
       </geometry>
-      <material name="grey">
-        <color rgba="0.5 0.5 0.5 1.0"/>
+      <material name="grey_translucent">
+        <color rgba="0.22 0.22 0.22 0.75"/>
       </material>
     </visual>
     <collision>
@@ -108,8 +109,8 @@
       <geometry>
         <box size="0.03 0.06 0.03"/>
       </geometry>
-      <material name="blue">
-        <color rgba="0.0 0.0 0.8 1.0"/>
+      <material name="blue_translucent">
+        <color rgba="0.0 0.0 0.6 0.75"/>
       </material>
     </visual>
   </link>
@@ -151,37 +152,37 @@
   <!-- ==================== HARVEST ARM (Mesh Visual + Primitive Collision) ==================== -->
   <link name="harvest_arm_link">
     <visual>
-      <origin xyz="-0.025 0 0.081" rpy="0 -1.5708 -1.5708"/>
+      <origin xyz="-0.025 0 0.081" rpy="3.1416 -1.5708 1.5708"/>
       <geometry>
-        <mesh filename="package://agribot_description/models/agribot/meshes/robotic_arm_gazebo.obj" scale="5.236 6.007 2.536"/>
+        <mesh filename="package://agribot_description/models/agribot/meshes/robotic_arm.glb" scale="5.236 6.007 2.536"/>
       </geometry>
     </visual>
     <collision>
-      <origin xyz="0 0 0.09" rpy="0 0 0"/>
+      <origin xyz="0 0 0.09" rpy="3.1416 0 0"/>
       <geometry>
         <box size="0.05 0.05 0.18"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="0.12 0 0.19" rpy="0 0 0"/>
+      <origin xyz="0.12 0 0.19" rpy="3.1416 0 0"/>
       <geometry>
         <box size="0.24 0.04 0.04"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="0.25 0 0.16" rpy="0 0 0"/>
+      <origin xyz="0.25 0 0.22" rpy="3.1416 0 0"/>
       <geometry>
         <box size="0.04 0.06 0.04"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="0.29 0.028 0.11" rpy="0 0 0"/>
+      <origin xyz="0.29 0.028 0.27" rpy="3.1416 0 0"/>
       <geometry>
         <box size="0.02 0.014 0.10"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="0.29 -0.028 0.11" rpy="0 0 0"/>
+      <origin xyz="0.29 -0.028 0.27" rpy="3.1416 0 0"/>
       <geometry>
         <box size="0.02 0.014 0.10"/>
       </geometry>
@@ -192,10 +193,12 @@
     </inertial>
   </link>
 
-  <joint name="harvest_arm_joint" type="fixed">
+  <joint name="harvest_arm_joint" type="revolute">
     <parent link="base_link"/>
     <child link="harvest_arm_link"/>
-    <origin xyz="-0.02 0 0.22" rpy="0 0 0"/>
+    <origin xyz="0.04 0 0.48" rpy="-3.1416 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.60" upper="0.70" effort="10.0" velocity="1.5"/>
   </joint>
 
   <!-- ==================== HARVEST BASKET (Placeholder Geometry) ==================== -->

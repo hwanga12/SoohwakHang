@@ -148,3 +148,41 @@ def test_mission_status_endpoint_overlays_harvest_action_phase() -> None:
     assert payload["retry_count"] == 1
     assert payload["message"] == "Approaching farm01_plant_05_tomato_01 for harvest."
     assert payload["fruit_id"] == "farm01_plant_05_tomato_01"
+
+
+def test_harvest_stats_ignore_failed_latest_event_for_last_harvested_fruit() -> None:
+    failed_event_payload = {
+        "event_id": "harvest-event-failed-001",
+        "mission_id": "mission-harvest-failed-001",
+        "zone_id": "farm_01",
+        "plant_id": "farm01_plant_22",
+        "fruit_id": "farm01_plant_22_tomato_01",
+        "success": False,
+        "status": "failed",
+        "failure_reason": "approaching navigation failed",
+        "basket_count": 0,
+        "frame_id": "map",
+        "stamp": {"sec": 30, "nanosec": 40},
+        "occurred_at": "2026-03-29T03:00:00+00:00",
+    }
+    basket_payload = {
+        "zone_id": "farm_01",
+        "basket_count": 0,
+        "harvested_count": 0,
+        "remaining_ready_count": 24,
+        "last_event_id": "",
+        "last_harvested_fruit_id": "",
+        "loaded_fruit_ids": [],
+        "frame_id": "map",
+        "stamp": {"sec": 31, "nanosec": 50},
+        "updated_at": "2026-03-29T03:00:01+00:00",
+    }
+
+    _write_json(harvest_event_record_file_path("harvest-event-failed-001"), failed_event_payload)
+    _write_json(harvest_latest_event_file_path(), failed_event_payload)
+    _write_json(harvest_basket_state_file_path(), basket_payload)
+
+    stats_payload = harvests.get_harvest_stats()["data"]
+
+    assert stats_payload["last_harvested_fruit_id"] == ""
+    assert stats_payload["basket_count"] == 0

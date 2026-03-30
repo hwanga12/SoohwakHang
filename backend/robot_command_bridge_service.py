@@ -162,6 +162,97 @@ def _coerce_target_pose_object(target_pose: dict[str, Any]) -> dict[str, Any]:
     return _coerce_target_pose({"target_pose": target_pose})
 
 
+def _coerce_optional_waypoint_id(
+    payload: dict[str, Any],
+    *,
+    field_name: str,
+) -> str | None:
+    raw_value = payload.get(field_name)
+    if raw_value is None:
+        return None
+
+    normalized = str(raw_value).strip()
+    return normalized or None
+
+
+def _coerce_optional_string_list(
+    payload: dict[str, Any],
+    *,
+    field_name: str,
+) -> list[str]:
+    raw_value = payload.get(field_name)
+    if raw_value is None:
+        return []
+    if not isinstance(raw_value, list):
+        raise RobotCommandValidationError(f"{field_name} 는 문자열 배열이어야 합니다.")
+
+    values: list[str] = []
+    for item in raw_value:
+        normalized = str(item).strip()
+        if normalized:
+            values.append(normalized)
+
+    return values
+
+
+def _coerce_optional_observation_candidates(
+    payload: dict[str, Any],
+    *,
+    field_name: str,
+    map_id: str | None,
+) -> list[dict[str, Any]]:
+    raw_value = payload.get(field_name)
+    if raw_value is None:
+        return []
+    if not isinstance(raw_value, list):
+        raise RobotCommandValidationError(f"{field_name} 는 배열이어야 합니다.")
+
+    candidates: list[dict[str, Any]] = []
+    seen_waypoint_ids: set[str] = set()
+
+    for index, item in enumerate(raw_value):
+        if not isinstance(item, dict):
+            raise RobotCommandValidationError(f"{field_name}[{index}] 는 JSON object여야 합니다.")
+
+        inspect_waypoint_id = str(item.get("inspect_waypoint_id", "")).strip()
+        if not inspect_waypoint_id:
+            raise RobotCommandValidationError(
+                f"{field_name}[{index}].inspect_waypoint_id 가 필요합니다."
+            )
+        if inspect_waypoint_id in seen_waypoint_ids:
+            continue
+        seen_waypoint_ids.add(inspect_waypoint_id)
+
+        final_target_pose_payload = item.get("final_target_pose")
+        if not isinstance(final_target_pose_payload, dict):
+            raise RobotCommandValidationError(
+                f"{field_name}[{index}].final_target_pose 가 필요합니다."
+            )
+
+        candidate_payload = {
+            "inspect_waypoint_id": inspect_waypoint_id,
+            "final_target_pose": _validate_target_pose_bounds(
+                _coerce_target_pose_object(final_target_pose_payload),
+                map_id,
+            ),
+        }
+
+        inspect_waypoint_name = str(item.get("inspect_waypoint_name", "")).strip()
+        if inspect_waypoint_name:
+            candidate_payload["inspect_waypoint_name"] = inspect_waypoint_name
+
+        navigation_pose_payload = item.get("navigation_pose")
+        if isinstance(navigation_pose_payload, dict):
+            candidate_payload["navigation_pose"] = _validate_target_pose_bounds(
+                _coerce_target_pose_object(navigation_pose_payload),
+                map_id,
+            )
+
+        candidates.append(candidate_payload)
+
+    return candidates
+
+
 def _validate_target_pose_bounds(
     target_pose: dict[str, Any],
     map_id: str | None = None,
@@ -502,6 +593,28 @@ def publish_robot_command(
             _coerce_target_pose_object(explicit_target_pose),
             resolved_map_id,
         )
+        inspect_waypoint_id = _coerce_optional_waypoint_id(
+            normalized_payload,
+            field_name="inspect_waypoint_id",
+        )
+        if inspect_waypoint_id:
+            command_payload["inspect_waypoint_id"] = inspect_waypoint_id
+        inspect_waypoint_ids = _coerce_optional_string_list(
+            normalized_payload,
+            field_name="inspect_waypoint_ids",
+        )
+        if inspect_waypoint_ids:
+            command_payload["inspect_waypoint_ids"] = inspect_waypoint_ids
+        observation_candidates = _coerce_optional_observation_candidates(
+            normalized_payload,
+            field_name="observation_candidates",
+            map_id=resolved_map_id,
+        )
+        if observation_candidates:
+            command_payload["observation_candidates"] = observation_candidates
+        plant_id = str(normalized_payload.get("plant_id", "")).strip()
+        if plant_id:
+            command_payload["plant_id"] = plant_id
     elif normalized_command_type == "move_to_zone":
         resolved_target_zone_id = str(target_zone_id or "").strip()
         if not resolved_target_zone_id:

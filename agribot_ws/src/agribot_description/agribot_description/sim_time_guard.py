@@ -12,13 +12,34 @@ from time import monotonic
 
 from nav_msgs.msg import Odometry
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rosgraph_msgs.msg import Clock
-from sensor_msgs.msg import JointState
+from sensor_msgs.msg import JointState, LaserScan
 
 
 def stamp_to_nanoseconds(sec_value: int, nanosec_value: int) -> int:
     return int(sec_value) * 1_000_000_000 + int(nanosec_value)
+
+
+def nanoseconds_to_stamp_fields(stamp_ns: int) -> tuple[int, int]:
+    normalized_ns = max(0, int(stamp_ns))
+    sec_value, nanosec_value = divmod(normalized_ns, 1_000_000_000)
+    return int(sec_value), int(nanosec_value)
+
+
+def normalized_state_stamp_ns(
+    *,
+    source_stamp_ns: int,
+    latest_clock_stamp_ns: int | None,
+    last_published_stamp_ns: int | None,
+) -> int:
+    normalized_ns = int(source_stamp_ns)
+    if latest_clock_stamp_ns is not None:
+        normalized_ns = max(normalized_ns, int(latest_clock_stamp_ns))
+    if last_published_stamp_ns is not None and normalized_ns <= last_published_stamp_ns:
+        normalized_ns = last_published_stamp_ns + 1
+    return normalized_ns
 
 
 class SingletonLockError(RuntimeError):
@@ -51,35 +72,26 @@ class SimTimeGuard(Node):
         self.declare_parameter('odom_output_topic', '/odom')
         self.declare_parameter('joint_states_input_topic', '/joint_states_raw')
         self.declare_parameter('joint_states_output_topic', '/joint_states')
+        self.declare_parameter('lidar_input_topic', '/agribot/lidar_raw')
+        self.declare_parameter('lidar_output_topic', '/agribot/lidar')
         self.declare_parameter('warning_interval_sec', 2.0)
         self.declare_parameter('reset_on_time_jump_sec', 1.0)
-        self.declare_parameter('max_forward_jump_sec', 30.0)
-        self.declare_parameter('startup_guard_window_sec', 30.0)
-        self.declare_parameter('startup_max_allowed_stamp_sec', 120.0)
-        self.declare_parameter('max_stamp_ahead_of_uptime_sec', 120.0)
+        # Sim time can legitimately run much faster than wall time, especially
+        # when Gazebo starts headless or the physics loop briefly outruns
+        # rendering. Only guard against backwards jumps; forward jumps are
+        # allowed as long as stamps keep increasing.
 
         self._warning_interval_sec = max(0.0, float(self.get_parameter('warning_interval_sec').value))
         self._reset_on_time_jump_ns = int(
             float(self.get_parameter('reset_on_time_jump_sec').value) * 1_000_000_000
         )
-        self._max_forward_jump_ns = int(
-            float(self.get_parameter('max_forward_jump_sec').value) * 1_000_000_000
-        )
-        self._startup_guard_window_sec = max(
-            0.0, float(self.get_parameter('startup_guard_window_sec').value)
-        )
-        self._startup_max_allowed_stamp_ns = int(
-            float(self.get_parameter('startup_max_allowed_stamp_sec').value) * 1_000_000_000
-        )
-        self._max_stamp_ahead_of_uptime_ns = int(
-            float(self.get_parameter('max_stamp_ahead_of_uptime_sec').value) * 1_000_000_000
-        )
-        self._startup_monotonic = monotonic()
         self._last_warning_monotonic_by_stream: dict[str, float] = {}
 
         self._clock_filter = MonotonicStampFilter()
         self._odom_filter = MonotonicStampFilter()
         self._joint_state_filter = MonotonicStampFilter()
+        self._lidar_filter = MonotonicStampFilter()
+        self._latest_clock_stamp_ns: int | None = None
 
         clock_input_topic = str(self.get_parameter('clock_input_topic').value)
         clock_output_topic = str(self.get_parameter('clock_output_topic').value)
@@ -87,24 +99,33 @@ class SimTimeGuard(Node):
         odom_output_topic = str(self.get_parameter('odom_output_topic').value)
         joint_states_input_topic = str(self.get_parameter('joint_states_input_topic').value)
         joint_states_output_topic = str(self.get_parameter('joint_states_output_topic').value)
+        lidar_input_topic = str(self.get_parameter('lidar_input_topic').value)
+        lidar_output_topic = str(self.get_parameter('lidar_output_topic').value)
 
         self._clock_publisher = self.create_publisher(Clock, clock_output_topic, 20)
         self._odom_publisher = self.create_publisher(Odometry, odom_output_topic, 20)
         self._joint_state_publisher = self.create_publisher(JointState, joint_states_output_topic, 20)
+        self._lidar_publisher = self.create_publisher(LaserScan, lidar_output_topic, 20)
 
         self.create_subscription(Clock, clock_input_topic, self._handle_clock, 20)
         self.create_subscription(Odometry, odom_input_topic, self._handle_odom, 20)
         self.create_subscription(JointState, joint_states_input_topic, self._handle_joint_states, 20)
+        self.create_subscription(LaserScan, lidar_input_topic, self._handle_lidar, 20)
 
         self.get_logger().info(
             'sim time guard started. '
             f'clock={clock_input_topic}->{clock_output_topic}, '
             f'odom={odom_input_topic}->{odom_output_topic}, '
-            f'joint_states={joint_states_input_topic}->{joint_states_output_topic}'
+            f'joint_states={joint_states_input_topic}->{joint_states_output_topic}, '
+            f'lidar={lidar_input_topic}->{lidar_output_topic}'
         )
 
     def _handle_clock(self, message: Clock) -> None:
         stamp_ns = stamp_to_nanoseconds(message.clock.sec, message.clock.nanosec)
+        self._latest_clock_stamp_ns = max(
+            stamp_ns,
+            self._latest_clock_stamp_ns or stamp_ns,
+        )
         self._republish_monotonic(
             'clock',
             stamp_ns,
@@ -115,9 +136,15 @@ class SimTimeGuard(Node):
 
     def _handle_odom(self, message: Odometry) -> None:
         stamp_ns = stamp_to_nanoseconds(message.header.stamp.sec, message.header.stamp.nanosec)
+        normalized_stamp_ns = normalized_state_stamp_ns(
+            source_stamp_ns=stamp_ns,
+            latest_clock_stamp_ns=self._latest_clock_stamp_ns,
+            last_published_stamp_ns=self._odom_filter.last_stamp_ns,
+        )
+        message.header.stamp.sec, message.header.stamp.nanosec = nanoseconds_to_stamp_fields(normalized_stamp_ns)
         self._republish_monotonic(
             'odom',
-            stamp_ns,
+            normalized_stamp_ns,
             message,
             self._odom_filter,
             self._odom_publisher.publish,
@@ -125,66 +152,67 @@ class SimTimeGuard(Node):
 
     def _handle_joint_states(self, message: JointState) -> None:
         stamp_ns = stamp_to_nanoseconds(message.header.stamp.sec, message.header.stamp.nanosec)
+        normalized_stamp_ns = normalized_state_stamp_ns(
+            source_stamp_ns=stamp_ns,
+            latest_clock_stamp_ns=self._latest_clock_stamp_ns,
+            last_published_stamp_ns=self._joint_state_filter.last_stamp_ns,
+        )
+        message.header.stamp.sec, message.header.stamp.nanosec = nanoseconds_to_stamp_fields(normalized_stamp_ns)
         self._republish_monotonic(
             'joint_states',
-            stamp_ns,
+            normalized_stamp_ns,
             message,
             self._joint_state_filter,
             self._joint_state_publisher.publish,
         )
 
-    def _republish_monotonic(self, stream_label: str, stamp_ns: int, message, stamp_filter: MonotonicStampFilter, publish) -> None:
-        if stamp_ns > self._max_plausible_stamp_ns():
-            self._warn_drop(
-                stream_label,
-                f'Dropping implausible future {stream_label} sample with stamp '
-                f'{stamp_ns / 1_000_000_000:.3f}s; it is far ahead of node uptime.'
-            )
-            return
+    def _handle_lidar(self, message: LaserScan) -> None:
+        stamp_ns = stamp_to_nanoseconds(message.header.stamp.sec, message.header.stamp.nanosec)
+        normalized_stamp_ns = normalized_state_stamp_ns(
+            source_stamp_ns=stamp_ns,
+            latest_clock_stamp_ns=self._latest_clock_stamp_ns,
+            last_published_stamp_ns=self._lidar_filter.last_stamp_ns,
+        )
+        message.header.stamp.sec, message.header.stamp.nanosec = nanoseconds_to_stamp_fields(normalized_stamp_ns)
+        self._republish_monotonic(
+            'lidar',
+            normalized_stamp_ns,
+            message,
+            self._lidar_filter,
+            self._lidar_publisher.publish,
+        )
 
-        if (
-            stamp_filter.last_stamp_ns is None
-            and self._within_startup_guard()
-            and stamp_ns > self._startup_max_allowed_stamp_ns
-        ):
-            self._warn_drop(
-                stream_label,
-                f'Dropping startup {stream_label} sample with implausibly large stamp '
-                f'({stamp_ns / 1_000_000_000:.3f}s) while waiting for the new simulation clock.'
-            )
+    def _republish_monotonic(self, stream_label: str, stamp_ns: int, message, stamp_filter: MonotonicStampFilter, publish) -> None:
+        if not rclpy.ok():
             return
 
         last_stamp_ns = stamp_filter.last_stamp_ns
         if last_stamp_ns is None:
             stamp_filter.reset(stamp_ns)
-            publish(message)
+            self._safe_publish(publish, message)
             return
 
         if stamp_ns > last_stamp_ns:
-            forward_jump_ns = stamp_ns - last_stamp_ns
-            if forward_jump_ns > self._max_forward_jump_ns:
-                self._warn_drop(
-                    stream_label,
-                    f'Dropping implausible future {stream_label} sample '
-                    f'({forward_jump_ns / 1_000_000_000:.3f}s ahead of the latest accepted sample).'
-                )
-                return
             stamp_filter.reset(stamp_ns)
-            publish(message)
+            self._safe_publish(publish, message)
             return
 
         backwards_jump_ns = last_stamp_ns - stamp_ns
-        if backwards_jump_ns >= self._reset_on_time_jump_ns:
-            self._warn_reset(stream_label, backwards_jump_ns)
-            stamp_filter.reset(stamp_ns)
-            publish(message)
-            return
-
         self._warn_drop(
             stream_label,
             f'Dropping stale {stream_label} sample after backward timestamp jump '
             f'({backwards_jump_ns / 1_000_000_000:.3f}s behind latest accepted sample).'
         )
+
+    def _safe_publish(self, publish, message) -> None:
+        if not rclpy.ok():
+            return
+
+        try:
+            publish(message)
+        except Exception:
+            if rclpy.ok():
+                raise
 
     def _warn_drop(self, stream_label: str, message: str) -> None:
         now_monotonic = monotonic()
@@ -193,21 +221,6 @@ class SimTimeGuard(Node):
             return
         self._last_warning_monotonic_by_stream[stream_label] = now_monotonic
         self.get_logger().warning(message)
-
-    def _warn_reset(self, stream_label: str, backwards_jump_ns: int) -> None:
-        self._warn_drop(
-            stream_label,
-            f'Resetting {stream_label} monotonic filter after simulation time moved backward '
-            f'by {backwards_jump_ns / 1_000_000_000:.3f}s.'
-        )
-
-    def _within_startup_guard(self) -> bool:
-        return monotonic() - self._startup_monotonic <= self._startup_guard_window_sec
-
-    def _max_plausible_stamp_ns(self) -> int:
-        uptime_sec = max(0.0, monotonic() - self._startup_monotonic)
-        return int((uptime_sec * 1_000_000_000) + self._max_stamp_ahead_of_uptime_ns)
-
 
 def resolve_lock_path() -> Path:
     raw_path = os.environ.get('AGRIBOT_SIM_TIME_GUARD_LOCK', '').strip()
@@ -243,8 +256,11 @@ def main(args=None) -> None:
     node = SimTimeGuard()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except Exception:
+        if rclpy.ok():
+            raise
     finally:
         node.destroy_node()
         if rclpy.ok():

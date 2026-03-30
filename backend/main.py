@@ -11,6 +11,7 @@ from database import engine
 from routers import (
     actuations,
     alerts,
+    camera,
     dashboard,
     environment,
     harvests,
@@ -66,6 +67,7 @@ app.include_router(iot.router, prefix="/api/v1/iot", tags=["IoT Devices"])
 app.include_router(actuations.router, prefix="/api/v1/actuations", tags=["Actuations & Control"])
 app.include_router(harvests.router, prefix="/api/v1/harvests", tags=["Harvests"])
 app.include_router(media.router, prefix="/api/v1/media", tags=["Media"])
+app.include_router(camera.router, prefix="/api/v1/camera", tags=["Camera"])
 app.include_router(inference.router, prefix="/api/v1/inference", tags=["Inference"])
 app.include_router(realtime.router, prefix="/ws", tags=["Realtime WebSocket"])
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
+import json
 import math
 import os
 from pathlib import Path
@@ -220,6 +221,7 @@ class ThinInferenceNode(Node):
             ignored_classes=self._ignored_classes,
         )
         if detection is None:
+            self._persist_live_camera_frame(frame, msg)
             return
 
         crop = _crop_detection(
@@ -276,6 +278,12 @@ class ThinInferenceNode(Node):
             image_path = confirmation.image_path or str(local_image_path)
         except RuntimeError as exc:
             if not self._publish_preliminary_on_backend_error:
+                self._persist_live_camera_frame(
+                    frame,
+                    msg,
+                    detection=detection,
+                    resolved_target=resolved_target,
+                )
                 self.get_logger().warning(f'backend confirmation skipped: {exc}')
                 return
             self.get_logger().warning(
@@ -301,6 +309,14 @@ class ThinInferenceNode(Node):
         observation.pose = _build_pose(resolved_target)
         observation.image_path = image_path
         self._publisher.publish(observation)
+        self._persist_live_camera_frame(
+            frame,
+            msg,
+            detection=detection,
+            resolved_target=resolved_target,
+            observation_id=observation_id,
+            observation_image_path=image_path,
+        )
 
         self._last_publish_sec = self.get_clock().now().nanoseconds / 1_000_000_000
         self.get_logger().info(
@@ -315,6 +331,60 @@ class ThinInferenceNode(Node):
         file_path = date_dir / f'{observation_id}.{self._snapshot_format}'
         file_path.write_bytes(encoded_bytes)
         return file_path
+
+    def _persist_live_camera_frame(
+        self,
+        frame,
+        msg: Image,
+        *,
+        detection: Detection | None = None,
+        resolved_target: CropTarget | None = None,
+        observation_id: str = '',
+        observation_image_path: str = '',
+    ) -> None:
+        camera_dir = self._runtime_dir / 'camera'
+        camera_dir.mkdir(parents=True, exist_ok=True)
+        frame_path = camera_dir / f'latest_frame.{self._snapshot_format}'
+        frame_bytes = _encode_image(
+            frame,
+            image_format=self._snapshot_format,
+            jpeg_quality=self._jpeg_quality,
+        )
+        frame_path.write_bytes(frame_bytes)
+
+        metadata_path = camera_dir / 'latest_frame.json'
+        metadata_path.write_text(
+            json.dumps(
+                {
+                    'captured_at': datetime.now(timezone.utc).isoformat(),
+                    'frame_id': msg.header.frame_id,
+                    'image_format': self._snapshot_format,
+                    'image_path': str(frame_path),
+                    'plant_id': '' if resolved_target is None else resolved_target.plant_id,
+                    'fruit_id': '' if resolved_target is None else resolved_target.fruit_id,
+                    'observation_id': observation_id,
+                    'observation_image_path': observation_image_path,
+                    'detection': (
+                        None
+                        if detection is None
+                        else {
+                            'label': detection.label.strip(),
+                            'confidence': float(detection.confidence),
+                            'bbox': {
+                                'x1': float(detection.bbox[0]),
+                                'y1': float(detection.bbox[1]),
+                                'x2': float(detection.bbox[2]),
+                                'y2': float(detection.bbox[3]),
+                            },
+                        }
+                    ),
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding='utf-8',
+        )
 
     def _resolve_target(self) -> CropTarget | None:
         if self._target_resolver is None:

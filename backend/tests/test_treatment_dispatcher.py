@@ -32,7 +32,7 @@ def test_dispatcher_reports_successful_ros_publish(monkeypatch) -> None:
     engine = DiseaseTreatmentRuleEngine()
     dispatcher = TreatmentCommandDispatcher()
 
-    monkeypatch.setattr(dispatcher, '_validate_runtime', lambda: None)
+    monkeypatch.setattr(dispatcher, '_validate_runtime', lambda *args, **kwargs: None)
 
     def _fake_run(*args, **kwargs):
         return SimpleNamespace(returncode=0, stdout='published', stderr='')
@@ -54,12 +54,13 @@ def test_dispatcher_reports_successful_ros_publish(monkeypatch) -> None:
     assert result.status == 'dispatched'
     assert result.command_id == 'obs-dispatch'
     assert result.device_id == 'sprinkler_3'
+    assert result.topic == '/iot/commands/dispatch'
 
 
 def test_dispatcher_reports_successful_manual_ros_publish(monkeypatch) -> None:
     dispatcher = TreatmentCommandDispatcher()
 
-    monkeypatch.setattr(dispatcher, '_validate_runtime', lambda: None)
+    monkeypatch.setattr(dispatcher, '_validate_runtime', lambda *args, **kwargs: None)
 
     def _fake_run(*args, **kwargs):
         return SimpleNamespace(returncode=0, stdout='manual-published', stderr='')
@@ -82,3 +83,4 @@ def test_dispatcher_reports_successful_manual_ros_publish(monkeypatch) -> None:
     assert result.status == 'dispatched'
     assert result.command_id == 'manual-001'
     assert result.device_id == 'sprinkler_1'
+    assert result.topic == '/iot/commands/dispatch'

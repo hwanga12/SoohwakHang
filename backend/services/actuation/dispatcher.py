@@ -43,19 +43,37 @@ class TreatmentCommandDispatcher:
                 str(repo_root / 'agribot_ws' / 'install' / 'setup.bash'),
             )
         ).expanduser()
+        self._env_setup_script = Path(
+            os.environ.get(
+                'AGRIBOT_ENV_SETUP_SCRIPT',
+                str(repo_root / 'scripts' / 'agribot_env.sh'),
+            )
+        ).expanduser()
         self._publisher_script = Path(
             os.environ.get(
                 'AGRIBOT_IOT_COMMAND_PUBLISHER',
                 str(repo_root / 'scripts' / 'publish_iot_command.py'),
             )
         ).expanduser()
-        self._command_topic = os.environ.get(
+        self._manual_command_topic = os.environ.get(
             'AGRIBOT_IOT_MANUAL_COMMAND_TOPIC',
             '/iot/commands/manual',
         ).strip() or '/iot/commands/manual'
+        self._automatic_command_topic = os.environ.get(
+            'AGRIBOT_IOT_AUTOMATIC_COMMAND_TOPIC',
+            '/iot/commands/dispatch',
+        ).strip() or '/iot/commands/dispatch'
         self._dispatch_timeout_sec = max(
             1.0,
             float(os.environ.get('AGRIBOT_TREATMENT_DISPATCH_TIMEOUT_SEC', '10.0')),
+        )
+        self._dispatch_min_subscribers = max(
+            1,
+            int(os.environ.get('AGRIBOT_TREATMENT_DISPATCH_MIN_SUBSCRIBERS', '1')),
+        )
+        self._manual_min_subscribers = max(
+            1,
+            int(os.environ.get('AGRIBOT_MANUAL_COMMAND_MIN_SUBSCRIBERS', '1')),
         )
         self._default_requested_by = (
             os.environ.get('AGRIBOT_TREATMENT_REQUESTED_BY', 'backend:treatment_rule_engine').strip()
@@ -98,7 +116,7 @@ class TreatmentCommandDispatcher:
                 detail_message='Treatment plan is missing sprinkler selection or command payload.',
             )
 
-        validation_error = self._validate_runtime()
+        validation_error = self._validate_runtime(topic=self._automatic_command_topic)
         if validation_error is not None:
             return validation_error
 
@@ -116,7 +134,11 @@ class TreatmentCommandDispatcher:
             requested_by=requested_by.strip() or self._default_requested_by,
             reason=_build_reason_text(treatment_plan, observation_id=command_id),
         )
-        return self._publish_command(command)
+        return self._publish_command(
+            command,
+            topic=self._automatic_command_topic,
+            min_subscribers=self._dispatch_min_subscribers,
+        )
 
     def dispatch_manual_command(
         self,
@@ -133,7 +155,15 @@ class TreatmentCommandDispatcher:
         auto_execute: bool = True,
         requires_approval: bool = False,
     ) -> ActuationDispatchResult:
-        validation_error = self._validate_runtime()
+        normalized_device_type = device_type.strip().lower()
+        if normalized_device_type == 'sprinkler':
+            topic = self._automatic_command_topic
+            min_subscribers = self._dispatch_min_subscribers
+        else:
+            topic = self._manual_command_topic
+            min_subscribers = self._manual_min_subscribers
+
+        validation_error = self._validate_runtime(topic=topic)
         if validation_error is not None:
             return validation_error
 
@@ -150,15 +180,27 @@ class TreatmentCommandDispatcher:
             requested_by=requested_by.strip() or self._default_requested_by,
             reason=reason.strip(),
         )
-        return self._publish_command(command)
+        return self._publish_command(
+            command,
+            topic=topic,
+            min_subscribers=min_subscribers,
+        )
 
-    def _validate_runtime(self) -> ActuationDispatchResult | None:
+    def _validate_runtime(self, *, topic: str) -> ActuationDispatchResult | None:
+        if not self._env_setup_script.exists():
+            return ActuationDispatchResult(
+                dispatched=False,
+                status='env_setup_missing',
+                method='ros_topic_pub_subprocess',
+                topic=topic,
+                detail_message=f'Environment setup script not found: {self._env_setup_script}',
+            )
         if not self._ros_setup_script.exists():
             return ActuationDispatchResult(
                 dispatched=False,
                 status='ros_setup_missing',
                 method='ros_topic_pub_subprocess',
-                topic=self._command_topic,
+                topic=topic,
                 detail_message=f'ROS setup script not found: {self._ros_setup_script}',
             )
         if not self._workspace_setup_script.exists():
@@ -166,7 +208,7 @@ class TreatmentCommandDispatcher:
                 dispatched=False,
                 status='workspace_setup_missing',
                 method='ros_topic_pub_subprocess',
-                topic=self._command_topic,
+                topic=topic,
                 detail_message=f'Workspace setup script not found: {self._workspace_setup_script}',
             )
         if not self._publisher_script.exists():
@@ -174,12 +216,18 @@ class TreatmentCommandDispatcher:
                 dispatched=False,
                 status='publisher_script_missing',
                 method='ros_topic_pub_subprocess',
-                topic=self._command_topic,
+                topic=topic,
                 detail_message=f'IoT command publisher script not found: {self._publisher_script}',
             )
         return None
 
-    def _publish_command(self, command: _IoTCommandPayload) -> ActuationDispatchResult:
+    def _publish_command(
+        self,
+        command: _IoTCommandPayload,
+        *,
+        topic: str,
+        min_subscribers: int,
+    ) -> ActuationDispatchResult:
         with tempfile.NamedTemporaryFile(
             mode='w',
             encoding='utf-8',
@@ -191,10 +239,13 @@ class TreatmentCommandDispatcher:
             temp_path = Path(stream.name)
 
         shell_command = (
-            f'source {shlex.quote(str(self._ros_setup_script))} && '
-            f'source {shlex.quote(str(self._workspace_setup_script))} && '
+            f'source {shlex.quote(str(self._env_setup_script))} && '
+            f'source_ros_setup_files && '
             f'python3 {shlex.quote(str(self._publisher_script))} '
-            f'--topic {shlex.quote(self._command_topic)} '
+            f'--topic {shlex.quote(topic)} '
+            f'--min-subscribers {int(min_subscribers)} '
+            f'--discovery-timeout-sec 4.0 '
+            f'--post-publish-wait-sec 0.8 '
             f'--payload-file {shlex.quote(str(temp_path))}'
         )
         try:
@@ -211,7 +262,7 @@ class TreatmentCommandDispatcher:
                 dispatched=False,
                 status='dispatch_timeout',
                 command_id=command.command_id,
-                topic=self._command_topic,
+                topic=topic,
                 device_id=command.device_id,
                 device_type=command.device_type,
                 method='ros_topic_pub_subprocess',
@@ -226,7 +277,7 @@ class TreatmentCommandDispatcher:
                 dispatched=False,
                 status='dispatch_failed',
                 command_id=command.command_id,
-                topic=self._command_topic,
+                topic=topic,
                 device_id=command.device_id,
                 device_type=command.device_type,
                 method='ros_topic_pub_subprocess',
@@ -237,7 +288,7 @@ class TreatmentCommandDispatcher:
             dispatched=True,
             status='dispatched',
             command_id=command.command_id,
-            topic=self._command_topic,
+            topic=topic,
             device_id=command.device_id,
             device_type=command.device_type,
             method='ros_topic_pub_subprocess',

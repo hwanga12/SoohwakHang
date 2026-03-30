@@ -242,6 +242,7 @@ def read_harvest_stats_payload() -> dict[str, Any]:
 
     successful_events = [payload for payload in events if bool(payload.get("success"))]
     failed_events = [payload for payload in events if payload.get("success") is False]
+    latest_successful_event = successful_events[0] if successful_events else {}
     harvested_fruit_ids = {
         str(payload.get("fruit_id") or "").strip()
         for payload in successful_events
@@ -250,7 +251,7 @@ def read_harvest_stats_payload() -> dict[str, Any]:
 
     basket_count = int(
         basket_state.get("basket_count")
-        or latest_event.get("basket_count")
+        or latest_successful_event.get("basket_count")
         or len(basket_state.get("loaded_fruit_ids") or [])
         or 0
     )
@@ -261,7 +262,7 @@ def read_harvest_stats_payload() -> dict[str, Any]:
     )
     last_harvested_fruit_id = str(
         basket_state.get("last_harvested_fruit_id")
-        or latest_event.get("fruit_id")
+        or latest_successful_event.get("fruit_id")
         or ""
     ).strip()
     total_events = len(successful_events) + len(failed_events)
