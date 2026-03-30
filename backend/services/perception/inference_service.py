@@ -118,6 +118,11 @@ class MainInferenceService:
         self._runtime_dir = Path(
             os.environ.get('AGRIBOT_BACKEND_RUNTIME_DIR', str(default_runtime_dir))
         ).expanduser()
+        self._model_name = os.environ.get('AGRIBOT_MAIN_MODEL_NAME', 'tomato_disease_detector')
+        self._model_version = os.environ.get(
+            'AGRIBOT_MAIN_MODEL_VERSION',
+            self._model_path.parent.name or 'v1',
+        )
         self._resolved_device = resolve_inference_device(
             _read_first_env(_MODEL_DEVICE_ENV_VARS) or 'auto'
         )
@@ -224,6 +229,8 @@ class MainInferenceService:
             image_path=str(image_path),
             treatment_plan=treatment_plan,
             dispatch_result=dispatch_result,
+            model_name=self._model_name,
+            model_version=self._model_version,
         )
 
         metadata_path = image_path.with_suffix('.json')
@@ -237,6 +244,8 @@ class MainInferenceService:
                     'final_label': final_label,
                     'final_confidence': final_confidence,
                     'decision_source': decision_source,
+                    'model_name': self._model_name,
+                    'model_version': self._model_version,
                     'model_device': self._resolved_device,
                     'final_bbox': None if response_bbox is None else _model_dump(response_bbox),
                     'treatment_plan': _model_dump(treatment_plan),
@@ -246,6 +255,16 @@ class MainInferenceService:
                         'zone_row_id': persistence_refs.zone_row_id,
                         'plant_row_id': persistence_refs.plant_row_id,
                         'crop_observation_row_id': persistence_refs.crop_observation_row_id,
+                        'disease_judgment_row_id': getattr(
+                            persistence_refs,
+                            'disease_judgment_row_id',
+                            None,
+                        ),
+                        'harvest_decision_row_id': getattr(
+                            persistence_refs,
+                            'harvest_decision_row_id',
+                            None,
+                        ),
                         'actuation_log_row_id': persistence_refs.actuation_log_row_id,
                     },
                 },
@@ -267,6 +286,8 @@ class MainInferenceService:
             decision_source=decision_source,
             treatment_plan=treatment_plan,
             dispatch_result=dispatch_result,
+            disease_judgment_id=getattr(persistence_refs, 'disease_judgment_row_id', None),
+            harvest_decision_id=getattr(persistence_refs, 'harvest_decision_row_id', None),
         )
 
     def _infer(self, image_path: Path) -> list[Detection]:

@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from typing import Any
-from uuid import UUID
 
 from database import SessionLocal
 from models import (
@@ -32,6 +31,8 @@ class PersistenceRefs:
     zone_row_id: str
     plant_row_id: str
     crop_observation_row_id: str
+    disease_judgment_row_id: str | None = None
+    harvest_decision_row_id: str | None = None
     actuation_command_row_id: str | None = None
     actuation_log_row_id: str | None = None
     alert_row_id: str | None = None
@@ -39,6 +40,9 @@ class PersistenceRefs:
 
 class ObservationPersistenceService:
     """Persist backend-confirmed observations into the normalized greenhouse schema."""
+
+    def __init__(self) -> None:
+        self._ai_judgment_service = AiJudgmentService()
 
     def persist_confirmation(
         self,
@@ -50,6 +54,8 @@ class ObservationPersistenceService:
         image_path: str,
         treatment_plan: DiseaseTreatmentPlan | None,
         dispatch_result: ActuationDispatchResult | None,
+        model_name: str = "tomato_disease_detector",
+        model_version: str = "v1",
     ) -> PersistenceRefs:
         db = SessionLocal()
         try:
@@ -92,6 +98,32 @@ class ObservationPersistenceService:
             db.add(observation)
             db.flush()
 
+            disease_judgment = self._ai_judgment_service.create_disease_judgment(
+                db=db,
+                plant_id=plant.id,
+                fruit_id="" if fruit is None else fruit.id,
+                zone_id=zone.id,
+                model_name=model_name,
+                model_version=model_version,
+                raw_label=final_label,
+                confidence=float(final_confidence),
+                image_url=image_path,
+                created_at=reviewed_at,
+                evidence=_build_ai_evidence_items(
+                    request=request,
+                    final_label=final_label,
+                    final_confidence=final_confidence,
+                    treatment_plan=treatment_plan,
+                ),
+            )
+            harvest_decision = self._ai_judgment_service.maybe_create_harvest_decision(
+                db=db,
+                plant_id=plant.id,
+                fruit_id="" if fruit is None else fruit.id,
+                zone_id=zone.id,
+                created_at=reviewed_at,
+            )
+
             alert = _build_alert(
                 robot=robot,
                 zone=zone,
@@ -129,6 +161,8 @@ class ObservationPersistenceService:
                 zone_row_id=zone.id,
                 plant_row_id=plant.id,
                 crop_observation_row_id=str(observation.id),
+                disease_judgment_row_id=disease_judgment.id,
+                harvest_decision_row_id=None if harvest_decision is None else harvest_decision.id,
                 actuation_command_row_id=None if command is None else str(command.id),
                 actuation_log_row_id=None if log is None else str(log.id),
                 alert_row_id=None if alert is None else str(alert.id),
@@ -317,6 +351,29 @@ def _build_evidence_text(
         )
     if treatment_plan is not None and treatment_plan.reason:
         evidence += f", treatment_reason={treatment_plan.reason}"
+    return evidence
+
+
+def _build_ai_evidence_items(
+    *,
+    request: ThinInferenceConfirmRequest,
+    final_label: str,
+    final_confidence: float,
+    treatment_plan: DiseaseTreatmentPlan | None,
+) -> list[str]:
+    evidence = [
+        f"사전 감지 라벨 {request.preliminary_label or 'n/a'}",
+        f"최종 확정 라벨 {final_label}",
+        f"모델 신뢰도 {final_confidence:.2f}",
+    ]
+    if request.bbox is not None:
+        evidence.append(
+            "bbox="
+            f"({request.bbox.x1:.1f},{request.bbox.y1:.1f})-"
+            f"({request.bbox.x2:.1f},{request.bbox.y2:.1f})"
+        )
+    if treatment_plan is not None and treatment_plan.reason:
+        evidence.append(f"조치 근거 {treatment_plan.reason}")
     return evidence
 
 

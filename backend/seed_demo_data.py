@@ -163,6 +163,7 @@ def _reset_schema(db: Any) -> None:
             DROP TABLE IF EXISTS
                 actuation_logs,
                 actuation_commands,
+                ai_judgments,
                 alerts,
                 harvest_events,
                 crop_observations,

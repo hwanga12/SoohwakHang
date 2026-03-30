@@ -1,11 +1,23 @@
 import base64
 import json
 from pathlib import Path
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from services.actuation.schemas import Point3D
+from services.ai_judgments.schemas import (
+    AiJudgmentHistoryOut,
+    AiJudgmentRecordOut,
+    BulkHarvestDecisionRequest,
+    BulkHarvestDecisionResponse,
+    HarvestDecisionActionOut,
+    HarvestDecisionActionRequest,
+    RipenessJudgmentCreateRequest,
+    RipenessJudgmentCreateResponse,
+)
+from services.ai_judgments.service import AiJudgmentService
 from services.perception.inference_service import (
     ModelDependencyError,
     ModelFileMissingError,
@@ -18,6 +30,8 @@ from services.perception.schemas import (
 
 router = APIRouter()
 _service = MainInferenceService()
+_ai_judgment_service = AiJudgmentService()
+JudgmentTypeParam = Literal["DISEASE", "RIPENESS", "HARVEST_DECISION"]
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEMO_INPUT_ROOT = _REPO_ROOT / "artifacts" / "demo_inputs"
 _DEMO_MANIFEST_PATH = _DEMO_INPUT_ROOT / "diagnosis_demo_manifest.json"
