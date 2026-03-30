@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 from typing import Any
 
@@ -425,7 +426,21 @@ class MissionBridgeExecutor(Node):
                 result='published',
             )
         )
-        self._harvest_request_publisher.publish(String(data=request.effective_tomato_id))
+        harvest_request_payload = {
+            'mission_id': request.mission_id,
+            'plant_id': request.plant_id,
+            'fruit_id': request.fruit_id,
+            'tomato_id': request.effective_tomato_id,
+            'requested_by': request.requested_by,
+            'trigger': 'mission_bridge',
+        }
+        if request.inspect_waypoint_id:
+            harvest_request_payload['inspect_waypoint_id'] = request.inspect_waypoint_id
+        if request.inspect_waypoint_ids:
+            harvest_request_payload['inspect_waypoint_ids'] = list(request.inspect_waypoint_ids)
+        self._harvest_request_publisher.publish(
+            String(data=json.dumps(harvest_request_payload, ensure_ascii=False))
+        )
 
     def _handle_patrol_status(self, msg: String) -> None:
         context = self._active_context

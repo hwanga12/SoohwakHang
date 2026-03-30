@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from typing import Any
 
 from database import SessionLocal
@@ -16,8 +17,9 @@ from models import (
     Robot,
     Zone,
 )
-from services.ai_judgments.service import AiJudgmentService
+from robot_map_service import _load_crop_instances
 from services.actuation.schemas import ActuationDispatchResult, DiseaseTreatmentPlan, Point3D
+from services.ai_judgments.service import AiJudgmentService
 from services.perception.schemas import ThinInferenceConfirmRequest
 
 
@@ -221,6 +223,29 @@ def _point_to_json(point: Point3D | None) -> dict[str, float]:
     }
 
 
+@lru_cache(maxsize=1)
+def _canonical_plant_positions() -> dict[str, dict[str, float]]:
+    crop_instances = _load_crop_instances()
+    positions: dict[str, dict[str, float]] = {}
+
+    for plant in crop_instances.get("plants", []):
+        plant_id = str(plant.get("plant_id", "")).strip()
+        pose = plant.get("pose")
+        if not plant_id or not isinstance(pose, dict):
+            continue
+        positions[plant_id] = {
+            "x": float(pose.get("x", 0.0)),
+            "y": float(pose.get("y", 0.0)),
+            "z": float(pose.get("z", 0.0)),
+        }
+
+    return positions
+
+
+def _canonical_plant_position(plant_id: str) -> dict[str, float] | None:
+    return _canonical_plant_positions().get(plant_id.strip())
+
+
 def _get_or_create_plant(
     db: Any,
     *,
@@ -233,11 +258,12 @@ def _get_or_create_plant(
     normalized_plant_id = plant_id.strip() or "farm01_plant_unknown"
     plant = db.query(Plant).filter(Plant.id == normalized_plant_id).first()
     if plant is None:
+        canonical_position = _canonical_plant_position(normalized_plant_id)
         plant = Plant(
             id=normalized_plant_id,
             zone_id=zone_id,
             crop_name="tomato",
-            position=_point_to_json(target_position),
+            position=canonical_position or _point_to_json(target_position),
             needs_water=False,
             ready_to_harvest=False,
             needs_nutrition=False,
@@ -246,8 +272,9 @@ def _get_or_create_plant(
         db.add(plant)
         db.flush()
     else:
-        if target_position is not None:
-            plant.position = _point_to_json(target_position)
+        canonical_position = _canonical_plant_position(normalized_plant_id)
+        if canonical_position is not None:
+            plant.position = canonical_position
         plant.last_observed_at = reviewed_at
 
     if "calcium" in final_label or "blossom_end_rot" in final_label:

@@ -293,6 +293,10 @@ class RobotCommandStatusOut(BaseModel):
     error: str | None = None
     result: str | None = None
     target_pose: PoseOut | dict[str, Any] | None = None
+    route_target_pose: PoseOut | dict[str, Any] | None = None
+    final_target_pose: PoseOut | dict[str, Any] | None = None
+    target_waypoint_id: str | None = None
+    navigation_phase: str | None = None
     target_zone_id: str | None = None
     home_waypoint_id: str | None = None
     preempt_current_navigation: bool = False
@@ -386,6 +390,10 @@ class RobotAssetOut(BaseModel):
     zone_id: str
     description: str
     position: Point3DOut
+    navigation_pose: PoseOut | None = None
+    approach_pose: PoseOut | None = None
+    inspect_waypoint_id: str | None = None
+    inspect_waypoint_name: str | None = None
     status: str
 
 

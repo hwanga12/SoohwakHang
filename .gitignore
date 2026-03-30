@@ -42,7 +42,8 @@ agribot_ws/src/agribot_description/models/agribot/meshes/meshes_texture.jpg
 *.exe
 
 # ─── IDE / 에디터 ───
-.vscode/
+# .vscode/ (Shared settings are allowed to sync explorer visibility)
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo

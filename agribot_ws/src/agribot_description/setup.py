@@ -17,7 +17,8 @@ def get_data_files():
             glob(os.path.join('worlds', '*.sdf'))),
         # Config files
         (os.path.join('share', package_name, 'config'),
-            glob(os.path.join('config', '*.yaml'))),
+            glob(os.path.join('config', '*.yaml')) +
+            glob(os.path.join('config', '*.config'))),
         # RViz config
         (os.path.join('share', package_name, 'rviz'),
             glob(os.path.join('rviz', '*.rviz'))),

@@ -28,13 +28,24 @@ robot_constraints:
 harvest_routing:
   approach_margin_from_bed_edge_m: 0.45
   max_lateral_offset_from_inspect_m: 1.25
+  max_lateral_offset_from_inspect_m_by_lane_side:
+    harvest_lane_center: 0.0
   align_standoff_from_crop_m: 0.65
+  map_display_standoff_from_crop_m: 0.3
+  map_display_standoff_from_crop_m_by_lane_side:
+    harvest_lane_center: 0.15
+  map_display_max_lateral_offset_from_inspect_m: 1.7
+  map_display_max_lateral_offset_from_inspect_m_by_lane_side:
+    harvest_lane_center: 1.85
   return_modes:
     default: resume_patrol
     fallback: home
   notes:
   - Approach poses move from the inspect stop toward the observed tomato with a short
     standoff.
+  - Map display markers may use a tighter crop-side standoff so the frontend world
+    map communicates left/right observation intent more clearly than the safe aisle
+    center navigation pose.
   - Align poses square the robot to the crop row so the fixed harvest arm faces the tomato.
   - If patrol resume is unavailable, fall back to the south-center home pose.
 waypoints:
@@ -302,6 +313,138 @@ waypoints:
     y: -8.6
     z: 0.0
     yaw: -1.5708
+- waypoint_id: farm_01_lane_center_south_entry
+  display_name: Harvest Center Aisle Entry
+  purpose: entry
+  lane_id: harvest_lane_center
+  batchable: true
+  observe_here: false
+  description: Entry anchor for the center manual observation aisle.
+  pose:
+    x: 0.0
+    y: -8.6
+    z: 0.0
+    yaw: 1.5708
+- waypoint_id: farm_01_lane_center_inspect_01
+  display_name: Harvest Center Aisle Inspect 01
+  purpose: inspect
+  lane_id: harvest_lane_center
+  batchable: false
+  observe_here: true
+  description: Observation stop for the center manual observation aisle.
+  pose:
+    x: 0.0
+    y: -6.0
+    z: 0.0
+    yaw: 1.5708
+  observed_plant_ids:
+  - farm01_plant_02
+  - farm01_plant_03
+  observed_tomato_ids:
+  - farm01_plant_02_tomato_01
+  - farm01_plant_03_tomato_01
+- waypoint_id: farm_01_lane_center_inspect_02
+  display_name: Harvest Center Aisle Inspect 02
+  purpose: inspect
+  lane_id: harvest_lane_center
+  batchable: false
+  observe_here: true
+  description: Observation stop for the center manual observation aisle.
+  pose:
+    x: 0.0
+    y: -4.0
+    z: 0.0
+    yaw: 1.5708
+  observed_plant_ids:
+  - farm01_plant_06
+  - farm01_plant_07
+  observed_tomato_ids:
+  - farm01_plant_06_tomato_01
+  - farm01_plant_07_tomato_01
+- waypoint_id: farm_01_lane_center_inspect_03
+  display_name: Harvest Center Aisle Inspect 03
+  purpose: inspect
+  lane_id: harvest_lane_center
+  batchable: false
+  observe_here: true
+  description: Observation stop for the center manual observation aisle.
+  pose:
+    x: 0.0
+    y: -2.0
+    z: 0.0
+    yaw: 1.5708
+  observed_plant_ids:
+  - farm01_plant_10
+  - farm01_plant_11
+  observed_tomato_ids:
+  - farm01_plant_10_tomato_01
+  - farm01_plant_11_tomato_01
+- waypoint_id: farm_01_lane_center_inspect_04
+  display_name: Harvest Center Aisle Inspect 04
+  purpose: inspect
+  lane_id: harvest_lane_center
+  batchable: false
+  observe_here: true
+  description: Observation stop for the center manual observation aisle.
+  pose:
+    x: 0.0
+    y: 2.0
+    z: 0.0
+    yaw: 1.5708
+  observed_plant_ids:
+  - farm01_plant_14
+  - farm01_plant_15
+  observed_tomato_ids:
+  - farm01_plant_14_tomato_01
+  - farm01_plant_15_tomato_01
+- waypoint_id: farm_01_lane_center_inspect_05
+  display_name: Harvest Center Aisle Inspect 05
+  purpose: inspect
+  lane_id: harvest_lane_center
+  batchable: false
+  observe_here: true
+  description: Observation stop for the center manual observation aisle.
+  pose:
+    x: 0.0
+    y: 4.0
+    z: 0.0
+    yaw: 1.5708
+  observed_plant_ids:
+  - farm01_plant_18
+  - farm01_plant_19
+  observed_tomato_ids:
+  - farm01_plant_18_tomato_01
+  - farm01_plant_19_tomato_01
+- waypoint_id: farm_01_lane_center_inspect_06
+  display_name: Harvest Center Aisle Inspect 06
+  purpose: inspect
+  lane_id: harvest_lane_center
+  batchable: false
+  observe_here: true
+  description: Observation stop for the center manual observation aisle.
+  pose:
+    x: 0.0
+    y: 6.0
+    z: 0.0
+    yaw: 1.5708
+  observed_plant_ids:
+  - farm01_plant_22
+  - farm01_plant_23
+  observed_tomato_ids:
+  - farm01_plant_22_tomato_01
+  - farm01_plant_23_tomato_01
+- waypoint_id: farm_01_lane_center_north_turn
+  display_name: Harvest Center Aisle Turn
+  purpose: turn
+  lane_id: harvest_lane_center
+  batchable: true
+  observe_here: false
+  description: Turn anchor at the far end of the center manual observation aisle.
+  pose:
+    x: 0.0
+    y: 8.6
+    z: 0.0
+    yaw: 1.5708
 - waypoint_id: farm_01_lane_03_south_entry
   display_name: Harvest Aisle 03 Entry
   purpose: entry
@@ -625,6 +768,47 @@ routes:
   - farm01_plant_06_tomato_01
   - farm01_plant_01_tomato_01
   - farm01_plant_02_tomato_01
+- route_id: farm_01_harvest_lane_center
+  display_name: Farm Harvest Center Aisle
+  zone_id: farm_01
+  lane_side: harvest_lane_center
+  description: Center manual observation route between the middle two crop columns.
+  entry_pose_id: farm_01_lane_center_south_entry
+  inspect_pose_ids:
+  - farm_01_lane_center_inspect_01
+  - farm_01_lane_center_inspect_02
+  - farm_01_lane_center_inspect_03
+  - farm_01_lane_center_inspect_04
+  - farm_01_lane_center_inspect_05
+  - farm_01_lane_center_inspect_06
+  turn_pose_id: farm_01_lane_center_north_turn
+  exit_pose_id: farm_01_lane_center_north_turn
+  observed_plant_ids:
+  - farm01_plant_02
+  - farm01_plant_03
+  - farm01_plant_06
+  - farm01_plant_07
+  - farm01_plant_10
+  - farm01_plant_11
+  - farm01_plant_14
+  - farm01_plant_15
+  - farm01_plant_18
+  - farm01_plant_19
+  - farm01_plant_22
+  - farm01_plant_23
+  observed_tomato_ids:
+  - farm01_plant_02_tomato_01
+  - farm01_plant_03_tomato_01
+  - farm01_plant_06_tomato_01
+  - farm01_plant_07_tomato_01
+  - farm01_plant_10_tomato_01
+  - farm01_plant_11_tomato_01
+  - farm01_plant_14_tomato_01
+  - farm01_plant_15_tomato_01
+  - farm01_plant_18_tomato_01
+  - farm01_plant_19_tomato_01
+  - farm01_plant_22_tomato_01
+  - farm01_plant_23_tomato_01
 - route_id: farm_01_harvest_lane_03
   display_name: Farm Harvest Aisle 03
   zone_id: farm_01

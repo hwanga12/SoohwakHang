@@ -13,7 +13,7 @@ harvest_action_server:
     alignment_settle_sec: 0.75
     picking_duration_sec: 1.0
     verify_duration_sec: 0.6
-    basket_stow_duration_sec: 0.8
+    basket_stow_duration_sec: 1.2
     return_mode_override: ""
     auto_resume_patrol: true
     phase_retry_limit: 1
@@ -23,3 +23,29 @@ harvest_action_server:
     reject_duplicate_targets: true
     basket_state_topic: harvest/basket_state
     failure_alert_topic: harvest/alerts
+    robot_pose_topic: /odom
+    harvest_animation_enabled: true
+    harvest_arm_command_topic: /agribot/harvest_arm_joint/cmd_pos
+    gazebo_world_name: farm_world
+    gazebo_command_timeout_ms: 3000
+    gz_executable: gz
+    harvest_arm_ready_position: 0.0
+    harvest_arm_reach_position: 0.48
+    harvest_arm_lift_position: -0.35
+    harvest_grasp_sec: 0.18
+    harvest_grasp_forward_m: -0.31
+    harvest_grasp_lateral_m: 0.0
+    harvest_grasp_z_m: 0.54
+    harvest_carry_forward_m: -0.24
+    harvest_carry_lateral_m: 0.0
+    harvest_carry_z_m: 0.46
+    harvest_basket_forward_m: -0.14
+    harvest_basket_lateral_m: 0.0
+    harvest_basket_z_m: 0.26
+    harvest_visual_basket_slot_count: 2
+    harvest_basket_slot_lateral_spacing_m: 0.05
+    harvest_basket_slot_forward_spacing_m: 0.0
+    harvest_basket_overflow_stack_z_m: 0.035
+    harvest_hidden_x_m: 999.0
+    harvest_hidden_y_m: 999.0
+    harvest_hidden_z_m: -10.0

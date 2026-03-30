@@ -2,6 +2,7 @@
 
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from tf2_ros import TransformBroadcaster
 
@@ -30,12 +31,19 @@ class StartupMapTfBroadcaster(Node):
         self._amcl_pose_received = False
 
     def _publish_identity_transform(self) -> None:
+        if not rclpy.ok():
+            return
+
         transform = TransformStamped()
         transform.header.stamp = self.get_clock().now().to_msg()
         transform.header.frame_id = 'map'
         transform.child_frame_id = 'odom'
         transform.transform.rotation.w = 1.0
-        self._broadcaster.sendTransform(transform)
+        try:
+            self._broadcaster.sendTransform(transform)
+        except Exception:
+            if rclpy.ok():
+                raise
 
     def _handle_initial_pose(self, msg: PoseWithCovarianceStamped) -> None:
         if not self._initial_pose_received:
@@ -50,12 +58,25 @@ class StartupMapTfBroadcaster(Node):
 
         self._amcl_pose_received = True
         self.get_logger().info(
-            f'Received /amcl_pose ({msg.header.frame_id}), keeping identity map -> odom broadcaster alive.'
+            f'Received /amcl_pose ({msg.header.frame_id}), stopping temporary identity map -> odom broadcaster.'
         )
-        self.destroy_subscription(self._initial_pose_subscription)
-        self._initial_pose_subscription = None
-        self.destroy_subscription(self._amcl_pose_subscription)
-        self._amcl_pose_subscription = None
+        self._stop_identity_broadcaster()
+
+    def _stop_identity_broadcaster(self) -> None:
+        # AMCL이 map -> odom을 잡기 시작하면 임시 identity TF는 즉시 내려야
+        # TF_OLD_DATA와 중복 frame 경쟁을 만들지 않는다.
+        if self._timer is not None:
+            self._timer.cancel()
+            self.destroy_timer(self._timer)
+            self._timer = None
+
+        if self._initial_pose_subscription is not None:
+            self.destroy_subscription(self._initial_pose_subscription)
+            self._initial_pose_subscription = None
+
+        if self._amcl_pose_subscription is not None:
+            self.destroy_subscription(self._amcl_pose_subscription)
+            self._amcl_pose_subscription = None
 
 
 def main(args=None) -> None:
@@ -63,8 +84,11 @@ def main(args=None) -> None:
     node = StartupMapTfBroadcaster()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except Exception:
+        if rclpy.ok():
+            raise
     finally:
         node.destroy_node()
         if rclpy.ok():

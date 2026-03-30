@@ -9,8 +9,8 @@ thin_inference_node:
     model_device: auto
     imgsz: 640
     confidence_threshold: 0.35
-    frame_stride: 8
-    cooldown_sec: 4.0
+    frame_stride: 12
+    cooldown_sec: 5.0
     crop_padding_ratio: 0.1
     snapshot_format: jpg
     jpeg_quality: 90

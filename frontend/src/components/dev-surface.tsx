@@ -9,6 +9,7 @@ import {
 type BaseProps = PropsWithChildren<{
   as?: 'article' | 'aside' | 'div' | 'section'
   className?: string
+  hideNote?: boolean
 }>
 
 type DevSurfaceProps = BaseProps & (
@@ -39,6 +40,7 @@ export function DevSurface(props: DevSurfaceProps) {
     as = 'article',
     children,
     className = '',
+    hideNote = false,
   } = props
   const fallbackTitle =
     'title' in props && typeof props.title === 'string' ? props.title : ''
@@ -65,7 +67,7 @@ export function DevSurface(props: DevSurfaceProps) {
       data-dev-status={status}
     >
       {children}
-      {isOverlayEnabled ? (
+      {isOverlayEnabled && !hideNote ? (
         <div className="dev-surface-note">
           <span className={`dev-surface-badge dev-surface-badge--${status}`}>
             {statusLabels[status]}

@@ -38,6 +38,8 @@ def test_parse_mission_request_payload_supports_harvest_alias_fields() -> None:
             'payload': {
                 'plant_id': 'farm01_plant_03',
                 'fruit_id': 'farm01_plant_03_tomato_01',
+                'inspect_waypoint_id': 'farm_01_lane_center_inspect_05',
+                'inspect_waypoint_ids': ['farm_01_lane_center_inspect_05', 'farm_01_lane_02_inspect_02'],
             },
         }
     )
@@ -46,6 +48,11 @@ def test_parse_mission_request_payload_supports_harvest_alias_fields() -> None:
     assert request.plant_id == 'farm01_plant_03'
     assert request.fruit_id == 'farm01_plant_03_tomato_01'
     assert request.effective_tomato_id == 'farm01_plant_03_tomato_01'
+    assert request.inspect_waypoint_id == 'farm_01_lane_center_inspect_05'
+    assert request.inspect_waypoint_ids == (
+        'farm_01_lane_center_inspect_05',
+        'farm_01_lane_02_inspect_02',
+    )
 
 
 def test_parse_mission_request_payload_rejects_missing_harvest_target() -> None:

@@ -27,6 +27,7 @@ setup(
             'runtime_snapshot_exporter = agribot_bringup.runtime_snapshot_exporter:main',
             'mission_bridge_executor = agribot_bringup.mission_bridge_executor:main',
             'robot_manual_command_executor = agribot_bringup.robot_manual_command_executor:main',
+            'nav2_activation_helper = agribot_bringup.nav2_activation_helper:main',
         ],
     },
 )

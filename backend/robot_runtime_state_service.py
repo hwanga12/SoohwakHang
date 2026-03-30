@@ -10,6 +10,7 @@ DEFAULT_RUNTIME_DIR = Path(os.environ.get("AGRIBOT_RUNTIME_DIR", "/tmp/agribot_r
 MANUAL_COMMAND_FILENAME = "robot_manual_command.json"
 MANUAL_COMMAND_STATUS_FILENAME = "robot_manual_command_status.json"
 CONTROL_STATE_FILENAME = "robot_control_state.json"
+NAVIGATION_PATH_SNAPSHOT_FILENAME = "robot_navigation_path_snapshot.json"
 MISSION_REQUEST_FILENAME = "robot_mission_request.json"
 MISSION_STATUS_FILENAME = "robot_mission_status.json"
 MISSION_STATUS_DIRNAME = "mission_statuses"
@@ -79,6 +80,10 @@ def command_status_file_path() -> Path:
 
 def control_state_file_path() -> Path:
     return runtime_dir_from_env() / CONTROL_STATE_FILENAME
+
+
+def navigation_path_snapshot_file_path() -> Path:
+    return runtime_dir_from_env() / NAVIGATION_PATH_SNAPSHOT_FILENAME
 
 
 def mission_request_file_path() -> Path:
@@ -173,6 +178,18 @@ def _normalize_resume_context(value: Any) -> dict[str, Any] | None:
         "command_id": _normalize_optional_string(value.get("command_id")),
         "command_type": _normalize_optional_string(value.get("command_type")),
         "target_pose": value.get("target_pose") if isinstance(value.get("target_pose"), dict) else None,
+        "route_target_pose": (
+            value.get("route_target_pose")
+            if isinstance(value.get("route_target_pose"), dict)
+            else None
+        ),
+        "final_target_pose": (
+            value.get("final_target_pose")
+            if isinstance(value.get("final_target_pose"), dict)
+            else None
+        ),
+        "navigation_phase": _normalize_optional_string(value.get("navigation_phase")),
+        "target_waypoint_id": _normalize_optional_string(value.get("target_waypoint_id")),
         "home_waypoint_id": _normalize_optional_string(value.get("home_waypoint_id")),
         "patrol_snapshot": (
             value.get("patrol_snapshot")
@@ -299,6 +316,18 @@ def build_command_status_payload(
         "error": _normalize_optional_string(raw_payload.get("error")),
         "result": _normalize_optional_string(raw_payload.get("result")),
         "target_pose": raw_payload.get("target_pose") if isinstance(raw_payload.get("target_pose"), dict) else None,
+        "route_target_pose": (
+            raw_payload.get("route_target_pose")
+            if isinstance(raw_payload.get("route_target_pose"), dict)
+            else None
+        ),
+        "final_target_pose": (
+            raw_payload.get("final_target_pose")
+            if isinstance(raw_payload.get("final_target_pose"), dict)
+            else None
+        ),
+        "target_waypoint_id": _normalize_optional_string(raw_payload.get("target_waypoint_id")),
+        "navigation_phase": _normalize_optional_string(raw_payload.get("navigation_phase")),
         "target_zone_id": _normalize_optional_string(raw_payload.get("target_zone_id")),
         "home_waypoint_id": _normalize_optional_string(raw_payload.get("home_waypoint_id")),
         "preempt_current_navigation": bool(raw_payload.get("preempt_current_navigation", False)),

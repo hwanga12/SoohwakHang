@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 from typing import Any
 
 
@@ -62,6 +63,28 @@ def harvest_action_status_record_path(
 
 def harvest_failure_alert_path(runtime_dir: Path | None = None) -> Path:
     return (runtime_dir or runtime_dir_from_env()) / HARVEST_FAILURE_ALERT_FILENAME
+
+
+def reset_harvest_runtime_session(runtime_dir: Path | None = None) -> None:
+    target_runtime_dir = runtime_dir or runtime_dir_from_env()
+    removable_paths = (
+        harvest_basket_state_path(target_runtime_dir),
+        harvest_latest_event_path(target_runtime_dir),
+        harvest_action_status_path(target_runtime_dir),
+        harvest_failure_alert_path(target_runtime_dir),
+    )
+    removable_dirs = (
+        target_runtime_dir / HARVEST_EVENT_DIRNAME,
+        target_runtime_dir / HARVEST_ACTION_STATUS_DIRNAME,
+    )
+
+    for path in removable_paths:
+        if path.exists():
+            path.unlink()
+
+    for directory in removable_dirs:
+        if directory.exists():
+            shutil.rmtree(directory)
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:

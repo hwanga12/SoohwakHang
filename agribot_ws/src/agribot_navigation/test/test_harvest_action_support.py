@@ -2,6 +2,8 @@ from pathlib import Path
 import json
 
 from agribot_interfaces.msg import HarvestBasketState, HarvestEvent, MissionStatus
+from dataclasses import replace
+
 from agribot_navigation.harvest_action_support import (
     PHASE_PROGRESS_PCT,
     alignment_required,
@@ -19,7 +21,7 @@ from agribot_navigation.harvest_action_support import (
     should_retry_phase,
 )
 from agribot_navigation.harvest_routing import compute_harvest_route, load_crop_catalog
-from agribot_navigation.patrol_config import load_patrol_plan
+from agribot_navigation.patrol_config import Pose2D, load_patrol_plan
 import pytest
 
 
@@ -132,7 +134,19 @@ def test_alignment_required_reflects_approach_and_align_difference() -> None:
         'farm01_plant_01_tomato_01',
     )
 
-    assert alignment_required(route_plan) is True
+    assert alignment_required(route_plan) is False
+
+    adjusted_route_plan = replace(
+        route_plan,
+        align_pose=Pose2D(
+            x=route_plan.approach_pose.x,
+            y=route_plan.approach_pose.y + 0.4,
+            z=route_plan.approach_pose.z,
+            yaw=route_plan.approach_pose.yaw,
+        ),
+    )
+
+    assert alignment_required(adjusted_route_plan) is True
 
 
 def test_build_feedback_and_result_match_action_contract() -> None:

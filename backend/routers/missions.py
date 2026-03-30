@@ -4,6 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import OperationalError
 
 from database import SessionLocal
 from harvest_runtime_service import merge_mission_status_with_harvest_action
@@ -61,6 +62,8 @@ class HarvestReq(BaseModel):
     plant_id: str
     fruit_id: str
     requested_by: str
+    inspect_waypoint_id: Optional[str] = Field(default=None)
+    inspect_waypoint_ids: List[str] = Field(default_factory=list)
 
 
 def _raise_mission_http_error(exc: Exception) -> None:
@@ -189,6 +192,9 @@ def _upsert_mission_row(
             mission.status = status
             mission.progress_percent = progress_percent
         db.commit()
+    except OperationalError:
+        db.rollback()
+        return
     except Exception:
         db.rollback()
         raise
@@ -320,6 +326,8 @@ def harvest_mission(req: HarvestReq):
         plant_id=req.plant_id,
         fruit_id=req.fruit_id,
         requested_by=req.requested_by,
+        inspect_waypoint_id=req.inspect_waypoint_id,
+        inspect_waypoint_ids=req.inspect_waypoint_ids,
     )
     _upsert_mission_row(
         mission_id=str(payload["mission_id"]),

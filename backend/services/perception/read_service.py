@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
 import json
 import mimetypes
 import os
@@ -9,15 +10,19 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import joinedload
 
 from database import SessionLocal
 from models import Alert, CropObservation, Plant, Zone
+from robot_map_service import _load_crop_instances
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FRONTEND_PUBLIC_DIR = REPO_ROOT / "frontend" / "public"
 DEFAULT_BACKEND_RUNTIME_DIR = REPO_ROOT / "artifacts" / "runtime" / "backend"
+DEFAULT_ROBOT_CAMERA_RUNTIME_DIR = REPO_ROOT / "artifacts" / "runtime" / "robot" / "thin_inference"
+LIVE_CAMERA_STALE_SEC = 8.0
 
 LABEL_DISPLAY_MAP = {
     "healthy_leaf": "정상 잎",
@@ -94,6 +99,32 @@ def _display_label(finding_label: str) -> str:
     return LABEL_DISPLAY_MAP.get(normalized, finding_label)
 
 
+@lru_cache(maxsize=1)
+def _canonical_plant_positions() -> dict[str, dict[str, float]]:
+    crop_instances = _load_crop_instances()
+    positions: dict[str, dict[str, float]] = {}
+
+    for plant in crop_instances.get("plants", []):
+        plant_id = str(plant.get("plant_id") or "").strip()
+        pose = plant.get("pose")
+        if not plant_id or not isinstance(pose, dict):
+            continue
+        positions[plant_id] = {
+            "x": float(pose.get("x", 0.0)),
+            "y": float(pose.get("y", 0.0)),
+            "z": float(pose.get("z", 0.0)),
+        }
+
+    return positions
+
+
+def _plant_position(plant_id: str, fallback: dict[str, Any] | None) -> dict[str, Any]:
+    canonical = _canonical_plant_positions().get(plant_id.strip())
+    if canonical is not None:
+        return canonical
+    return fallback or {"x": 0.0, "y": 0.0, "z": 0.0}
+
+
 def _health_percent(finding_label: str) -> int:
     normalized = finding_label.strip().lower()
     if normalized in {"healthy_leaf", "healthy", "normal"}:
@@ -123,6 +154,15 @@ def _backend_runtime_dir() -> Path:
     ).expanduser()
 
 
+def _robot_camera_runtime_dir() -> Path:
+    return Path(
+        os.environ.get(
+            "AGRIBOT_ROBOT_CAMERA_RUNTIME_DIR",
+            str(DEFAULT_ROBOT_CAMERA_RUNTIME_DIR),
+        )
+    ).expanduser()
+
+
 def _resolve_local_media_path(image_url: str) -> Path | None:
     normalized = image_url.strip()
     if not normalized:
@@ -138,6 +178,16 @@ def _resolve_local_media_path(image_url: str) -> Path | None:
     if relative_candidate.exists():
         return relative_candidate
     return None
+
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    normalized = value.strip()
+    if not normalized:
+        return None
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
 
 
 def _read_json_file(path: Path) -> dict[str, Any] | None:
@@ -163,7 +213,42 @@ def _resolve_runtime_image_path(metadata_path: Path, image_format: str) -> Path 
     return None
 
 
+def _live_camera_metadata_path() -> Path:
+    return _robot_camera_runtime_dir() / "camera" / "latest_frame.json"
+
+
+def _resolve_live_camera_image_path(metadata_path: Path, payload: dict[str, Any]) -> Path | None:
+    configured_path = str(payload.get("image_path") or "").strip()
+    if configured_path:
+        candidate = Path(configured_path).expanduser()
+        if candidate.exists():
+            return candidate
+
+    image_format = str(payload.get("image_format") or "").strip().lstrip(".")
+    if image_format:
+        candidate = metadata_path.with_name(f"latest_frame.{image_format}")
+        if candidate.exists():
+            return candidate
+
+    for candidate in metadata_path.parent.glob("latest_frame.*"):
+        if candidate.suffix.lower() == ".json":
+            continue
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _runtime_detail(payload: dict[str, Any]) -> str:
+    finding_label = str(
+        payload.get("final_label")
+        or payload.get("request", {}).get("preliminary_label")
+        or ""
+    ).strip().lower()
+    if finding_label in {"healthy_leaf", "healthy", "normal"}:
+        return "정상 생육 패턴이 확인되었습니다."
+    if finding_label == "ripe_tomato":
+        return "수확 가능한 토마토가 확인되었습니다."
+
     treatment_plan = payload.get("treatment_plan")
     dispatch_result = payload.get("dispatch_result")
     if isinstance(treatment_plan, dict):
@@ -181,6 +266,12 @@ def _runtime_detail(payload: dict[str, Any]) -> str:
 
 
 def _runtime_recommended_action(payload: dict[str, Any], finding_label: str) -> str:
+    normalized = finding_label.strip().lower()
+    if normalized in {"healthy_leaf", "healthy", "normal"}:
+        return "추가 관찰 유지"
+    if normalized == "ripe_tomato":
+        return "수확 요청"
+
     treatment_plan = payload.get("treatment_plan")
     if isinstance(treatment_plan, dict) and bool(treatment_plan.get("action_required")):
         treatment_label = str(treatment_plan.get("treatment_label") or "").strip()
@@ -287,6 +378,13 @@ def _runtime_observation_item(record: RuntimeObservationRecord) -> dict[str, Any
     }
 
 
+def _rollback_quietly(db: Any) -> None:
+    try:
+        db.rollback()
+    except Exception:
+        pass
+
+
 class ObservationReadService:
     def list_alerts(self) -> list[dict[str, Any]]:
         runtime_records = _runtime_observation_records()
@@ -319,16 +417,20 @@ class ObservationReadService:
 
         db = SessionLocal()
         try:
-            alerts = (
-                db.query(Alert)
-                .options(
-                    joinedload(Alert.zone),
-                    joinedload(Alert.plant),
-                    joinedload(Alert.observation),
+            try:
+                alerts = (
+                    db.query(Alert)
+                    .options(
+                        joinedload(Alert.zone),
+                        joinedload(Alert.plant),
+                        joinedload(Alert.observation),
+                    )
+                    .order_by(Alert.detected_at.desc())
+                    .all()
                 )
-                .order_by(Alert.detected_at.desc())
-                .all()
-            )
+            except OperationalError:
+                _rollback_quietly(db)
+                return runtime_rows
             runtime_ids = {row["id"] for row in runtime_rows}
             db_rows: list[dict[str, Any]] = []
             for alert in alerts:
@@ -370,18 +472,23 @@ class ObservationReadService:
             db.close()
 
     def list_plants(self) -> list[dict[str, Any]]:
+        runtime_records = _runtime_observation_records()
         db = SessionLocal()
         try:
-            plants = (
-                db.query(Plant)
-                .options(
-                    joinedload(Plant.zone),
-                    joinedload(Plant.fruits),
-                    joinedload(Plant.observations),
+            try:
+                plants = (
+                    db.query(Plant)
+                    .options(
+                        joinedload(Plant.zone),
+                        joinedload(Plant.fruits),
+                        joinedload(Plant.observations),
+                    )
+                    .order_by(Plant.id.asc())
+                    .all()
                 )
-                .order_by(Plant.id.asc())
-                .all()
-            )
+            except OperationalError:
+                _rollback_quietly(db)
+                plants = []
             rows = {
                 plant.id: {
                     "id": plant.id,
@@ -392,7 +499,7 @@ class ObservationReadService:
                     "fruit_id": "" if not plant.fruits else plant.fruits[0].id,
                     "zone_id": plant.zone_id,
                     "zone_label": _zone_label(plant.zone),
-                    "position": plant.position,
+                    "position": _plant_position(plant.id, plant.position),
                     "last_observed_at": _serialize_datetime(plant.last_observed_at),
                     "health_score": None,
                     "health": 92,
@@ -436,7 +543,7 @@ class ObservationReadService:
                 )
 
             latest_runtime_by_plant: dict[str, RuntimeObservationRecord] = {}
-            for record in _runtime_observation_records():
+            for record in runtime_records:
                 if not record.plant_id or record.plant_id in latest_runtime_by_plant:
                     continue
                 latest_runtime_by_plant[record.plant_id] = record
@@ -453,7 +560,7 @@ class ObservationReadService:
                         "fruit_id": record.fruit_id,
                         "zone_id": record.zone_id,
                         "zone_label": record.zone_id or "farm_01",
-                        "position": {"x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "frame_id": "map"},
+                        "position": _plant_position(plant_id, None),
                         "last_observed_at": record.reviewed_at,
                         "health_score": None,
                         "health": 92,
@@ -490,16 +597,21 @@ class ObservationReadService:
             db.close()
 
     def get_plant_detail(self, plant_id: str) -> dict[str, Any]:
+        observation_feed = self.get_plant_observations(plant_id)
+        latest = observation_feed["items"][0] if observation_feed["items"] else None
+
         db = SessionLocal()
         try:
-            plant = (
-                db.query(Plant)
-                .options(joinedload(Plant.zone), joinedload(Plant.fruits))
-                .filter(Plant.id == plant_id)
-                .first()
-            )
-            observation_feed = self.get_plant_observations(plant_id)
-            latest = observation_feed["items"][0] if observation_feed["items"] else None
+            try:
+                plant = (
+                    db.query(Plant)
+                    .options(joinedload(Plant.zone), joinedload(Plant.fruits))
+                    .filter(Plant.id == plant_id)
+                    .first()
+                )
+            except OperationalError:
+                _rollback_quietly(db)
+                plant = None
 
             if plant is None:
                 return {
@@ -508,7 +620,7 @@ class ObservationReadService:
                     "name": _plant_display_name(plant_id),
                     "zone_id": observation_feed["zone_id"],
                     "zone_label": observation_feed["zone_label"],
-                    "position": {"x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "frame_id": "map"},
+                    "position": _plant_position(plant_id, None),
                     "latest_observation": latest,
                     "observation_count": len(observation_feed["items"]),
                     "target_fruit_id": None,
@@ -520,7 +632,7 @@ class ObservationReadService:
                 "name": _plant_display_name(plant.id),
                 "zone_id": plant.zone_id,
                 "zone_label": _zone_label(plant.zone),
-                "position": plant.position,
+                "position": _plant_position(plant.id, plant.position),
                 "latest_observation": latest,
                 "observation_count": len(observation_feed["items"]),
                 "target_fruit_id": "" if not plant.fruits else plant.fruits[0].id,
@@ -529,51 +641,55 @@ class ObservationReadService:
             db.close()
 
     def get_plant_observations(self, plant_id: str) -> dict[str, Any]:
+        runtime_records = _runtime_observation_records()
         runtime_items = [
             _runtime_observation_item(record)
-            for record in _runtime_observation_records()
+            for record in runtime_records
             if record.plant_id == plant_id
         ]
 
         db = SessionLocal()
         try:
-            plant = (
-                db.query(Plant)
-                .options(joinedload(Plant.zone))
-                .filter(Plant.id == plant_id)
-                .first()
-            )
+            db_items: list[dict[str, Any]] = []
+            try:
+                plant = (
+                    db.query(Plant)
+                    .options(joinedload(Plant.zone))
+                    .filter(Plant.id == plant_id)
+                    .first()
+                )
+                if plant is not None:
+                    observations = (
+                        db.query(CropObservation)
+                        .options(joinedload(CropObservation.fruit))
+                        .filter(CropObservation.plant_id == plant_id)
+                        .order_by(CropObservation.observed_at.desc())
+                        .all()
+                    )
+                    db_items = [
+                        {
+                            "id": _serialize_uuid(observation.id),
+                            "class_name": observation.finding_label,
+                            "label": observation.finding_label,
+                            "display_label": _display_label(observation.finding_label),
+                            "reviewed_at": _serialize_datetime(observation.observed_at),
+                            "image_url": _api_image_url(observation.image_url or ""),
+                            "media_asset_id": _serialize_uuid(observation.id),
+                            "decision_source": "database",
+                            "health_percent": _health_percent(observation.finding_label),
+                            "detail": observation.evidence or observation.recommended_action or "",
+                            "treatment_plan": {
+                                "reason": observation.evidence or observation.recommended_action or "",
+                            },
+                        }
+                        for observation in observations
+                    ]
+            except OperationalError:
+                _rollback_quietly(db)
+                plant = None
 
             if plant is None and not runtime_items:
                 raise FileNotFoundError(f"알 수 없는 plant_id 입니다: {plant_id}")
-
-            db_items: list[dict[str, Any]] = []
-            if plant is not None:
-                observations = (
-                    db.query(CropObservation)
-                    .options(joinedload(CropObservation.fruit))
-                    .filter(CropObservation.plant_id == plant_id)
-                    .order_by(CropObservation.observed_at.desc())
-                    .all()
-                )
-                db_items = [
-                    {
-                        "id": _serialize_uuid(observation.id),
-                        "class_name": observation.finding_label,
-                        "label": observation.finding_label,
-                        "display_label": _display_label(observation.finding_label),
-                        "reviewed_at": _serialize_datetime(observation.observed_at),
-                        "image_url": _api_image_url(observation.image_url or ""),
-                        "media_asset_id": _serialize_uuid(observation.id),
-                        "decision_source": "database",
-                        "health_percent": _health_percent(observation.finding_label),
-                        "detail": observation.evidence or observation.recommended_action or "",
-                        "treatment_plan": {
-                            "reason": observation.evidence or observation.recommended_action or "",
-                        },
-                    }
-                    for observation in observations
-                ]
 
             items_by_id = {item["id"]: item for item in db_items}
             for item in runtime_items:
@@ -586,7 +702,7 @@ class ObservationReadService:
                 next(
                     (
                         record.zone_id
-                        for record in _runtime_observation_records()
+                        for record in runtime_records
                         if record.plant_id == plant_id and record.zone_id
                     ),
                     "farm_01",
@@ -631,6 +747,76 @@ class ObservationReadService:
 
     def media_response_meta(self, asset_id: str) -> dict[str, str]:
         image_path = self.resolve_media_path(asset_id)
+        return {
+            "filename": image_path.name,
+            "media_type": mimetypes.guess_type(image_path.name)[0] or "application/octet-stream",
+        }
+
+    def get_live_camera_snapshot(self) -> dict[str, Any]:
+        metadata_path = _live_camera_metadata_path()
+        payload = _read_json_file(metadata_path)
+        if payload is None:
+            return {
+                "available": False,
+                "is_stale": True,
+                "captured_at": "",
+                "image_url": "",
+                "plant_id": "",
+                "fruit_id": "",
+                "observation_id": "",
+                "observation_image_url": "",
+                "detection_label": "",
+                "detection_confidence": 0.0,
+            }
+
+        image_path = _resolve_live_camera_image_path(metadata_path, payload)
+        captured_at = str(payload.get("captured_at") or "").strip()
+        captured_dt = _parse_iso_datetime(captured_at)
+        is_stale = True
+        if captured_dt is not None:
+            if captured_dt.tzinfo is None:
+                captured_dt = captured_dt.replace(tzinfo=timezone.utc)
+            is_stale = (
+                datetime.now(captured_dt.tzinfo) - captured_dt
+            ).total_seconds() > LIVE_CAMERA_STALE_SEC
+
+        detection = payload.get("detection")
+        detection_label = ""
+        detection_confidence = 0.0
+        if isinstance(detection, dict):
+            detection_label = str(detection.get("label") or "").strip()
+            try:
+                detection_confidence = float(detection.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                detection_confidence = 0.0
+
+        observation_id = str(payload.get("observation_id") or "").strip()
+        return {
+            "available": image_path is not None,
+            "is_stale": is_stale,
+            "captured_at": captured_at,
+            "image_url": "" if image_path is None else "/api/v1/camera/latest/frame",
+            "plant_id": str(payload.get("plant_id") or "").strip(),
+            "fruit_id": str(payload.get("fruit_id") or "").strip(),
+            "observation_id": observation_id,
+            "observation_image_url": "" if not observation_id else _runtime_media_url(observation_id),
+            "detection_label": detection_label,
+            "detection_confidence": detection_confidence,
+        }
+
+    def resolve_live_camera_path(self) -> Path:
+        metadata_path = _live_camera_metadata_path()
+        payload = _read_json_file(metadata_path)
+        if payload is None:
+            raise FileNotFoundError("최신 Gazebo 카메라 프레임 메타데이터가 없습니다.")
+
+        image_path = _resolve_live_camera_image_path(metadata_path, payload)
+        if image_path is None:
+            raise FileNotFoundError("최신 Gazebo 카메라 프레임 파일을 찾지 못했습니다.")
+        return image_path
+
+    def live_camera_response_meta(self) -> dict[str, str]:
+        image_path = self.resolve_live_camera_path()
         return {
             "filename": image_path.name,
             "media_type": mimetypes.guess_type(image_path.name)[0] or "application/octet-stream",

@@ -416,7 +416,23 @@ def _load_sprinkler_positions(world_file: Path) -> dict[str, tuple[float, float,
 
 def _build_effect_sdf(effect_entity_name: str, effect_color: str) -> str:
     rgba = _resolve_rgba(effect_color)
-    nozzle_alpha = max(0.15, min(0.9, rgba[3]))
+    nozzle_alpha = max(0.22, min(0.95, rgba[3] + 0.18))
+    spray_visuals = '\n'.join(
+        _build_spray_visual_block(
+            visual_name=name,
+            pose=pose,
+            rgba=rgba,
+            radius=radius,
+            length=length,
+        )
+        for name, pose, radius, length in (
+            ('spray_stream_center', '0 0 0.56 0 -1.52 0', 0.042, 0.78),
+            ('spray_stream_left', '0 0 0.52 0 -1.35 0.36', 0.032, 0.72),
+            ('spray_stream_right', '0 0 0.52 0 -1.35 -0.36', 0.032, 0.72),
+            ('spray_stream_front', '0 0 0.50 0 -1.28 1.57', 0.028, 0.68),
+            ('spray_stream_back', '0 0 0.50 0 -1.28 -1.57', 0.028, 0.68),
+        )
+    )
     side_emitters = '\n'.join(
         _build_particle_emitter_block(
             emitter_name=name,
@@ -427,11 +443,11 @@ def _build_effect_sdf(effect_entity_name: str, effect_color: str) -> str:
             max_velocity=max_velocity,
         )
         for name, pose, rate, min_velocity, max_velocity in (
-            ('spray_center', '0 0 0.18 0 0 0', 160, 1.0, 1.6),
-            ('spray_left', '0 0 0.18 0 0.38 0', 110, 1.2, 2.0),
-            ('spray_right', '0 0 0.18 0 -0.38 0', 110, 1.2, 2.0),
-            ('spray_front', '0 0 0.18 -0.38 0 0', 110, 1.2, 2.0),
-            ('spray_back', '0 0 0.18 0.38 0 0', 110, 1.2, 2.0),
+            ('spray_center', '0 0 0.24 0 -1.52 0', 260, 2.0, 2.8),
+            ('spray_left', '0 0 0.24 0 -1.35 0.36', 180, 1.8, 2.5),
+            ('spray_right', '0 0 0.24 0 -1.35 -0.36', 180, 1.8, 2.5),
+            ('spray_front', '0 0 0.24 0 -1.28 1.57', 160, 1.7, 2.4),
+            ('spray_back', '0 0 0.24 0 -1.28 -1.57', 160, 1.7, 2.4),
         )
     )
     return f"""<?xml version="1.0" ?>
@@ -455,6 +471,7 @@ def _build_effect_sdf(effect_entity_name: str, effect_color: str) -> str:
         <transparency>{max(0.0, 1.0 - nozzle_alpha):.3f}</transparency>
         <cast_shadows>false</cast_shadows>
       </visual>
+{spray_visuals}
 {side_emitters}
     </link>
   </model>
@@ -471,22 +488,51 @@ def _build_particle_emitter_block(
     min_velocity: float,
     max_velocity: float,
 ) -> str:
-    start_alpha = min(0.9, max(0.45, rgba[3] + 0.20))
-    end_alpha = max(0.0, rgba[3] - 0.25)
+    start_alpha = min(0.95, max(0.60, rgba[3] + 0.28))
+    end_alpha = max(0.08, rgba[3] - 0.18)
     return f"""      <particle_emitter name="{emitter_name}" type="point">
         <pose>{pose}</pose>
         <emitting>true</emitting>
         <duration>0</duration>
-        <particle_size>0.035 0.035 0.035</particle_size>
-        <lifetime>0.9</lifetime>
+        <particle_size>0.055 0.022 0.022</particle_size>
+        <lifetime>1.15</lifetime>
         <rate>{rate}</rate>
         <min_velocity>{min_velocity:.2f}</min_velocity>
         <max_velocity>{max_velocity:.2f}</max_velocity>
-        <scale_rate>0.25</scale_rate>
+        <scale_rate>0.10</scale_rate>
         <color_start>{rgba[0]} {rgba[1]} {rgba[2]} {start_alpha:.2f}</color_start>
         <color_end>{rgba[0]} {rgba[1]} {rgba[2]} {end_alpha:.2f}</color_end>
-        <particle_scatter_ratio>0.15</particle_scatter_ratio>
+        <particle_scatter_ratio>0.03</particle_scatter_ratio>
       </particle_emitter>"""
+
+
+def _build_spray_visual_block(
+    *,
+    visual_name: str,
+    pose: str,
+    rgba: tuple[float, float, float, float],
+    radius: float,
+    length: float,
+) -> str:
+    beam_alpha = min(0.92, max(0.42, rgba[3] + 0.28))
+    emissive_alpha = min(0.7, beam_alpha * 0.45)
+    return f"""      <visual name="{visual_name}">
+        <pose>{pose}</pose>
+        <geometry>
+          <cylinder>
+            <radius>{radius:.3f}</radius>
+            <length>{length:.3f}</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>{rgba[0]} {rgba[1]} {rgba[2]} {beam_alpha:.2f}</ambient>
+          <diffuse>{rgba[0]} {rgba[1]} {rgba[2]} {beam_alpha:.2f}</diffuse>
+          <specular>0.08 0.08 0.08 0.05</specular>
+          <emissive>{rgba[0]} {rgba[1]} {rgba[2]} {emissive_alpha:.2f}</emissive>
+        </material>
+        <transparency>{max(0.0, 1.0 - beam_alpha):.3f}</transparency>
+        <cast_shadows>false</cast_shadows>
+      </visual>"""
 
 
 def _resolve_rgba(effect_color: str) -> tuple[float, float, float, float]:

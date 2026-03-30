@@ -183,7 +183,16 @@ def _build_publish_response(
         },
     }
 
-    for field_name in ("zone_ids", "loop_count", "patrol_mode", "plant_id", "fruit_id", "tomato_id"):
+    for field_name in (
+        "zone_ids",
+        "loop_count",
+        "patrol_mode",
+        "plant_id",
+        "fruit_id",
+        "tomato_id",
+        "inspect_waypoint_id",
+        "inspect_waypoint_ids",
+    ):
         if field_name in bridge_payload and bridge_payload.get(field_name) is not None:
             response[field_name] = bridge_payload.get(field_name)
 
@@ -235,12 +244,22 @@ def publish_harvest_target_mission(
     fruit_id: str,
     requested_by: str,
     mission_id: str | None = None,
+    inspect_waypoint_id: str | None = None,
+    inspect_waypoint_ids: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     _ensure_no_active_mission()
     normalized_robot_id = _normalize_robot_id(robot_id)
     normalized_requested_by = _normalize_requested_by(requested_by)
     normalized_plant_id = str(plant_id).strip()
     normalized_fruit_id = str(fruit_id).strip()
+    normalized_inspect_waypoint_id = str(inspect_waypoint_id or "").strip() or None
+    normalized_inspect_waypoint_ids = [
+        str(waypoint_id).strip()
+        for waypoint_id in (inspect_waypoint_ids or [])
+        if str(waypoint_id).strip()
+    ]
+    if normalized_inspect_waypoint_id and normalized_inspect_waypoint_id not in normalized_inspect_waypoint_ids:
+        normalized_inspect_waypoint_ids.insert(0, normalized_inspect_waypoint_id)
 
     if not normalized_plant_id:
         raise MissionBridgeValidationError("plant_id 는 비어 있을 수 없습니다.")
@@ -259,6 +278,8 @@ def publish_harvest_target_mission(
             "plant_id": normalized_plant_id,
             "fruit_id": normalized_fruit_id,
             "tomato_id": normalized_fruit_id,
+            "inspect_waypoint_id": normalized_inspect_waypoint_id,
+            "inspect_waypoint_ids": normalized_inspect_waypoint_ids or None,
         },
     )
     write_json_atomic(mission_request_file_path(), bridge_payload)

@@ -38,7 +38,7 @@ _DEMO_MANIFEST_PATH = _DEMO_INPUT_ROOT / "diagnosis_demo_manifest.json"
 
 
 class DemoDiagnosisRequest(BaseModel):
-    plant_id: str = Field(..., description="시연용 병해 이미지를 덮어쓸 대상 plant id")
+    plant_id: str = Field(..., description="시연용 기준 이미지를 덮어쓸 대상 plant id")
     fruit_id: str = Field(default="", description="대상 fruit id. 비우면 manifest 기본값을 사용합니다.")
     robot_id: str = Field(default="AGR-02", description="시연 대상 로봇 ID")
     zone_id: str = Field(default="farm_01", description="시연 대상 zone id")
@@ -74,19 +74,20 @@ def confirm_demo_diagnosis(
 ) -> ThinInferenceConfirmResponse:
     """Run backend confirmation using a demo input image mapped to the selected plant."""
     try:
-        image_path, default_fruit_id = _resolve_demo_input(request.plant_id)
+        demo_input = _resolve_demo_input(request.plant_id)
+        image_path = demo_input["image_path"]
         raw_bytes = image_path.read_bytes()
         confirm_request = ThinInferenceConfirmRequest(
             robot_id=request.robot_id,
             zone_id=request.zone_id,
             plant_id=request.plant_id,
-            fruit_id=request.fruit_id or default_fruit_id,
+            fruit_id=request.fruit_id or demo_input["fruit_id"],
             frame_id="demo-input",
             target_position=request.target_position,
             requested_by=request.requested_by,
             auto_execute_treatment=request.auto_execute_treatment,
-            preliminary_label="",
-            preliminary_confidence=0.0,
+            preliminary_label=demo_input["preliminary_label"],
+            preliminary_confidence=demo_input["preliminary_confidence"],
             image_base64=base64.b64encode(raw_bytes).decode("ascii"),
             image_format=image_path.suffix.lstrip(".") or "jpg",
         )
@@ -170,7 +171,7 @@ def create_bulk_harvest_action(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _resolve_demo_input(plant_id: str) -> tuple[Path, str]:
+def _resolve_demo_input(plant_id: str) -> dict[str, object]:
     manifest = _load_demo_manifest()
     key = plant_id.strip()
     entry = manifest.get(key)
@@ -189,7 +190,18 @@ def _resolve_demo_input(plant_id: str) -> tuple[Path, str]:
         raise FileNotFoundError(f"시연용 demo input 이미지를 찾지 못했습니다: {image_path}")
 
     fruit_id = str(entry.get("fruit_id", "")).strip()
-    return image_path, fruit_id
+    preliminary_label = str(
+        entry.get("preliminary_label")
+        or entry.get("expected_label")
+        or ""
+    ).strip()
+    preliminary_confidence = float(entry.get("preliminary_confidence") or 0.95)
+    return {
+        "image_path": image_path,
+        "fruit_id": fruit_id,
+        "preliminary_label": preliminary_label,
+        "preliminary_confidence": preliminary_confidence,
+    }
 
 
 def _load_demo_manifest() -> dict[str, object]:

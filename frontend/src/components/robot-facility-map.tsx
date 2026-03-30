@@ -1,6 +1,7 @@
 import {
   type CSSProperties,
   type MouseEvent,
+  memo,
   useEffect,
   useMemo,
   useRef,
@@ -13,11 +14,13 @@ import {
   type RobotPoseSnapshot,
   type RobotTargetPose,
 } from '@/lib/api/agribot'
+import { areRobotPosesEqual } from '@/lib/robot-map/render-stability'
 import { parsePgm, type ParsedPgm } from '@/lib/robot-map/pgm'
 import {
   type SemanticAsset,
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
+import { type NavigationPreviewPoint } from '@/lib/robot-map/navigation-preview'
 
 type RobotFacilityMapProps = {
   map?: RobotMapData
@@ -26,12 +29,33 @@ type RobotFacilityMapProps = {
   selectedAssetId: string | null
   targetAssetId: string | null
   pendingTarget?: RobotTargetPose | null
+  pendingTargetMarker?: RobotTargetPose | null
   activeCommandTarget?: RobotTargetPose | null
+  activeCommandTargetMarker?: RobotTargetPose | null
+  activeFinalCommandTarget?: RobotTargetPose | null
+  activeFinalCommandTargetMarker?: RobotTargetPose | null
+  pendingTargetLabel?: string
+  activeCommandTargetLabel?: string
+  activeFinalCommandTargetLabel?: string
+  previewPath?: NavigationPreviewPoint[] | null
   zoom: number
   onSelectAsset: (assetId: string) => void
   onSelectGuide?: (guideId: string) => void
   onSelectMapTarget?: (target: RobotTargetPose) => void
   onMapClickFeedback?: (message: string) => void
+}
+
+type OverlayPercent = {
+  left: string
+  top: string
+}
+
+type AssetRenderItem = {
+  asset: SemanticAsset
+  style: OverlayPercent
+  isSelected: boolean
+  isTarget: boolean
+  label: string
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -79,8 +103,49 @@ function toOverlayPercent(
   map: RobotMapData | undefined,
   xValue: number,
   yValue: number,
-) {
+): OverlayPercent {
   return map ? worldToPercent(map, xValue, yValue) : sceneToPercent(scene, xValue, yValue)
+}
+
+function parsePercentValue(value: string) {
+  const parsed = Number.parseFloat(value.replace('%', ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function findNearestAssetByPointer(
+  assetItems: AssetRenderItem[],
+  {
+    offsetX,
+    offsetY,
+    rectWidth,
+    rectHeight,
+  }: {
+    offsetX: number
+    offsetY: number
+    rectWidth: number
+    rectHeight: number
+  },
+): SemanticAsset | null {
+  if (assetItems.length === 0 || rectWidth <= 0 || rectHeight <= 0) {
+    return null
+  }
+
+  const selectionRadiusPx = clamp(Math.min(rectWidth, rectHeight) * 0.08, 28, 42)
+  let nearestAsset: SemanticAsset | null = null
+  let nearestDistance = Number.POSITIVE_INFINITY
+
+  for (const item of assetItems) {
+    const centerX = (parsePercentValue(item.style.left) / 100) * rectWidth
+    const centerY = (parsePercentValue(item.style.top) / 100) * rectHeight
+    const distance = Math.hypot(centerX - offsetX, centerY - offsetY)
+
+    if (distance <= selectionRadiusPx && distance < nearestDistance) {
+      nearestAsset = item.asset
+      nearestDistance = distance
+    }
+  }
+
+  return nearestAsset
 }
 
 function pixelToWorld(map: RobotMapData, pixelX: number, pixelY: number): RobotTargetPose {
@@ -103,70 +168,56 @@ function occupancyMessage(value: number) {
   return ''
 }
 
-function assetFlag(asset: SemanticAsset) {
-  if (asset.status === 'attention') {
-    return {
-      label: '조치 필요',
-      tone: 'danger',
-    } as const
+function buttonLabelForAsset(asset: SemanticAsset, showFullLabel: boolean) {
+  if (asset.kind !== 'plant') {
+    return showFullLabel ? asset.label : asset.shortLabel
   }
 
-  if (asset.status === 'handled') {
-    return {
-      label: '조치 완료',
-      tone: 'accent',
-    } as const
-  }
+  const numericLabel =
+    asset.shortLabel.match(/\d+/)?.[0]
+    ?? asset.label.match(/\d+/)?.[0]
+    ?? asset.shortLabel
+    ?? asset.label
 
-  if (asset.status === 'target') {
-    return {
-      label: '수확 후보',
-      tone: 'warning',
-    } as const
-  }
-
-  return null
+  return numericLabel
 }
 
-function PlantGlyph({
+const PlantGlyph = memo(function PlantGlyph({
   status,
 }: {
   status: SemanticAsset['status']
 }) {
-  const badgeIcon = status === 'attention' ? 'warning' : status === 'handled' ? 'task_alt' : null
+  const badgeIcon = status === 'handled' ? 'task_alt' : null
 
   return (
     <span className={`robot-facility-map__tomato-glyph robot-facility-map__tomato-glyph--${status}`}>
       <span className="robot-facility-map__tomato-shadow" />
       <span className="robot-facility-map__tomato-body" />
-      <span className="robot-facility-map__tomato-shine" />
       <span className="robot-facility-map__tomato-calyx" />
       <span className="robot-facility-map__tomato-leaf robot-facility-map__tomato-leaf--left" />
       <span className="robot-facility-map__tomato-leaf robot-facility-map__tomato-leaf--mid" />
       <span className="robot-facility-map__tomato-leaf robot-facility-map__tomato-leaf--right" />
-      {status === 'target' ? <span className="robot-facility-map__tomato-sparkle" /> : null}
       {status === 'attention' ? (
         <>
           <span className="robot-facility-map__tomato-bruise" />
-          <span className="robot-facility-map__tomato-mold robot-facility-map__tomato-mold--top" />
-          <span className="robot-facility-map__tomato-mold robot-facility-map__tomato-mold--bottom" />
+          <span className="robot-facility-map__asset-alert-dot" />
         </>
       ) : null}
       {badgeIcon ? (
-        <span className="robot-facility-map__asset-badge">
+        <span className="robot-facility-map__asset-badge robot-facility-map__asset-badge--handled">
           <AppIcon filled={status === 'attention'} name={badgeIcon} />
         </span>
       ) : null}
     </span>
   )
-}
+})
 
-function SprinklerGlyph({
+const SprinklerGlyph = memo(function SprinklerGlyph({
   status,
 }: {
   status: SemanticAsset['status']
 }) {
-  const badgeIcon = status === 'attention' ? 'warning' : status === 'handled' ? 'task_alt' : null
+  const badgeIcon = status === 'handled' ? 'task_alt' : null
 
   return (
     <span className={`robot-facility-map__sprinkler-glyph robot-facility-map__sprinkler-glyph--${status}`}>
@@ -175,16 +226,17 @@ function SprinklerGlyph({
       <span className="robot-facility-map__sprinkler-head">
         <AppIcon name="water_drop" />
       </span>
+      {status === 'attention' ? <span className="robot-facility-map__asset-alert-dot robot-facility-map__asset-alert-dot--sprinkler" /> : null}
       {badgeIcon ? (
-        <span className="robot-facility-map__asset-badge robot-facility-map__asset-badge--sprinkler">
+        <span className="robot-facility-map__asset-badge robot-facility-map__asset-badge--sprinkler robot-facility-map__asset-badge--handled">
           <AppIcon filled={status === 'attention'} name={badgeIcon} />
         </span>
       ) : null}
     </span>
   )
-}
+})
 
-function FieldRobotGlyph() {
+const FieldRobotGlyph = memo(function FieldRobotGlyph() {
   return (
     <svg
       aria-hidden="true"
@@ -246,15 +298,15 @@ function FieldRobotGlyph() {
       <path className="robot-facility-map__robot-shell-shadow" d="M41 73 C48 80 72 80 79 73 V88 C73 94 47 94 41 88Z" />
       <path className="robot-facility-map__robot-gloss robot-facility-map__robot-gloss--primary" d="M45 18 C53 14 66 14 78 20 C72 35 64 52 52 79 C45 62 41 40 45 18Z" fill="url(#farmRobotGlossGradient)" />
       <path className="robot-facility-map__robot-gloss robot-facility-map__robot-gloss--secondary" d="M60 17 C69 17 76 20 80 24 C73 35 66 49 59 65 C58 52 58 35 60 17Z" fill="url(#farmRobotGlossGradient)" />
+      <path className="robot-facility-map__robot-front-mark" d="M48 30 L56 36 L48 42" />
+      <path className="robot-facility-map__robot-front-mark" d="M72 30 L64 36 L72 42" />
       <path className="robot-facility-map__robot-shell-edge" d="M40 28 C47 24 73 24 80 28" />
       <path className="robot-facility-map__robot-shell-edge robot-facility-map__robot-shell-edge--bottom" d="M42 88 C50 92 70 92 78 88" />
-      <path className="robot-facility-map__robot-arm" d="M82 72 L92 80" />
-      <path className="robot-facility-map__robot-arm-tip" d="M91 80 L97 77 M91 80 L96 85" />
     </svg>
   )
-}
+})
 
-function rotationDegreesForPose(pose: RobotTargetPose | RobotPoseSnapshot) {
+function headingDegreesForPose(pose: RobotTargetPose | RobotPoseSnapshot) {
   if ('yawDeg' in pose) {
     return pose.yawDeg ?? 0
   }
@@ -262,14 +314,55 @@ function rotationDegreesForPose(pose: RobotTargetPose | RobotPoseSnapshot) {
   return (pose.yaw * 180) / Math.PI
 }
 
-export function RobotFacilityMap({
+function rotationDegreesForPose(pose: RobotTargetPose | RobotPoseSnapshot) {
+  // The SVG is drawn with the robot front facing upward, while map yaw 0 points to +X.
+  return 90 - headingDegreesForPose(pose)
+}
+
+function areRobotFacilityMapPropsEqual(
+  previous: RobotFacilityMapProps,
+  next: RobotFacilityMapProps,
+) {
+  return (
+    previous.zoom === next.zoom
+    && previous.selectedAssetId === next.selectedAssetId
+    && previous.targetAssetId === next.targetAssetId
+    && previous.onSelectAsset === next.onSelectAsset
+    && previous.onSelectGuide === next.onSelectGuide
+    && previous.onSelectMapTarget === next.onSelectMapTarget
+    && previous.onMapClickFeedback === next.onMapClickFeedback
+    && previous.pendingTargetLabel === next.pendingTargetLabel
+    && previous.activeCommandTargetLabel === next.activeCommandTargetLabel
+    && previous.map === next.map
+    && previous.scene === next.scene
+    && previous.previewPath === next.previewPath
+    && areRobotPosesEqual(previous.pose, next.pose)
+    && areRobotPosesEqual(previous.pendingTarget, next.pendingTarget)
+    && areRobotPosesEqual(previous.pendingTargetMarker, next.pendingTargetMarker)
+    && areRobotPosesEqual(previous.activeCommandTarget, next.activeCommandTarget)
+    && areRobotPosesEqual(previous.activeCommandTargetMarker, next.activeCommandTargetMarker)
+    && areRobotPosesEqual(previous.activeFinalCommandTarget, next.activeFinalCommandTarget)
+    && areRobotPosesEqual(previous.activeFinalCommandTargetMarker, next.activeFinalCommandTargetMarker)
+    && previous.activeFinalCommandTargetLabel === next.activeFinalCommandTargetLabel
+  )
+}
+
+export const RobotFacilityMap = memo(function RobotFacilityMap({
   map,
   pose,
   scene,
   selectedAssetId,
   targetAssetId,
   pendingTarget = null,
+  pendingTargetMarker = null,
   activeCommandTarget = null,
+  activeCommandTargetMarker = null,
+  activeFinalCommandTarget = null,
+  activeFinalCommandTargetMarker = null,
+  pendingTargetLabel = '선택한 후보',
+  activeCommandTargetLabel = '실행 중 목표',
+  activeFinalCommandTargetLabel = '최종 관측 목표',
+  previewPath = null,
   zoom,
   onSelectAsset,
   onSelectGuide,
@@ -279,16 +372,105 @@ export function RobotFacilityMap({
   const [showPlants, setShowPlants] = useState(true)
   const [showDevices, setShowDevices] = useState(true)
   const [showLabels, setShowLabels] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
   const [parsedMap, setParsedMap] = useState<ParsedPgm | null>(null)
   const [mapLoadError, setMapLoadError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const surfaceRef = useRef<HTMLDivElement | null>(null)
   const plantCount = useMemo(() => countByKind(scene, 'plant'), [scene])
   const sprinklerCount = useMemo(() => countByKind(scene, 'sprinkler'), [scene])
-  const robotStyle: CSSProperties = toOverlayPercent(scene, map, pose.x, pose.y)
+  const robotStyle: CSSProperties = useMemo(
+    () => toOverlayPercent(scene, map, pose.x, pose.y),
+    [map, pose.x, pose.y, scene],
+  )
   const robotCoreStyle: CSSProperties = {
     transform: `translate(-50%, -50%) rotate(${rotationDegreesForPose(pose)}deg)`,
   }
+  const showPendingTarget = pendingTarget !== null && !areRobotPosesEqual(pendingTarget, activeCommandTarget)
+  const visiblePendingTarget = showPendingTarget ? pendingTarget : null
+  const visiblePendingTargetMarker = showPendingTarget ? (pendingTargetMarker ?? pendingTarget) : null
+  const visibleActiveCommandTargetMarker = activeCommandTargetMarker ?? activeCommandTarget
+  const showFinalCommandTarget = (
+    activeFinalCommandTarget !== null
+    && !areRobotPosesEqual(activeFinalCommandTarget, activeCommandTarget)
+  )
+  const visibleActiveFinalCommandTargetMarker = (
+    showFinalCommandTarget
+      ? (activeFinalCommandTargetMarker ?? activeFinalCommandTarget)
+      : null
+  )
+
+  useEffect(() => {
+    let timeoutId = 0
+
+    const handleResize = () => {
+      setIsResizing(true)
+      window.clearTimeout(timeoutId)
+      timeoutId = window.setTimeout(() => {
+        setIsResizing(false)
+      }, 180)
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.clearTimeout(timeoutId)
+    }
+  }, [])
+
+  const rowGuideItems = useMemo(
+    () => scene.rowGuides.map((guide) => ({
+      guide,
+      style: {
+        left: toOverlayPercent(
+          scene,
+          map,
+          guide.value,
+          map?.origin.y ?? scene.bounds.minY,
+        ).left,
+      } satisfies CSSProperties,
+    })),
+    [map, scene],
+  )
+  const assetItems = useMemo(
+    () =>
+      scene.assets
+        .filter((asset) => {
+          if (!map) {
+            return true
+          }
+          if (asset.kind === 'plant' && !showPlants) {
+            return false
+          }
+          if (asset.kind === 'sprinkler' && !showDevices) {
+            return false
+          }
+          return true
+        })
+        .map((asset) => ({
+          asset,
+          style: toOverlayPercent(scene, map, asset.position.x, asset.position.y),
+          isSelected: selectedAssetId === asset.id,
+          isTarget: targetAssetId === asset.id,
+          label:
+            isResizing && selectedAssetId !== asset.id && targetAssetId !== asset.id
+              ? ''
+              : buttonLabelForAsset(asset, showLabels),
+        })),
+    [isResizing, map, scene, selectedAssetId, showDevices, showLabels, showPlants, targetAssetId],
+  )
+  const previewPathPolyline = useMemo(() => {
+    if (!previewPath || previewPath.length < 2) {
+      return ''
+    }
+
+    return previewPath
+      .map((point) => {
+        const overlayPoint = toOverlayPercent(scene, map, point.x, point.y)
+        return `${parsePercentValue(overlayPoint.left)},${parsePercentValue(overlayPoint.top)}`
+      })
+      .join(' ')
+  }, [map, previewPath, scene])
 
   useEffect(() => {
     if (!map) {
@@ -370,13 +552,8 @@ export function RobotFacilityMap({
     context.putImageData(imageData, 0, 0)
   }, [parsedMap])
 
-  function handleMapClick(event: MouseEvent<HTMLDivElement>) {
-    if (!map || !onSelectMapTarget) {
-      return
-    }
-
-    if (!surfaceRef.current || !parsedMap) {
-      onMapClickFeedback?.('정적 지도를 불러오는 중입니다. 잠시 후 다시 눌러 주세요.')
+  function handleSurfaceClick(event: MouseEvent<HTMLDivElement>) {
+    if (!surfaceRef.current) {
       return
     }
 
@@ -385,6 +562,26 @@ export function RobotFacilityMap({
     const offsetY = event.clientY - rect.top
 
     if (offsetX < 0 || offsetY < 0 || offsetX > rect.width || offsetY > rect.height) {
+      return
+    }
+
+    const nearestAsset = findNearestAssetByPointer(assetItems, {
+      offsetX,
+      offsetY,
+      rectWidth: rect.width,
+      rectHeight: rect.height,
+    })
+    if (nearestAsset) {
+      onSelectAsset(nearestAsset.id)
+      return
+    }
+
+    if (!map || !onSelectMapTarget) {
+      return
+    }
+
+    if (!parsedMap) {
+      onMapClickFeedback?.('정적 지도를 불러오는 중입니다. 잠시 후 다시 눌러 주세요.')
       return
     }
 
@@ -405,10 +602,10 @@ export function RobotFacilityMap({
 
   return (
     <>
-      <div className="robot-facility-map" style={{ transform: `scale(${zoom})` }}>
+      <div className={`robot-facility-map${isResizing ? ' is-resizing' : ''}`} style={{ transform: `scale(${zoom})` }}>
         <div
           className={`robot-facility-map__surface${mapLoadError ? ' is-fallback' : ''}`}
-          onClick={map && onSelectMapTarget ? handleMapClick : undefined}
+          onClick={handleSurfaceClick}
           ref={surfaceRef}
         >
           {map ? (
@@ -419,23 +616,16 @@ export function RobotFacilityMap({
               width={parsedMap?.width ?? map.width}
             />
           ) : null}
-          <div className="robot-facility-map__boundary" />
 
-          {scene.rowGuides.map((guide) => {
-            const style = {
-              left: toOverlayPercent(scene, map, guide.value, map?.origin.y ?? scene.bounds.minY).left,
-            }
+          {rowGuideItems.map(({ guide, style }) => {
 
             if (!onSelectGuide) {
-              return (
-                <div className="robot-facility-map__row-guide" key={guide.id} style={style}>
-                  <span>{guide.label}</span>
-                </div>
-              )
+              return <div aria-hidden="true" className="robot-facility-map__row-guide" key={guide.id} style={style} />
             }
 
             return (
               <button
+                aria-label={guide.label}
                 className="robot-facility-map__row-guide is-clickable"
                 key={guide.id}
                 onClick={(event) => {
@@ -443,40 +633,13 @@ export function RobotFacilityMap({
                   onSelectGuide(guide.id)
                 }}
                 style={style}
+                title={guide.label}
                 type="button"
-              >
-                <span>{guide.label}</span>
-              </button>
+              />
             )
           })}
 
-          {scene.laneGuides.map((guide) => (
-            <div
-              className={`robot-facility-map__lane-guide${
-                guide.id === 'lane-mid' ? ' robot-facility-map__lane-guide--primary' : ''
-              }`}
-              key={guide.id}
-              style={{ top: toOverlayPercent(scene, map, map?.origin.x ?? scene.bounds.minX, guide.value).top }}
-            >
-              <span>{guide.label}</span>
-            </div>
-          ))}
-
-          {scene.assets.map((asset) => {
-            if (map) {
-              if (asset.kind === 'plant' && !showPlants) {
-                return null
-              }
-              if (asset.kind === 'sprinkler' && !showDevices) {
-                return null
-              }
-            }
-
-            const isSelected = selectedAssetId === asset.id
-            const isTarget = targetAssetId === asset.id
-            const style = toOverlayPercent(scene, map, asset.position.x, asset.position.y)
-            const flag = assetFlag(asset)
-
+          {assetItems.map(({ asset, style, isSelected, isTarget, label }) => {
             return (
               <button
                 className={`robot-facility-map__asset robot-facility-map__asset--${asset.kind}${
@@ -485,8 +648,7 @@ export function RobotFacilityMap({
                   asset.status === 'handled' ? ' is-handled' : ''
                 }`}
                 key={asset.id}
-                onClick={(event) => {
-                  event.stopPropagation()
+                onClick={() => {
                   onSelectAsset(asset.id)
                 }}
                 style={style}
@@ -499,55 +661,76 @@ export function RobotFacilityMap({
                     <SprinklerGlyph status={asset.status} />
                   )}
                 </span>
-                <span className="robot-facility-map__asset-label">
-                  {showLabels || isSelected || isTarget ? asset.label : asset.shortLabel}
-                </span>
-                {flag ? (
-                  <span className={`robot-facility-map__asset-flag robot-facility-map__asset-flag--${flag.tone}`}>
-                    {flag.label}
-                  </span>
-                ) : null}
+                {label ? <span className="robot-facility-map__asset-label">{label}</span> : null}
               </button>
             )
           })}
 
-          {activeCommandTarget ? (
+          {previewPathPolyline ? (
+            <svg aria-hidden="true" className="robot-facility-map__path-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <polyline className="robot-facility-map__path-line" points={previewPathPolyline} />
+            </svg>
+          ) : null}
+
+          {activeCommandTarget ? (() => {
+            const activeMarker = visibleActiveCommandTargetMarker ?? activeCommandTarget
+            return (
+              <div
+                className="robot-facility-map__target robot-facility-map__target--active"
+                style={toOverlayPercent(
+                  scene,
+                  map,
+                  activeMarker.x,
+                  activeMarker.y,
+                )}
+              >
+                <span className="robot-facility-map__target-dot" />
+                <span className="robot-facility-map__target-label">{activeCommandTargetLabel}</span>
+              </div>
+            )
+          })() : null}
+
+          {showFinalCommandTarget && visibleActiveFinalCommandTargetMarker ? (
             <div
-              className="robot-facility-map__target robot-facility-map__target--active"
-              style={toOverlayPercent(scene, map, activeCommandTarget.x, activeCommandTarget.y)}
+              className="robot-facility-map__target robot-facility-map__target--final"
+              style={toOverlayPercent(
+                scene,
+                map,
+                visibleActiveFinalCommandTargetMarker.x,
+                visibleActiveFinalCommandTargetMarker.y,
+              )}
             >
               <span className="robot-facility-map__target-dot" />
-              <span className="robot-facility-map__target-label">요청 목표</span>
+              <span className="robot-facility-map__target-label">{activeFinalCommandTargetLabel}</span>
             </div>
           ) : null}
 
-          {pendingTarget ? (
+          {visiblePendingTarget && visiblePendingTargetMarker ? (
             <div
               className="robot-facility-map__target robot-facility-map__target--pending"
-              style={toOverlayPercent(scene, map, pendingTarget.x, pendingTarget.y)}
+              style={toOverlayPercent(
+                scene,
+                map,
+                visiblePendingTargetMarker.x,
+                visiblePendingTargetMarker.y,
+              )}
             >
               <span className="robot-facility-map__target-dot" />
-              <span className="robot-facility-map__target-label">선택 좌표</span>
+              <span className="robot-facility-map__target-label">{pendingTargetLabel}</span>
             </div>
           ) : null}
 
           <div className="robot-facility-map__robot" style={robotStyle}>
             <span className="robot-facility-map__robot-ping robot-facility-map__robot-ping--outer" />
-            <span className="robot-facility-map__robot-ping robot-facility-map__robot-ping--inner" />
-            <span className="robot-facility-map__robot-origin">
-              <span className="robot-facility-map__robot-origin-dot" />
-            </span>
-            <span className="robot-facility-map__robot-ring" />
             <span className="robot-facility-map__robot-core" style={robotCoreStyle}>
               <FieldRobotGlyph />
             </span>
-            <span className="robot-facility-map__robot-label">AGR-02</span>
           </div>
 
           {map && onSelectMapTarget ? (
             <div className="robot-facility-map__hint">
               <strong>이동 목표 지정</strong>
-              <p>빈 지도 영역을 클릭하면 시연용 목표 좌표가 잡힙니다. 식물과 급수 포인트는 클릭해도 선택만 됩니다.</p>
+              <p>빈 지도는 좌표 직접 지정, 식물 아이콘은 작물 중심 대신 안전 관측 후보를 계산합니다.</p>
             </div>
           ) : null}
 
@@ -601,7 +784,7 @@ export function RobotFacilityMap({
       </div>
     </>
   )
-}
+}, areRobotFacilityMapPropsEqual)
 
 export function summarizeSelectedAsset(asset: SemanticAsset | null) {
   if (!asset) {
@@ -618,10 +801,18 @@ export function summarizeSelectedAsset(asset: SemanticAsset | null) {
     `x ${asset.position.x.toFixed(1)} / y ${asset.position.y.toFixed(1)}`,
   ]
 
+  if (asset.approachPose) {
+    chips.push(`접근 x ${asset.approachPose.x.toFixed(2)} / y ${asset.approachPose.y.toFixed(2)}`)
+  } else if (asset.navigationPose) {
+    chips.push(`이동 x ${asset.navigationPose.x.toFixed(2)} / y ${asset.navigationPose.y.toFixed(2)}`)
+  }
+
+  if (asset.inspectWaypointName) {
+    chips.push(asset.inspectWaypointName)
+  }
+
   if (asset.status === 'attention') {
     chips.unshift('조치 필요')
-  } else if (asset.status === 'handled') {
-    chips.unshift('조치 완료')
   } else if (asset.status === 'target') {
     chips.unshift('수확 후보')
   }

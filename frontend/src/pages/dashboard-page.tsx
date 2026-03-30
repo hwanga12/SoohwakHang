@@ -72,7 +72,7 @@ export function DashboardPage() {
               alt="온실 전경 시뮬레이션"
               className="hero-photo"
               height={160}
-              src="/mock-images/greenhouse-overview.png"
+              src="/mock-images/healthy-default.jpg"
             />
           </div>
         </DevSurface>

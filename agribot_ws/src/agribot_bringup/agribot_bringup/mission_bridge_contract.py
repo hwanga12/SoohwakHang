@@ -34,6 +34,8 @@ class MissionRequest:
     plant_id: str | None = None
     fruit_id: str | None = None
     tomato_id: str | None = None
+    inspect_waypoint_id: str | None = None
+    inspect_waypoint_ids: tuple[str, ...] = ()
 
     @property
     def effective_tomato_id(self) -> str:
@@ -126,6 +128,14 @@ def parse_mission_request_payload(
     plant_id = _extract_string(raw_payload, 'plant_id') or _extract_string(payload, 'plant_id') or None
     fruit_id = _extract_string(raw_payload, 'fruit_id') or _extract_string(payload, 'fruit_id') or None
     tomato_id = _extract_string(raw_payload, 'tomato_id') or _extract_string(payload, 'tomato_id') or None
+    inspect_waypoint_id = (
+        _extract_string(raw_payload, 'inspect_waypoint_id')
+        or _extract_string(payload, 'inspect_waypoint_id')
+        or None
+    )
+    inspect_waypoint_ids = _extract_string_list(raw_payload, payload, 'inspect_waypoint_ids')
+    if inspect_waypoint_id and inspect_waypoint_id not in inspect_waypoint_ids:
+        inspect_waypoint_ids = (inspect_waypoint_id, *inspect_waypoint_ids)
 
     if request_type == 'start_patrol':
         if not zone_ids:
@@ -154,6 +164,8 @@ def parse_mission_request_payload(
         plant_id=plant_id,
         fruit_id=fruit_id,
         tomato_id=tomato_id,
+        inspect_waypoint_id=inspect_waypoint_id,
+        inspect_waypoint_ids=inspect_waypoint_ids,
     )
 
 
