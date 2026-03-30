@@ -29,10 +29,10 @@ logger = logging.getLogger(__name__)
 
 try:
     models.Base.metadata.create_all(bind=engine)
-except Exception as exc:  # pragma: no cover - 런타임 환경 차이 대응
+except Exception as exc:
     logger.warning("DB 초기화를 건너뜁니다: %s", exc)
 
-app = FastAPI(title="🌱 AgriBot API", version="1.0.0", description="수확해조 로봇 백엔드 서버입니다.")
+app = FastAPI(title=" AgriBot API", version="1.0.0", description="수확해조 로봇 백엔드 서버입니다.")
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,7 +55,6 @@ async def disable_docs_cache(request: Request, call_next) -> Response:
         response.headers["Expires"] = "0"
     return response
 
-# ⭐️ 각각의 라우터를 앱에 등록 (prefix로 기본 URL을 맞춰줍니다)
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 app.include_router(robots.router, prefix="/api/v1/robot", tags=["Robot"])
 app.include_router(missions.router, prefix="/api/v1/missions", tags=["Missions"])
