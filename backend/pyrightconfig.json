@@ -1,9 +1,9 @@
 {
-  "venvPath": "backend",
+  "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.12",
   "pythonPlatform": "Linux",
   "extraPaths": [
-    "backend"
+    "."
   ]
 }
