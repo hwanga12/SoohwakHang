@@ -29,7 +29,14 @@ import sys
 
 
 def generate_launch_description():
-    gz_partition = 'agribot_sim'
+    default_gz_partition = (
+        os.environ.get('AGRIBOT_GZ_PARTITION')
+        or os.environ.get('GZ_PARTITION')
+        or 'agribot_sim_local'
+    )
+    default_gz_ip = os.environ.get('GZ_IP', '127.0.0.1')
+    default_ign_ip = os.environ.get('IGN_IP', '127.0.0.1')
+    gz_partition = LaunchConfiguration('gz_partition')
     runtime_dir = LaunchConfiguration('runtime_dir')
     gz_args_prefix = LaunchConfiguration('gz_args_prefix')
     use_rviz = LaunchConfiguration('use_rviz')
@@ -43,6 +50,8 @@ def generate_launch_description():
     # Environment variables
     env_vars = [
         SetEnvironmentVariable('GZ_PARTITION', gz_partition),
+        SetEnvironmentVariable('GZ_IP', default_gz_ip),
+        SetEnvironmentVariable('IGN_IP', default_ign_ip),
         SetEnvironmentVariable('AGRIBOT_RUNTIME_DIR', runtime_dir),
         # Ensure agribot_interfaces python bindings are found
         SetEnvironmentVariable(
@@ -63,6 +72,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             'gz_args_prefix': gz_args_prefix,
+            'gz_partition': gz_partition,
             # In the hardcoded-map simulation flow, a static identity map -> odom
             # transform is the most reliable base frame for Nav2. The temporary
             # startup broadcaster is disabled below to avoid duplicated TF owners.
@@ -83,7 +93,13 @@ def generate_launch_description():
             'use_rviz': use_rviz,
             'patrol_robot_pose_topic': '/odom',
             'use_startup_map_tf_broadcaster': 'false',
+            'gz_partition': gz_partition,
         }.items()
+    )
+    gz_partition_arg = DeclareLaunchArgument(
+        'gz_partition',
+        default_value=default_gz_partition,
+        description='Gazebo partition name used to isolate this simulation.',
     )
     gz_args_prefix_arg = DeclareLaunchArgument(
         'gz_args_prefix',
@@ -167,7 +183,6 @@ def generate_launch_description():
                     'bash',
                     '-lc',
                     (
-                        "export GZ_PARTITION=agribot_sim; "
                         "gz service -s /world/farm_world/control "
                         "--reqtype gz.msgs.WorldControl "
                         "--reptype gz.msgs.Boolean "
@@ -189,7 +204,6 @@ def generate_launch_description():
                     'bash',
                     '-lc',
                     (
-                        "export GZ_PARTITION=agribot_sim; "
                         "gz service -s /world/farm_world/control "
                         "--reqtype gz.msgs.WorldControl "
                         "--reptype gz.msgs.Boolean "
@@ -234,6 +248,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        gz_partition_arg,
         gz_args_prefix_arg,
         use_iot_arg,
         use_rviz_arg,

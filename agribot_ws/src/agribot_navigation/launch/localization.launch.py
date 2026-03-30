@@ -12,6 +12,11 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_agribot_navigation = get_package_share_directory('agribot_navigation')
+    default_gz_partition = (
+        os.getenv('AGRIBOT_GZ_PARTITION')
+        or os.getenv('GZ_PARTITION')
+        or 'agribot_sim_local'
+    )
     gpu_env_actions = []
     if os.path.exists('/usr/bin/nvidia-smi'):
         gpu_env_actions = [
@@ -100,7 +105,7 @@ def generate_launch_description():
 
     gz_partition_arg = DeclareLaunchArgument(
         'gz_partition',
-        default_value='agribot_sim',
+        default_value=default_gz_partition,
         description='Gazebo partition name.'
     )
 
