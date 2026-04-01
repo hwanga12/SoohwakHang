@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+# 이 스크립트는 ROS 2 런치 파일을 공통 환경과 정리 규칙에 맞춰 실행하기 위해 사용하는 실행용 쉘 스크립트다.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,10 +21,12 @@ fi
 child_pid=""
 cleanup_done=0
 
+# ROS 환경 파일을 필요한 시점에만 불러와 이후 명령이 공통 환경을 공유하게 만든다.
 maybe_source_ros_env() {
     source_ros_setup_files
 }
 
+# 현재 실행 세션을 식별할 수 있는 ID를 준비해 정리 대상을 안전하게 좁힌다.
 ensure_launch_session_id() {
     if [[ -n "${AGRIBOT_LAUNCH_SESSION_ID:-}" ]]; then
         export AGRIBOT_LAUNCH_SESSION_ID
@@ -33,6 +36,7 @@ ensure_launch_session_id() {
     export AGRIBOT_LAUNCH_SESSION_ID="agribot-launch-$(date +%s)-$$"
 }
 
+# 런치 파일이 runtime_dir 인자를 지원하는지 확인해 불필요한 인자 주입을 피한다.
 launch_file_supports_runtime_arg() {
     local package_name="$1"
     local launch_file="$2"
@@ -47,6 +51,7 @@ launch_file_supports_runtime_arg() {
     grep -q "runtime_dir" "${launch_path}"
 }
 
+# 지원되는 런치 파일에만 runtime_dir 인자를 덧붙여 런타임 기록 위치를 맞춘다.
 append_runtime_arg_if_supported() {
     local package_name="$1"
     local launch_file="$2"
@@ -65,6 +70,7 @@ append_runtime_arg_if_supported() {
     printf '%s\0' "$@"
 }
 
+# 종료 시 같은 정리 절차가 여러 번 실행되지 않도록 한 번만 정리한다.
 cleanup_once() {
     if (( cleanup_done )); then
         return
@@ -83,6 +89,7 @@ cleanup_once() {
         >/dev/null 2>&1 || true
 }
 
+# forward_signal_and_exit 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 forward_signal_and_exit() {
     local exit_code="$1"
     local signal_name="$2"

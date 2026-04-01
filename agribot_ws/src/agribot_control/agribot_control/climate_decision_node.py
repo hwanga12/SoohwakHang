@@ -1,3 +1,4 @@
+# 이 모듈은 상위 제어와 의사결정 패키지에서 climate decision node 판단과 실행 보조 로직을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from .environment_disease_rules import DiseaseSignal, EnvironmentSnapshot
 
 @dataclass(slots=True)
 class ZoneObservationState:
+    # 구역 관측 결과 상태를 일관된 형태로 보관하기 위한 클래스를 정의한다.
     class_name: str
     repeat_count: int
     confidence: float
@@ -26,9 +28,10 @@ class ZoneObservationState:
 
 
 class ClimateDecisionNode(Node):
-    """Evaluate curtain and fan decisions with environment-driven callbacks."""
+    # ROS 2 실행 환경에서 climate decision 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # ClimateDecisionNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('climate_decision_node')
         self.declare_parameter('environment_topic', '/environment_data')
         self.declare_parameter('plant_observation_topic', '/plant_observation')
@@ -64,6 +67,7 @@ class ClimateDecisionNode(Node):
         )
 
     def _handle_plant_observation(self, msg: PlantObservation) -> None:
+        # handle 작물 관측 정보를 계산해 반환한다.
         zone_id = msg.zone_id.strip()
         if not zone_id or not self._matches_zone(zone_id):
             return
@@ -85,6 +89,7 @@ class ClimateDecisionNode(Node):
         )
 
     def _handle_environment(self, msg: EnvironmentData) -> None:
+        # handle 환경 정보를 계산해 반환한다.
         zone_id = msg.zone_id.strip()
         if not zone_id or not self._matches_zone(zone_id):
             return
@@ -103,6 +108,7 @@ class ClimateDecisionNode(Node):
         self._log_if_needed(evaluate_fan_decision(environment, disease_signal))
 
     def _log_if_needed(self, decision: DeviceDecision) -> None:
+        # log if needed 정보를 계산해 반환한다.
         signature = (
             decision.state,
             decision.source_rule,
@@ -127,6 +133,7 @@ class ClimateDecisionNode(Node):
         self.get_logger().info(log_message)
 
     def _build_disease_signal(self, zone_id: str) -> DiseaseSignal:
+        # disease signal를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         observation_state = self._zone_observations.get(zone_id)
         if observation_state is None:
             return DiseaseSignal()
@@ -139,10 +146,12 @@ class ClimateDecisionNode(Node):
         )
 
     def _matches_zone(self, zone_id: str) -> bool:
+        # matches 구역 정보를 계산해 반환한다.
         return not self._zone_id_filter or zone_id == self._zone_id_filter
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = ClimateDecisionNode()
     try:

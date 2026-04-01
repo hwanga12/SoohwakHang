@@ -1,3 +1,4 @@
+# 이 스크립트는 테스트용 IoT 명령을 발행하기 위해 사용하는 보조 파이썬 스크립트다.
 from __future__ import annotations
 
 import argparse
@@ -11,10 +12,12 @@ from rclpy.node import Node
 
 
 def _load_payload(path: Path) -> dict[str, object]:
+    # payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return json.loads(path.read_text(encoding='utf-8'))
 
 
 def _build_message(node: Node, payload: dict[str, object]) -> IoTCommand:
+    # message를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     message = IoTCommand()
     message.header.stamp = node.get_clock().now().to_msg()
     message.header.frame_id = str(payload.get('frame_id', 'map'))
@@ -33,6 +36,7 @@ def _build_message(node: Node, payload: dict[str, object]) -> IoTCommand:
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     parser = argparse.ArgumentParser(description='Publish a single IoTCommand message to ROS.')
     parser.add_argument('--topic', required=True)
     parser.add_argument('--payload-file', required=True)

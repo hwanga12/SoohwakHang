@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 fan controller logic 장치 흐름을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from .device_mapping import IoTDeviceSpec
 
 @dataclass(frozen=True)
 class FanExecutionPlan:
+    # 환기팬 execution 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     accepted: bool
     command_id: str
     zone_id: str
@@ -29,6 +31,7 @@ def plan_fan_command(
     *,
     current_speed_level: int,
 ) -> FanExecutionPlan:
+    # 환기팬 명령를 어떤 순서와 조건으로 처리할지 계획한다.
     normalized_command_type = command.command_type.strip().lower()
     normalized_unit = command.unit.strip().lower()
 
@@ -117,6 +120,7 @@ def build_fan_state(
     run_duration_sec: float,
     detail_message: str,
 ) -> IoTDeviceState:
+    # 환기팬 상태를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     message = IoTDeviceState()
     message.device_id = device.device_id
     message.zone_id = device.zone_id
@@ -139,6 +143,7 @@ def build_fan_result_payload(
     executed_duration_sec: float,
     speed_level: int,
 ) -> str:
+    # 환기팬 결과 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     payload = {
         'command_id': plan.command_id,
         'zone_id': plan.zone_id,
@@ -159,6 +164,7 @@ def build_fan_result_payload(
 
 
 def classify_fan_state(speed_level: int) -> str:
+    # classify 환기팬 상태 정보를 계산해 반환한다.
     return 'ON' if int(speed_level) > 0 else 'OFF'
 
 
@@ -169,6 +175,7 @@ def _resolve_target_speed_level(
     unit: str,
     device: IoTDeviceSpec,
 ) -> int | None:
+    # 현재 입력 조건을 바탕으로 target speed level를 계산하거나 결정한다.
     if command_type in {'turn_off_fan', 'stop_fan'}:
         return 0
     if command_type == 'turn_on_fan':
@@ -182,5 +189,6 @@ def _resolve_target_speed_level(
 
 
 def _clamp_speed_level(value: float, *, max_speed_level: int) -> int:
+    # speed level 값을 허용 범위로 제한한다.
     rounded = int(round(float(value)))
     return max(0, min(int(max_speed_level), rounded))

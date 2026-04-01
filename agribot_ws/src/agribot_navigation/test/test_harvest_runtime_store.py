@@ -1,3 +1,4 @@
+# 이 테스트는 자율주행과 경로 계획 패키지의 harvest runtime store 동작을 검증한다.
 from pathlib import Path
 
 from agribot_navigation.harvest_runtime_store import (
@@ -11,6 +12,7 @@ from agribot_navigation.harvest_runtime_store import (
 
 
 def test_reset_harvest_runtime_session_clears_runtime_files(tmp_path: Path) -> None:
+    # reset harvest 런타임 데이터 session clears 런타임 데이터 files 동작과 회귀 여부를 검증한다.
     harvest_basket_state_path(tmp_path).write_text("{}", encoding="utf-8")
     harvest_latest_event_path(tmp_path).write_text("{}", encoding="utf-8")
     harvest_action_status_path(tmp_path).write_text("{}", encoding="utf-8")

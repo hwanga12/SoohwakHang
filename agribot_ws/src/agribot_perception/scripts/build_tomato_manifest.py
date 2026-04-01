@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
-"""Build a tomato detection manifest CSV from raw AI Hub 525 JSON labels.
 
-One CSV row is emitted per raw JSON file. The manifest is designed so the next
-conversion step can filter rows using `use_for_detection` and keep normal
-(`00`) images as negative samples with empty labels.
-
-`top_level_bbox_count` counts only the annotation-level `bbox` field.
-Nested or part-level bbox fields are intentionally ignored.
-"""
-
+# 이 모듈은 인지와 추론 패키지에서 build tomato manifest 기능을 담당한다.
 from __future__ import annotations
 
 import argparse
@@ -54,6 +46,7 @@ MANIFEST_FIELDNAMES = [
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(
         description="Build a tomato detection manifest CSV from AI Hub 525 raw labels."
     )
@@ -71,6 +64,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def is_present(value: Any) -> bool:
+    # present인지 여부를 불리언 값으로 판단한다.
     if value is None:
         return False
     if isinstance(value, str):
@@ -81,11 +75,13 @@ def is_present(value: Any) -> bool:
 
 
 def load_json(json_path: Path) -> dict[str, Any]:
+    # JSON 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with json_path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
 def extract_annotations(data: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    # 원본 데이터에서 annotations만 골라 추출한다.
     if "annotation" in data:
         raw = data.get("annotation")
         key_name = "annotation"
@@ -105,6 +101,7 @@ def extract_annotations(data: dict[str, Any]) -> tuple[list[dict[str, Any]], str
 
 
 def build_image_index(dataset_root: Path) -> tuple[dict[str, list[Path]], dict[str, list[Path]]]:
+    # 이미지 index를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     image_by_name: dict[str, list[Path]] = defaultdict(list)
     image_by_stem: dict[str, list[Path]] = defaultdict(list)
 
@@ -118,6 +115,7 @@ def build_image_index(dataset_root: Path) -> tuple[dict[str, list[Path]], dict[s
 
 
 def dedupe_paths(paths: list[Path]) -> list[Path]:
+    # dedupe 경로 정보를 계산해 반환한다.
     seen: set[Path] = set()
     unique_paths: list[Path] = []
     for path in paths:
@@ -129,6 +127,7 @@ def dedupe_paths(paths: list[Path]) -> list[Path]:
 
 
 def choose_best_candidate(json_path: Path, candidates: list[Path]) -> tuple[Path | None, bool]:
+    # best 후보 가운데 최종 대상을 고른다.
     unique_candidates = dedupe_paths(candidates)
     if not unique_candidates:
         return None, False
@@ -154,6 +153,7 @@ def resolve_image_path(
     image_by_name: dict[str, list[Path]],
     image_by_stem: dict[str, list[Path]],
 ) -> tuple[Path | None, bool]:
+    # 현재 입력 조건을 바탕으로 이미지 경로를 계산하거나 결정한다.
     candidates: list[Path] = []
 
     if is_present(description_image):
@@ -176,6 +176,7 @@ def resolve_image_path(
 
 
 def count_bbox_items(bbox_value: Any) -> int:
+    # 개수 경계 상자 items 정보를 계산해 반환한다.
     if bbox_value is None:
         return 0
     if isinstance(bbox_value, dict):
@@ -186,10 +187,12 @@ def count_bbox_items(bbox_value: Any) -> int:
 
 
 def count_top_level_bbox_items(annotations: list[dict[str, Any]]) -> int:
+    # 개수 top level 경계 상자 items 정보를 계산해 반환한다.
     return sum(count_bbox_items(annotation.get("bbox")) for annotation in annotations)
 
 
 def collect_unique_values(annotations: list[dict[str, Any]], field_name: str) -> list[str]:
+    # unique values를 모아 순회하기 쉬운 형태로 정리한다.
     values = {
         normalize_code(annotation.get(field_name))
         for annotation in annotations
@@ -199,6 +202,7 @@ def collect_unique_values(annotations: list[dict[str, Any]], field_name: str) ->
 
 
 def join_values(values: list[str]) -> str:
+    # join 값 정보를 계산해 반환한다.
     return "|".join(values)
 
 
@@ -207,6 +211,7 @@ def join_entry_names(
     getter: Callable[[Any], Any],
     attribute_name: str,
 ) -> str:
+    # join 항목 names 정보를 계산해 반환한다.
     names: list[str] = []
     seen: set[str] = set()
     for code in codes:
@@ -222,6 +227,7 @@ def join_entry_names(
 
 
 def to_relative_string(path: Path | None, dataset_root: Path) -> str:
+    # 현재 값을 relative string 형식으로 변환한다.
     if path is None:
         return ""
     try:
@@ -231,6 +237,7 @@ def to_relative_string(path: Path | None, dataset_root: Path) -> str:
 
 
 def bool_to_text(value: bool) -> str:
+    # bool 텍스트 정보를 계산해 반환한다.
     return "true" if value else "false"
 
 
@@ -246,6 +253,7 @@ def determine_skip_reason(
     image_match_ambiguous: bool,
     top_level_bbox_count: int,
 ) -> str:
+    # determine skip reason 정보를 계산해 반환한다.
     if not annotations:
         return "missing_annotation"
     if len(crop_codes) > 1:
@@ -274,6 +282,7 @@ def determine_skip_reason(
 
 
 def build_base_row(json_path: Path, dataset_root: Path) -> dict[str, Any]:
+    # base ROW를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return {
         "image_path": "",
         "image_rel_path": "",
@@ -295,6 +304,7 @@ def build_base_row(json_path: Path, dataset_root: Path) -> dict[str, Any]:
 
 
 def build_manifest_rows(dataset_root: Path) -> list[dict[str, Any]]:
+    # manifest rows를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     image_by_name, image_by_stem = build_image_index(dataset_root)
     json_paths = sorted(
         path for path in dataset_root.rglob("*") if path.is_file() and path.suffix.lower() == ".json"
@@ -374,6 +384,7 @@ def build_manifest_rows(dataset_root: Path) -> list[dict[str, Any]]:
 
 
 def write_manifest(rows: list[dict[str, Any]], output_path: Path) -> None:
+    # manifest를 파일이나 저장소에 기록한다.
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=MANIFEST_FIELDNAMES)
@@ -382,6 +393,7 @@ def write_manifest(rows: list[dict[str, Any]], output_path: Path) -> None:
 
 
 def print_summary(rows: list[dict[str, Any]], output_path: Path) -> None:
+    # print 요약 정보를 계산해 반환한다.
     total_samples = len(rows)
     tomato_samples = sum(row["is_tomato"] == "true" for row in rows)
     detection_target_samples = sum(row["is_detection_target"] == "true" for row in rows)
@@ -397,6 +409,7 @@ def print_summary(rows: list[dict[str, Any]], output_path: Path) -> None:
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = parse_args()
     dataset_root = Path(args.dataset_root).expanduser().resolve()
     output_path = Path(args.output).expanduser().resolve()

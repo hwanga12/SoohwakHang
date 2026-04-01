@@ -1,3 +1,4 @@
+# 이 모듈은 상위 제어와 의사결정 패키지에서 observation priority 판단과 실행 보조 로직을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ _DISEASE_CLASS_KEYWORDS = (
 
 @dataclass(slots=True)
 class ObservationInput:
+    # 관측 결과 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     observation_id: str
     zone_id: str
     plant_id: str
@@ -29,6 +31,7 @@ class ObservationInput:
 
 @dataclass(slots=True)
 class ObservationTaskCandidate:
+    # 관측 결과 task 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     observation_id: str
     dedup_key: str
     event_kind: str
@@ -45,6 +48,7 @@ class ObservationTaskCandidate:
 
 @dataclass(slots=True)
 class ObservationSelection:
+    # 관측 결과 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     selected_candidate: ObservationTaskCandidate | None
     accepted: bool
     is_duplicate: bool
@@ -53,7 +57,7 @@ class ObservationSelection:
 
 
 class ObservationPriorityArbiter:
-    """Apply duplicate filtering and event priority for perception observations."""
+    # 관측 결과 priority 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     def __init__(
         self,
@@ -64,6 +68,7 @@ class ObservationPriorityArbiter:
         ripe_tomato_priority: int = 200,
         generic_observation_priority: int = 100,
     ) -> None:
+        # ObservationPriorityArbiter 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         self._duplicate_window_ns = max(1, int(duplicate_window_sec * 1_000_000_000))
         self._max_pending_events = max(1, max_pending_events)
         self._diseased_leaf_priority = diseased_leaf_priority
@@ -75,9 +80,11 @@ class ObservationPriorityArbiter:
 
     @property
     def active_candidate(self) -> ObservationTaskCandidate | None:
+        # active 후보 정보를 계산해 반환한다.
         return self._active_candidate
 
     def clear(self) -> None:
+        # 대상을 비운다.
         self._pending_by_key.clear()
         self._recent_until_ns.clear()
         self._active_candidate = None
@@ -88,6 +95,7 @@ class ObservationPriorityArbiter:
         *,
         now_ns: int,
     ) -> ObservationSelection:
+        # 관측을 등록한다.
         self._expire_stale_entries(now_ns)
         candidate = self._build_candidate(observation, now_ns=now_ns)
 
@@ -159,6 +167,7 @@ class ObservationPriorityArbiter:
         )
 
     def peek_best_candidate(self) -> ObservationTaskCandidate | None:
+        # peek best 후보 정보를 계산해 반환한다.
         if not self._pending_by_key:
             return None
         return min(self._pending_by_key.values(), key=self._candidate_sort_key)
@@ -169,12 +178,14 @@ class ObservationPriorityArbiter:
         *,
         now_ns: int,
     ) -> ObservationTaskCandidate:
+        # activate 후보 정보를 계산해 반환한다.
         self._expire_stale_entries(now_ns)
         self._pending_by_key.pop(candidate.dedup_key, None)
         self._active_candidate = candidate
         return candidate
 
     def complete_active_candidate(self, *, now_ns: int) -> ObservationTaskCandidate | None:
+        # complete active 후보 정보를 계산해 반환한다.
         self._expire_stale_entries(now_ns)
         if self._active_candidate is None:
             return None
@@ -184,6 +195,7 @@ class ObservationPriorityArbiter:
         return candidate
 
     def pending_count(self) -> int:
+        # pending 개수 정보를 계산해 반환한다.
         return len(self._pending_by_key)
 
     def _build_candidate(
@@ -192,6 +204,7 @@ class ObservationPriorityArbiter:
         *,
         now_ns: int,
     ) -> ObservationTaskCandidate:
+        # candidate를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         normalized_class = observation.class_name.strip().lower()
         event_kind = 'generic_observation'
         mission_type = 'OBSERVE'
@@ -235,6 +248,7 @@ class ObservationPriorityArbiter:
         )
 
     def _expire_stale_entries(self, now_ns: int) -> None:
+        # expire stale 항목 정보를 계산해 반환한다.
         stale_keys = [
             dedup_key
             for dedup_key, until_ns in self._recent_until_ns.items()
@@ -248,6 +262,7 @@ class ObservationPriorityArbiter:
         current: ObservationTaskCandidate,
         new: ObservationTaskCandidate,
     ) -> bool:
+        # replace가 필요한 상황인지 여부를 판단한다.
         return (
             new.priority > current.priority
             or (
@@ -262,16 +277,19 @@ class ObservationPriorityArbiter:
         )
 
     def _lowest_priority_candidate(self) -> ObservationTaskCandidate | None:
+        # lowest priority 후보 정보를 계산해 반환한다.
         if not self._pending_by_key:
             return None
         return max(self._pending_by_key.values(), key=self._candidate_sort_key)
 
     @staticmethod
     def _candidate_sort_key(candidate: ObservationTaskCandidate) -> tuple[int, float, int]:
+        # 후보 sort key 정보를 계산해 반환한다.
         return (-candidate.priority, -candidate.confidence, candidate.observed_at_ns)
 
 
 def _is_disease_class_name(normalized_class: str) -> bool:
+    # disease class 이름인지 여부를 불리언 값으로 판단한다.
     if not normalized_class:
         return False
     return any(keyword in normalized_class for keyword in _DISEASE_CLASS_KEYWORDS)

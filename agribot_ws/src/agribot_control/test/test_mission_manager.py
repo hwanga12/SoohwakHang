@@ -1,3 +1,4 @@
+# 이 테스트는 상위 제어와 의사결정 패키지의 mission manager 동작을 검증한다.
 import json
 
 from agribot_control.mission_manager import (
@@ -14,6 +15,7 @@ from agribot_control.observation_priority import ObservationTaskCandidate
 
 
 def test_start_mission_sets_running_state() -> None:
+    # start 미션 sets running 상태 동작과 회귀 여부를 검증한다.
     machine = MissionStateMachine('farm_01')
 
     machine.start_mission(MissionType.PATROL.value, target_id='lane_05')
@@ -27,6 +29,7 @@ def test_start_mission_sets_running_state() -> None:
 
 
 def test_pause_and_resume_restore_previous_phase() -> None:
+    # pause AND resume restore previous 단계 동작과 회귀 여부를 검증한다.
     machine = MissionStateMachine('farm_01')
     machine.start_mission(MissionType.HARVEST.value, target_id='fruit_01')
 
@@ -44,6 +47,7 @@ def test_pause_and_resume_restore_previous_phase() -> None:
 
 
 def test_fail_moves_machine_into_error_state() -> None:
+    # fail moves machine into error 상태 동작과 회귀 여부를 검증한다.
     machine = MissionStateMachine('farm_01')
     machine.start_mission(MissionType.RETURN_HOME.value)
 
@@ -58,6 +62,7 @@ def test_fail_moves_machine_into_error_state() -> None:
 
 
 def test_parse_patrol_status_calculates_progress() -> None:
+    # parse patrol 상태 calculates progress 동작과 회귀 여부를 검증한다.
     snapshot = parse_patrol_status(
         json.dumps(
             {
@@ -79,6 +84,7 @@ def test_parse_patrol_status_calculates_progress() -> None:
 
 
 def test_patrol_status_snapshot_pauses_and_resumes_patrol_mission() -> None:
+    # patrol 상태 스냅샷 pauses AND resumes patrol 미션 동작과 회귀 여부를 검증한다.
     machine = MissionStateMachine('farm_01')
     machine.start_mission(MissionType.PATROL.value, target_id='farm_01_lane_05_north')
 
@@ -121,6 +127,7 @@ def test_patrol_status_snapshot_pauses_and_resumes_patrol_mission() -> None:
 
 
 def test_patrol_status_snapshot_completes_patrol_mission() -> None:
+    # patrol 상태 스냅샷 completes patrol 미션 동작과 회귀 여부를 검증한다.
     machine = MissionStateMachine('farm_01')
     machine.start_mission(MissionType.PATROL.value, target_id='farm_01_lane_09_south')
 
@@ -144,6 +151,7 @@ def test_patrol_status_snapshot_completes_patrol_mission() -> None:
 
 
 def test_build_status_telemetry_enriches_patrol_phase_and_target() -> None:
+    # build 상태 telemetry enriches patrol 단계 AND target 동작과 회귀 여부를 검증한다.
     machine = MissionStateMachine('farm_01')
     machine.start_mission(MissionType.PATROL.value, target_id='farm_01_lane_05_north')
     machine.update_progress(25.0, detail_message='Patrol mission started.')
@@ -182,6 +190,7 @@ def test_build_status_telemetry_enriches_patrol_phase_and_target() -> None:
 
 
 def test_build_status_telemetry_marks_return_home_error() -> None:
+    # build 상태 telemetry marks return home error 동작과 회귀 여부를 검증한다.
     machine = MissionStateMachine('farm_01')
     machine.start_mission(MissionType.RETURN_HOME.value, target_id='farm_01_home')
     machine.fail(detail_message='Planner aborted while returning home.')
@@ -202,6 +211,7 @@ def test_build_status_telemetry_marks_return_home_error() -> None:
 
 
 def test_build_status_telemetry_reflects_active_observation_target() -> None:
+    # build 상태 telemetry reflects active 관측 결과 target 동작과 회귀 여부를 검증한다.
     machine = MissionStateMachine('farm_01')
     machine.start_mission(MissionType.OBSERVE.value, target_id='farm01_plant_03')
 
@@ -235,6 +245,7 @@ def test_build_status_telemetry_reflects_active_observation_target() -> None:
 
 
 def test_build_status_telemetry_marks_emergency_stop_as_blocking_error() -> None:
+    # build 상태 telemetry marks emergency stop AS blocking error 동작과 회귀 여부를 검증한다.
     machine = MissionStateMachine('farm_01')
     machine.start_mission(MissionType.PATROL.value, target_id='farm_01_lane_05_north')
 
@@ -273,6 +284,7 @@ def test_build_status_telemetry_marks_emergency_stop_as_blocking_error() -> None
 
 
 def test_build_status_telemetry_returns_no_error_for_control_pause() -> None:
+    # build 상태 telemetry returns NO error FOR control pause 동작과 회귀 여부를 검증한다.
     machine = MissionStateMachine('farm_01')
     machine.start_mission(MissionType.PATROL.value, target_id='farm_01_lane_05_north')
 

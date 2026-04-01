@@ -1,3 +1,4 @@
+# 이 테스트는 인지와 추론 패키지의 plan tomato train subset 동작을 검증한다.
 from __future__ import annotations
 
 import csv
@@ -16,6 +17,7 @@ def write_label_json(
     risk: str = "1",
     use_list_container: bool = False,
 ) -> None:
+    # 라벨 JSON 데이터를 파일이나 저장소에 기록한다.
     payload = {
         "description": {"image": image_name, "task": "detection"},
         "annotations" if not use_list_container else "annotation": {
@@ -35,6 +37,7 @@ def write_label_json(
 
 
 def run_planner(label_root: Path, output_path: Path, *, seed: int) -> subprocess.CompletedProcess[str]:
+    # planner 실행 흐름을 시작하거나 마무리한다.
     script_path = (
         Path(__file__).resolve().parents[1] / "scripts" / "plan_tomato_train_subset.py"
     )
@@ -66,11 +69,13 @@ def run_planner(label_root: Path, output_path: Path, *, seed: int) -> subprocess
 
 
 def read_rows(csv_path: Path) -> list[dict[str, str]]:
+    # rows를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
         return list(csv.DictReader(handle))
 
 
 def selected_jsons(rows: list[dict[str, str]], disease_code: str) -> list[str]:
+    # selected jsons 정보를 계산해 반환한다.
     return sorted(
         row["json_filename"]
         for row in rows
@@ -81,6 +86,7 @@ def selected_jsons(rows: list[dict[str, str]], disease_code: str) -> list[str]:
 
 
 def test_subset_planner_writes_candidate_and_shortfall_rows(tmp_path: Path) -> None:
+    # subset planner writes candidate AND shortfall rows 동작과 회귀 여부를 검증한다.
     label_root = tmp_path / "dataset" / "raw"
 
     for name in ("a_001.json", "a_002.json", "a_003.json"):
@@ -187,6 +193,7 @@ def test_subset_planner_writes_candidate_and_shortfall_rows(tmp_path: Path) -> N
 
 
 def test_subset_planner_seed_is_reproducible_and_non_normal_is_stable(tmp_path: Path) -> None:
+    # subset planner seed IS reproducible AND NON normal IS stable 동작과 회귀 여부를 검증한다.
     label_root = tmp_path / "dataset" / "raw"
 
     for name in ("a_001.json", "a_002.json", "a_003.json"):

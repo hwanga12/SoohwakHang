@@ -1,3 +1,4 @@
+# 이 테스트는 통합 실행과 런치 조율 패키지의 runtime snapshot service 동작을 검증한다.
 from agribot_bringup.control_state import (
     ControlMode,
     MotionActivity,
@@ -20,6 +21,7 @@ from agribot_bringup.runtime_snapshot_service import (
 
 
 def test_read_map_metadata_reads_saved_map_dimensions() -> None:
+    # read 지도 metadata reads saved 지도 dimensions 동작과 회귀 여부를 검증한다.
     metadata = read_map_metadata()
 
     assert metadata['map_id'] == 'farm_map'
@@ -30,6 +32,7 @@ def test_read_map_metadata_reads_saved_map_dimensions() -> None:
 
 
 def test_build_semantic_layer_snapshot_contains_plants_and_sprinklers() -> None:
+    # build semantic layer 스냅샷 contains 작물 개체 목록 AND sprinklers 동작과 회귀 여부를 검증한다.
     payload = build_semantic_layer_snapshot()
 
     assert payload['source'] == 'static_config'
@@ -44,6 +47,7 @@ def test_build_semantic_layer_snapshot_contains_plants_and_sprinklers() -> None:
 
 
 def test_build_pose_snapshot_payload_preserves_expected_contract() -> None:
+    # build 위치 자세 스냅샷 payload preserves expected 계약 동작과 회귀 여부를 검증한다.
     payload = build_pose_snapshot_payload(
         map_id='farm_map',
         robot_id='AGR-02',
@@ -66,6 +70,7 @@ def test_build_pose_snapshot_payload_preserves_expected_contract() -> None:
 
 
 def test_manual_command_paths_and_status_payload_follow_runtime_contract() -> None:
+    # manual 명령 경로 목록 AND 상태 payload follow 런타임 데이터 계약 동작과 회귀 여부를 검증한다.
     runtime_dir = runtime_dir_from_env()
 
     assert manual_command_path(runtime_dir).name == 'robot_manual_command.json'
@@ -107,6 +112,7 @@ def test_manual_command_paths_and_status_payload_follow_runtime_contract() -> No
 
 
 def test_build_mission_bridge_status_payload_preserves_operator_contract() -> None:
+    # build 미션 브리지 상태 payload preserves operator 계약 동작과 회귀 여부를 검증한다.
     payload = build_mission_bridge_status_payload(
         mission_id='mission-patrol-001',
         command_id='mission-patrol-001',
@@ -134,6 +140,7 @@ def test_build_mission_bridge_status_payload_preserves_operator_contract() -> No
 
 
 def test_resume_without_context_uses_no_op_status_result_contract() -> None:
+    # resume without context uses NO OP 상태 결과 계약 동작과 회귀 여부를 검증한다.
     payload = build_manual_command_status_payload(
         command_id='cmd-resume-noop',
         command_type='resume_motion',

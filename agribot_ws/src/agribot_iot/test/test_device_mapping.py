@@ -1,3 +1,4 @@
+# 이 테스트는 IoT 장치 연동 패키지의 device mapping 동작을 검증한다.
 from pathlib import Path
 
 from agribot_iot.device_mapping import load_iot_device_catalog
@@ -15,6 +16,7 @@ IOT_DEVICES = (
 
 
 def test_iot_device_catalog_uses_shared_zone_device_names() -> None:
+    # IoT 장치 카탈로그 uses shared 구역 장치 이름 목록 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
 
     assert catalog.default_zone_id == 'farm_01'

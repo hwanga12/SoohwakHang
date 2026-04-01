@@ -1,3 +1,6 @@
+/*
+ * 이 컴포넌트는 관제 대시보드의 환경 제어 페이지를 구성한다.
+ */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
@@ -29,6 +32,9 @@ function historyToneToTag(tone: 'healthy' | 'warning' | 'critical') {
   return tone
 }
 
+/**
+ * 환경 페이지 화면 조각을 렌더링하는 컴포넌트다.
+ */
 export function EnvironmentPage() {
   const queryClient = useQueryClient()
   const environmentQuery = useQuery({

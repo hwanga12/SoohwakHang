@@ -1,5 +1,4 @@
-"""Republish /cmd_vel with a timeout so the robot stops on stale commands."""
-
+# 이 모듈은 로봇 모델과 시뮬레이션 자산 패키지에서 cmd vel watchdog 로직을 담당한다.
 from geometry_msgs.msg import Twist
 import rclpy
 from rclpy.duration import Duration
@@ -8,9 +7,10 @@ from rclpy.node import Node
 
 
 class CmdVelWatchdog(Node):
-    """Forward command velocity messages and publish zero when they go stale."""
+    # CMD VEL 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # CmdVelWatchdog 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('cmd_vel_watchdog')
         self.declare_parameter('input_topic', '/cmd_vel')
         self.declare_parameter('output_topic', '/cmd_vel_safe')
@@ -37,10 +37,12 @@ class CmdVelWatchdog(Node):
         self._last_command_time = None
 
     def _handle_cmd_vel(self, msg: Twist) -> None:
+        # handle cmd vel 정보를 계산해 반환한다.
         self._latest_command = msg
         self._last_command_time = self.get_clock().now()
 
     def _publish_command(self) -> None:
+        # 명령를 외부 시스템이나 다음 처리 단계로 전달한다.
         if self._last_command_time is None:
             self._publisher.publish(Twist())
             return
@@ -54,6 +56,7 @@ class CmdVelWatchdog(Node):
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = CmdVelWatchdog()
     try:

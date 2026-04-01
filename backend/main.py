@@ -1,3 +1,4 @@
+# 이 모듈은 FastAPI 백엔드의 진입점으로, 라우터와 공통 미들웨어를 등록.
 import logging
 
 from fastapi import FastAPI
@@ -48,6 +49,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def disable_docs_cache(request: Request, call_next) -> Response:
+    # disable docs 캐시 정보를 계산해 반환한다.
     response = await call_next(request)
     if request.url.path in {"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"}:
         response.headers["Cache-Control"] = "no-store, max-age=0"
@@ -72,4 +74,5 @@ app.include_router(realtime.router, prefix="/ws", tags=["Realtime WebSocket"])
 
 @app.get("/")
 def root():
+    # 서비스 기본 응답을 반환해 서버가 정상 동작 중인지 확인할 수 있게 한다.
     return {"message": "AgriBot API is running. Visit http://localhost:8000/docs 에 접속해서 API 명세서를 확인하세요."}

@@ -1,3 +1,4 @@
+# 이 모듈은 수확 런타임 상태와 기록을 읽어온다.
 from __future__ import annotations
 
 import json
@@ -31,6 +32,7 @@ HARVEST_EVENT_DIRNAME = "harvest_events"
 
 
 def _read_optional_json(path: Path) -> dict[str, Any]:
+    # optional JSON 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     if not path.exists():
         return {}
     try:
@@ -40,6 +42,7 @@ def _read_optional_json(path: Path) -> dict[str, Any]:
 
 
 def _normalize_action_status(value: Any) -> str:
+    # action 상태를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = str(value).strip().lower()
     if normalized in {"planned", "pending"}:
         return "pending"
@@ -55,6 +58,7 @@ def _normalize_action_status(value: Any) -> str:
 
 
 def _clean_yaml_lines(path: Path) -> list[str]:
+    # clean yaml lines 정보를 계산해 반환한다.
     lines: list[str] = []
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.split("#", 1)[0].rstrip()
@@ -64,6 +68,7 @@ def _clean_yaml_lines(path: Path) -> list[str]:
 
 
 def _parse_scalar(value: str) -> Any:
+    # scalar를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     trimmed = value.strip().strip("'").strip('"')
     if not trimmed:
         return ""
@@ -78,6 +83,7 @@ def _parse_scalar(value: str) -> Any:
 
 
 def _load_ready_tomato_ids() -> set[str]:
+    # ready tomato ID 목록를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     if not CROP_INSTANCES_PATH.exists():
         return set()
 
@@ -120,6 +126,7 @@ def _load_ready_tomato_ids() -> set[str]:
 
 
 def _sort_key(payload: dict[str, Any]) -> str:
+    # sort key 정보를 계산해 반환한다.
     return str(
         payload.get("occurred_at")
         or payload.get("updated_at")
@@ -129,6 +136,7 @@ def _sort_key(payload: dict[str, Any]) -> str:
 
 
 def _read_event_payloads() -> list[dict[str, Any]]:
+    # 이벤트 payloads를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     runtime_dir = runtime_dir_from_env()
     event_dir = runtime_dir / HARVEST_EVENT_DIRNAME
     payloads: list[dict[str, Any]] = []
@@ -153,6 +161,7 @@ def _read_event_payloads() -> list[dict[str, Any]]:
 
 
 def read_harvest_action_status_payload(mission_id: str | None = None) -> dict[str, Any] | None:
+    # harvest action 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     if mission_id:
         record_payload = _read_optional_json(harvest_action_status_record_file_path(mission_id))
         if record_payload:
@@ -167,6 +176,7 @@ def read_harvest_action_status_payload(mission_id: str | None = None) -> dict[st
 
 
 def read_harvest_history_payload(limit: int = 20) -> list[dict[str, Any]]:
+    # harvest 이력 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     events = _read_event_payloads()
     action_status = read_harvest_action_status_payload()
     rows: list[dict[str, Any]] = []
@@ -233,6 +243,7 @@ def read_harvest_history_payload(limit: int = 20) -> list[dict[str, Any]]:
 
 
 def read_harvest_stats_payload() -> dict[str, Any]:
+    # harvest stats payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     basket_state = _read_optional_json(harvest_basket_state_file_path())
     latest_event = _read_optional_json(harvest_latest_event_file_path())
     action_status = read_harvest_action_status_payload() or {}
@@ -309,6 +320,7 @@ def merge_mission_status_with_harvest_action(
     mission_id: str,
     base_payload: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    # 여러 입력에서 얻은 미션 상태 with harvest action를 하나로 병합한다.
     action_payload = read_harvest_action_status_payload(mission_id)
     if action_payload is None:
         if base_payload is None:

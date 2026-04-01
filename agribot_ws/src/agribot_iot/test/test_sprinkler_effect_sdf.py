@@ -1,9 +1,11 @@
+# 이 테스트는 IoT 장치 연동 패키지의 sprinkler effect sdf 동작을 검증한다.
 from xml.etree import ElementTree as ET
 
 from agribot_iot.sprinkler_controller_node import _build_effect_sdf
 
 
 def test_build_effect_sdf_uses_particle_emitters() -> None:
+    # build effect SDF uses particle emitters 동작과 회귀 여부를 검증한다.
     root = ET.fromstring(_build_effect_sdf('sprinkler_effect_demo', 'red'))
 
     model = root.find('./model')
@@ -34,6 +36,7 @@ def test_build_effect_sdf_uses_particle_emitters() -> None:
 
 
 def test_build_effect_sdf_tints_particles_from_requested_color() -> None:
+    # build effect SDF tints particles from requested color 동작과 회귀 여부를 검증한다.
     root = ET.fromstring(_build_effect_sdf('sprinkler_effect_demo', 'yellow'))
 
     center = root.find('./model/link/particle_emitter[@name="spray_center"]')
@@ -43,6 +46,7 @@ def test_build_effect_sdf_tints_particles_from_requested_color() -> None:
 
 
 def test_build_effect_sdf_points_center_emitter_upward() -> None:
+    # build effect SDF points center emitter upward 동작과 회귀 여부를 검증한다.
     root = ET.fromstring(_build_effect_sdf('sprinkler_effect_demo', 'red'))
 
     center = root.find('./model/link/particle_emitter[@name="spray_center"]')
@@ -52,6 +56,7 @@ def test_build_effect_sdf_points_center_emitter_upward() -> None:
 
 
 def test_build_effect_sdf_adds_visible_center_spray_stream() -> None:
+    # build effect SDF adds visible center spray stream 동작과 회귀 여부를 검증한다.
     root = ET.fromstring(_build_effect_sdf('sprinkler_effect_demo', 'blue'))
 
     center_stream = root.find('./model/link/visual[@name="spray_stream_center"]')

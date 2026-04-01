@@ -1,5 +1,11 @@
+/*
+ * 이 모듈은 지도 위 이동 미리보기 경로를 계산한다.
+ */
 import type { RobotPoseSnapshot, RobotTargetPose } from '@/lib/api/agribot'
 
+/**
+ * 주행 미리보기 지점 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type NavigationPreviewPoint = {
   x: number
   y: number
@@ -25,6 +31,9 @@ function isNearPoint(left: NavigationPreviewPoint, right: NavigationPreviewPoint
   )
 }
 
+/**
+ * 주행 미리보기 경로을 조합해 만드는 함수다.
+ */
 export function buildNavigationPreviewPath(
   startPose: PoseLike | null | undefined,
   targets: Array<PoseLike | null | undefined>,

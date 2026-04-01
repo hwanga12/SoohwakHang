@@ -1,3 +1,4 @@
+# 이 테스트는 IoT 장치 연동 패키지의 mqtt contract 동작을 검증한다.
 from pathlib import Path
 import json
 
@@ -26,6 +27,7 @@ MQTT_TOPICS = (
 
 
 def test_load_mqtt_bridge_config_contains_expected_routes() -> None:
+    # load mqtt 브리지 설정 contains expected 경로 목록 동작과 회귀 여부를 검증한다.
     config = load_mqtt_bridge_config(MQTT_TOPICS)
 
     assert config.broker.host == 'localhost'
@@ -43,6 +45,7 @@ def test_load_mqtt_bridge_config_contains_expected_routes() -> None:
 
 
 def test_serializers_match_expected_json_shape() -> None:
+    # serializers match expected JSON 데이터 shape 동작과 회귀 여부를 검증한다.
     environment = EnvironmentData()
     environment.zone_id = 'farm_01'
     environment.temperature = 24.5
@@ -77,6 +80,7 @@ def test_serializers_match_expected_json_shape() -> None:
 
 
 def test_deserialize_iot_command_payload_rebuilds_message() -> None:
+    # deserialize IoT 명령 payload rebuilds message 동작과 회귀 여부를 검증한다.
     payload = String()
     payload.data = (
         '{"command_id":"command-02","zone_id":"farm_01","device_id":"farm_01_watering",'
@@ -94,6 +98,7 @@ def test_deserialize_iot_command_payload_rebuilds_message() -> None:
 
 
 def test_raw_json_serializer_keeps_command_result_payload_fields() -> None:
+    # RAW JSON 데이터 serializer keeps 명령 결과 payload fields 동작과 회귀 여부를 검증한다.
     payload = String()
     payload.data = json.dumps(
         {

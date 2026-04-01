@@ -1,3 +1,9 @@
+/*
+ * 이 모듈은 PGM 맵 파일을 읽는다.
+ */
+/**
+ * parsed pgm 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type ParsedPgm = {
   width: number
   height: number
@@ -40,6 +46,9 @@ function readToken(bytes: Uint8Array, cursor: { index: number }) {
   return new TextDecoder('ascii').decode(bytes.slice(start, cursor.index))
 }
 
+/**
+ * pgm을 해석해 내부 표현으로 바꾸는 함수다.
+ */
 export function parsePgm(buffer: ArrayBuffer): ParsedPgm {
   const bytes = new Uint8Array(buffer)
   const cursor = { index: 0 }

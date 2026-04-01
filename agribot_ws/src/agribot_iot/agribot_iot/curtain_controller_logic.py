@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 curtain controller logic 장치 흐름을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from .device_mapping import IoTDeviceSpec
 
 @dataclass(frozen=True)
 class CurtainExecutionPlan:
+    # 커튼 execution 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     accepted: bool
     command_id: str
     zone_id: str
@@ -31,6 +33,7 @@ def plan_curtain_command(
     current_opening_ratio: float,
     transition_rate_percent_per_sec: float,
 ) -> CurtainExecutionPlan:
+    # 커튼 명령를 어떤 순서와 조건으로 처리할지 계획한다.
     normalized_command_type = command.command_type.strip().lower()
     normalized_unit = command.unit.strip().lower()
 
@@ -127,6 +130,7 @@ def classify_curtain_state(
     *,
     target_opening_ratio: float | None = None,
 ) -> str:
+    # classify 커튼 상태 정보를 계산해 반환한다.
     opening_ratio = _clamp_percent(opening_ratio)
     if target_opening_ratio is not None:
         target_opening_ratio = _clamp_percent(target_opening_ratio)
@@ -148,6 +152,7 @@ def build_curtain_state(
     opening_ratio: float,
     detail_message: str,
 ) -> IoTDeviceState:
+    # 커튼 상태를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     message = IoTDeviceState()
     message.device_id = device.device_id
     message.zone_id = device.zone_id
@@ -170,6 +175,7 @@ def build_curtain_result_payload(
     executed_duration_sec: float,
     opening_ratio: float,
 ) -> str:
+    # 커튼 결과 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     payload = {
         'command_id': plan.command_id,
         'zone_id': plan.zone_id,
@@ -197,6 +203,7 @@ def _resolve_target_opening_ratio(
     default_unit: str,
     current_opening_ratio: float,
 ) -> float | None:
+    # 현재 입력 조건을 바탕으로 target opening ratio를 계산하거나 결정한다.
     effective_unit = unit or default_unit.strip().lower()
     if command_type == 'open_curtain':
         return 100.0
@@ -215,4 +222,5 @@ def _resolve_target_opening_ratio(
 
 
 def _clamp_percent(value: float) -> float:
+    # percent 값을 허용 범위로 제한한다.
     return max(0.0, min(100.0, float(value)))

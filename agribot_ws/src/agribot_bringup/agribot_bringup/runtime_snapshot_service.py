@@ -1,3 +1,4 @@
+# 이 모듈은 통합 실행과 런치 조율 패키지에서 runtime snapshot service 절차를 담당한다.
 import json
 import os
 import time
@@ -10,6 +11,7 @@ try:
     from ament_index_python.packages import get_package_share_directory
 except ModuleNotFoundError:  # pragma: no cover - fallback for non-ROS pytest shells
     def get_package_share_directory(package_name: str) -> str:
+        # package share directory를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         raise LookupError(f'ament index is unavailable for package: {package_name}')
 
 DEFAULT_MAP_ID = 'farm_map'
@@ -27,44 +29,54 @@ MISSION_STATUS_DIRNAME = 'mission_statuses'
 
 
 def runtime_dir_from_env() -> Path:
+    # 런타임 dir env 정보를 계산해 반환한다.
     runtime_dir = Path(os.environ.get('AGRIBOT_RUNTIME_DIR', str(DEFAULT_RUNTIME_DIR)))
     runtime_dir.mkdir(parents=True, exist_ok=True)
     return runtime_dir
 
 
 def pose_snapshot_path(runtime_dir: Path | None = None) -> Path:
+    # 위치 자세 스냅샷 경로 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / POSE_SNAPSHOT_FILENAME
 
 
 def semantic_layer_snapshot_path(runtime_dir: Path | None = None) -> Path:
+    # 의미 기반 layer 스냅샷 경로 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / SEMANTIC_LAYER_SNAPSHOT_FILENAME
 
 
 def navigation_path_snapshot_path(runtime_dir: Path | None = None) -> Path:
+    # 주행 경로 스냅샷 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / NAVIGATION_PATH_SNAPSHOT_FILENAME
 
 
 def manual_command_path(runtime_dir: Path | None = None) -> Path:
+    # 수동 명령 경로 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / MANUAL_COMMAND_FILENAME
 
 
 def manual_command_status_path(runtime_dir: Path | None = None) -> Path:
+    # 수동 명령 상태 경로 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / MANUAL_COMMAND_STATUS_FILENAME
 
 
 def control_state_path(runtime_dir: Path | None = None) -> Path:
+    # 제어 상태 경로 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / CONTROL_STATE_FILENAME
 
 
 def mission_request_path(runtime_dir: Path | None = None) -> Path:
+    # 미션 request 경로 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / MISSION_REQUEST_FILENAME
 
 
 def mission_status_path(runtime_dir: Path | None = None) -> Path:
+    # 미션 상태 경로 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / MISSION_STATUS_FILENAME
 
 
 def _sanitize_runtime_identifier(value: str) -> str:
+    # sanitize 런타임 identifier 정보를 계산해 반환한다.
     normalized = ''.join(
         character if character.isalnum() or character in {'-', '_', '.'} else '_'
         for character in str(value).strip()
@@ -76,11 +88,13 @@ def mission_status_record_path(
     mission_id: str,
     runtime_dir: Path | None = None,
 ) -> Path:
+    # 미션 상태 record 경로 정보를 계산해 반환한다.
     base_dir = (runtime_dir or runtime_dir_from_env()) / MISSION_STATUS_DIRNAME
     return base_dir / f'{_sanitize_runtime_identifier(mission_id)}.json'
 
 
 def _package_share(package_name: str) -> Path:
+    # package share 정보를 계산해 반환한다.
     try:
         share_path = Path(get_package_share_directory(package_name))
     except Exception:
@@ -97,6 +111,7 @@ def _package_share(package_name: str) -> Path:
 
 
 def _source_package_root(package_name: str) -> Path | None:
+    # 출처 package root 정보를 계산해 반환한다.
     current_path = Path(__file__).resolve()
     for parent in current_path.parents:
         candidate = parent / 'src' / package_name
@@ -109,6 +124,7 @@ def _source_package_root(package_name: str) -> Path | None:
 
 
 def _resolve_package_file(package_name: str, *relative_parts: str) -> Path:
+    # 현재 입력 조건을 바탕으로 package 파일를 계산하거나 결정한다.
     share_path = _package_share(package_name)
     candidate = share_path.joinpath(*relative_parts)
     if candidate.exists():
@@ -123,6 +139,7 @@ def _resolve_package_file(package_name: str, *relative_parts: str) -> Path:
 
 
 def _clean_yaml_lines(path: Path) -> list[str]:
+    # clean yaml lines 정보를 계산해 반환한다.
     lines: list[str] = []
     for raw_line in path.read_text(encoding='utf-8').splitlines():
         line = raw_line.split('#', 1)[0].rstrip()
@@ -132,6 +149,7 @@ def _clean_yaml_lines(path: Path) -> list[str]:
 
 
 def _parse_scalar(value: str) -> Any:
+    # scalar를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     trimmed = value.strip().strip('"').strip("'")
     if not trimmed:
         return ''
@@ -146,6 +164,7 @@ def _parse_scalar(value: str) -> Any:
 
 
 def _parse_pose_text(value: str) -> dict[str, float]:
+    # 위치 자세 text를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     tokens = [float(token) for token in value.split()]
     while len(tokens) < 6:
         tokens.append(0.0)
@@ -160,6 +179,7 @@ def _parse_pose_text(value: str) -> dict[str, float]:
 
 
 def _read_pgm_dimensions(image_path: Path) -> tuple[int, int]:
+    # PGM dimensions를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     raw = image_path.read_bytes()
     tokens: list[str] = []
     index = 0
@@ -186,6 +206,7 @@ def _read_pgm_dimensions(image_path: Path) -> tuple[int, int]:
 
 
 def read_map_metadata(map_id: str = DEFAULT_MAP_ID) -> dict[str, Any]:
+    # 지도 metadata를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     yaml_path = _resolve_package_file('agribot_navigation', 'maps', f'{map_id}.yaml')
     if not yaml_path.exists():
         raise FileNotFoundError(f'{yaml_path} 파일을 찾지 못했습니다.')
@@ -234,6 +255,7 @@ def read_map_metadata(map_id: str = DEFAULT_MAP_ID) -> dict[str, Any]:
 
 
 def _load_crop_instances() -> dict[str, Any]:
+    # 작물 instances를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     crop_instances_path = _resolve_package_file('agribot_description', 'config', 'crop_instances.yaml')
     lines = _clean_yaml_lines(crop_instances_path)
     data: dict[str, Any] = {
@@ -290,6 +312,7 @@ def _load_crop_instances() -> dict[str, Any]:
 
 
 def _load_iot_devices() -> dict[str, dict[str, Any]]:
+    # IoT 장치 목록를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     iot_devices_path = _resolve_package_file('agribot_iot', 'config', 'iot_devices.yaml')
     lines = _clean_yaml_lines(iot_devices_path)
     current_zone_id = ''
@@ -335,6 +358,7 @@ def _load_iot_devices() -> dict[str, dict[str, Any]]:
 
 
 def _load_world_semantics() -> dict[str, Any]:
+    # 월드 semantics를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     world_path = _resolve_package_file('agribot_description', 'worlds', 'farm_world.sdf')
     root = ET.parse(world_path).getroot()
     world = root.find('world')
@@ -384,6 +408,7 @@ def _load_world_semantics() -> dict[str, Any]:
 
 
 def _build_lane_guides(plant_positions: list[dict[str, float]]) -> list[dict[str, Any]]:
+    # lane guides를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     y_values = sorted({round(position['y'], 3) for position in plant_positions})
     if not y_values:
         return []
@@ -408,6 +433,7 @@ def _build_lane_guides(plant_positions: list[dict[str, float]]) -> list[dict[str
 
 
 def build_semantic_layer_snapshot(map_id: str = DEFAULT_MAP_ID) -> dict[str, Any]:
+    # semantic layer 스냅샷를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     crop_instances = _load_crop_instances()
     world = _load_world_semantics()
     devices = _load_iot_devices()
@@ -495,6 +521,7 @@ def build_pose_snapshot_payload(
     linear_speed_mps: float,
     source_mode: str,
 ) -> dict[str, Any]:
+    # 위치 자세 스냅샷 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     timestamp = time.time()
     return {
         'robot_id': robot_id,
@@ -528,6 +555,7 @@ def build_navigation_path_snapshot_payload(
     global_plan_topic: str | None,
     global_plan_updated_at: str | None,
 ) -> dict[str, Any]:
+    # navigation 경로 스냅샷 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     timestamp = time.time()
     updated_at = datetime.now(timezone.utc).isoformat()
     return {
@@ -571,6 +599,7 @@ def build_manual_command_status_payload(
     started_at: str | None = None,
     completed_at: str | None = None,
 ) -> dict[str, Any]:
+    # manual 명령 상태 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     updated_at = datetime.now(timezone.utc).isoformat()
     return {
         'command_id': command_id,
@@ -618,6 +647,7 @@ def build_mission_bridge_status_payload(
     started_at: str | None = None,
     completed_at: str | None = None,
 ) -> dict[str, Any]:
+    # 미션 브리지 상태 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     updated_at = datetime.now(timezone.utc).isoformat()
     mission_identifier = (mission_id or command_id or '').strip() or None
     normalized_zone_ids = [str(zone_id).strip() for zone_id in zone_ids or () if str(zone_id).strip()]
@@ -646,6 +676,7 @@ def build_mission_bridge_status_payload(
 
 
 def read_json_object(path: Path) -> dict[str, Any]:
+    # JSON 데이터 object를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     payload = json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(payload, dict):
         raise ValueError(f'{path.name} 최상위 payload는 JSON object여야 합니다.')
@@ -653,6 +684,7 @@ def read_json_object(path: Path) -> dict[str, Any]:
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    # JSON 데이터 atomic를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_suffix(path.suffix + '.tmp')
     temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')

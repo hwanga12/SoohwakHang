@@ -1,3 +1,4 @@
+# 이 테스트는 인지와 추론 패키지의 crop targeting 동작을 검증한다.
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,6 +12,7 @@ from agribot_perception.crop_targeting import CropTargetResolver
 
 
 def test_lookup_returns_requested_plant() -> None:
+    # lookup returns requested 작물 개체 동작과 회귀 여부를 검증한다.
     resolver = CropTargetResolver(zone_id='farm_01')
 
     target = resolver.lookup('farm01_plant_10')
@@ -24,6 +26,7 @@ def test_lookup_returns_requested_plant() -> None:
 
 
 def test_pose_resolution_prefers_front_facing_target() -> None:
+    # 위치 자세 resolution prefers front facing target 동작과 회귀 여부를 검증한다.
     resolver = CropTargetResolver(
         zone_id='farm_01',
         max_distance_m=2.0,

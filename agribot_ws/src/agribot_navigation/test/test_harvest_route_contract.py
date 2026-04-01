@@ -1,5 +1,4 @@
-"""수확 route 요청이 plain text와 JSON 두 형식 모두에서 안정적으로 파싱되는지 검증한다."""
-
+# 이 테스트는 자율주행과 경로 계획 패키지의 harvest route contract 동작을 검증한다.
 import json
 
 from agribot_navigation.harvest_route_contract import (
@@ -9,6 +8,7 @@ from agribot_navigation.harvest_route_contract import (
 
 
 def test_parse_harvest_route_request_accepts_plain_tomato_id() -> None:
+    # parse harvest 경로 요청 데이터 accepts plain tomato ID 동작과 회귀 여부를 검증한다.
     request = parse_harvest_route_request('farm01_plant_03_tomato_01')
 
     assert request == HarvestRouteRequest(
@@ -18,6 +18,7 @@ def test_parse_harvest_route_request_accepts_plain_tomato_id() -> None:
 
 
 def test_parse_harvest_route_request_accepts_json_mission_payload() -> None:
+    # parse harvest 경로 요청 데이터 accepts JSON 데이터 미션 payload 동작과 회귀 여부를 검증한다.
     request = parse_harvest_route_request(
         json.dumps(
             {
@@ -50,4 +51,5 @@ def test_parse_harvest_route_request_accepts_json_mission_payload() -> None:
 
 
 def test_parse_harvest_route_request_rejects_invalid_json_payload() -> None:
+    # parse harvest 경로 요청 데이터 rejects invalid JSON 데이터 payload 동작과 회귀 여부를 검증한다.
     assert parse_harvest_route_request('{"mission_id": "broken"') is None

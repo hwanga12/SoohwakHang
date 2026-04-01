@@ -1,5 +1,4 @@
-"""Helpers for the HarvestTomato action server."""
-
+# 이 모듈은 자율주행과 경로 계획 패키지에서 harvest action support 기능을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,6 +14,7 @@ from .harvest_routing import CropCatalog, HarvestRoutePlan
 
 @dataclass(frozen=True)
 class ResolvedHarvestGoal:
+    # resolved harvest 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     mission_id: str
     zone_id: str
     plant_id: str
@@ -38,6 +38,7 @@ PHASE_PROGRESS_PCT = {
 
 
 def _normalize_text(value: str | None) -> str:
+    # text를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     if value is None:
         return ''
     normalized = str(value).strip()
@@ -56,6 +57,7 @@ def resolve_harvest_goal(
     default_zone_id: str,
     catalog: CropCatalog,
 ) -> ResolvedHarvestGoal:
+    # 현재 입력 조건을 바탕으로 harvest 목표를 계산하거나 결정한다.
     normalized_fruit_id = _normalize_text(fruit_id)
     if not normalized_fruit_id:
         raise ValueError('HarvestTomato goal requires a non-empty fruit_id.')
@@ -93,6 +95,7 @@ def ensure_harvest_target_available(
     tomato_id: str,
     harvested_tomato_ids: set[str],
 ) -> None:
+    # harvest target 사용 가능 상태가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     tomato = catalog.tomatoes[tomato_id]
     if not tomato.ready_to_harvest:
         raise ValueError(f'Tomato {tomato_id} is not marked ready_to_harvest.')
@@ -101,6 +104,7 @@ def ensure_harvest_target_available(
 
 
 def alignment_required(route_plan: HarvestRoutePlan) -> bool:
+    # alignment required 정보를 계산해 반환한다.
     distance = math.hypot(
         route_plan.align_pose.x - route_plan.approach_pose.x,
         route_plan.align_pose.y - route_plan.approach_pose.y,
@@ -119,6 +123,7 @@ def build_feedback(
     aligned_to_target: bool,
     gripper_engaged: bool,
 ) -> HarvestTomato.Feedback:
+    # feedback를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     feedback = HarvestTomato.Feedback()
     feedback.current_phase = current_phase
     feedback.progress_pct = max(0.0, min(100.0, float(progress_pct)))
@@ -134,6 +139,7 @@ def build_result(
     basket_count: int,
     message: str,
 ) -> HarvestTomato.Result:
+    # 결과를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     result = HarvestTomato.Result()
     result.success = bool(success)
     result.harvest_event_id = harvest_event_id
@@ -154,6 +160,7 @@ def build_harvest_event(
     success: bool,
     failure_reason: str = '',
 ) -> HarvestEvent:
+    # harvest 이벤트를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     event = HarvestEvent()
     event.header.frame_id = frame_id
     event.event_id = event_id
@@ -178,6 +185,7 @@ def build_basket_state(
     last_harvested_fruit_id: str,
     loaded_fruit_ids: list[str],
 ) -> HarvestBasketState:
+    # basket 상태를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     state = HarvestBasketState()
     state.header.frame_id = frame_id
     state.zone_id = zone_id
@@ -202,6 +210,7 @@ def build_mission_status(
     detail_message: str,
     retry_count: int = 0,
 ) -> MissionStatus:
+    # 미션 상태를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     status = MissionStatus()
     status.mission_id = mission_id
     status.mission_type = mission_type
@@ -216,6 +225,7 @@ def build_mission_status(
 
 
 def _stamp_payload(stamp: object) -> dict[str, int]:
+    # stamp 페이로드 정보를 계산해 반환한다.
     return {
         'sec': int(getattr(stamp, 'sec', 0)),
         'nanosec': int(getattr(stamp, 'nanosec', 0)),
@@ -223,6 +233,7 @@ def _stamp_payload(stamp: object) -> dict[str, int]:
 
 
 def _normalize_mission_runtime_status(state: str) -> str:
+    # 미션 런타임 데이터 상태를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = str(state).strip().lower()
     if normalized in {'planned', 'pending'}:
         return 'pending'
@@ -242,6 +253,7 @@ def build_harvest_event_payload(
     *,
     occurred_at: str,
 ) -> dict[str, object]:
+    # harvest 이벤트 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return {
         'event_id': event.event_id,
         'mission_id': event.mission_id,
@@ -263,6 +275,7 @@ def build_basket_state_payload(
     *,
     updated_at: str,
 ) -> dict[str, object]:
+    # basket 상태 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return {
         'zone_id': state.zone_id,
         'basket_count': int(state.basket_count),
@@ -282,6 +295,7 @@ def build_mission_status_payload(
     *,
     updated_at: str,
 ) -> dict[str, object]:
+    # 미션 상태 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return {
         'mission_id': status.mission_id,
         'mission_type': status.mission_type,
@@ -306,6 +320,7 @@ def should_retry_phase(
     retry_count: int,
     retry_limit: int,
 ) -> bool:
+    # retry 단계가 필요한 상황인지 여부를 판단한다.
     normalized_phase = current_phase.strip().upper()
     if not normalized_phase:
         return False
@@ -328,6 +343,7 @@ def build_failure_alert_payload(
     safety_stop_completed: bool,
     harvest_completed: bool,
 ) -> str:
+    # failure alert payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     payload = {
         'alert_type': 'HARVEST_FAILURE',
         'severity': 'ERROR',

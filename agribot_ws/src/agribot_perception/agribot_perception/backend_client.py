@@ -1,3 +1,4 @@
+# 이 모듈은 인지와 추론 패키지에서 backend client 기능을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,6 +9,7 @@ from urllib import error, request
 
 @dataclass(frozen=True)
 class BackendConfirmation:
+    # backend 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     observation_id: str
     final_label: str
     final_confidence: float
@@ -16,13 +18,15 @@ class BackendConfirmation:
 
 
 class BackendClient:
-    """Small HTTP client used by the robot thin inference node."""
+    # backend 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     def __init__(self, endpoint_url: str, timeout_sec: float) -> None:
+        # BackendClient 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         self._endpoint_url = endpoint_url
         self._timeout_sec = timeout_sec
 
     def confirm_detection(self, payload: dict[str, Any]) -> BackendConfirmation:
+        # 탐지 결과을 확정한다.
         raw_request = json.dumps(payload, ensure_ascii=False).encode('utf-8')
         http_request = request.Request(
             self._endpoint_url,

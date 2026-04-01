@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 watering controller logic 장치 흐름을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from .device_mapping import IoTDeviceSpec
 
 @dataclass(frozen=True)
 class WateringExecutionPlan:
+    # 급수 execution 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     accepted: bool
     command_id: str
     zone_id: str
@@ -24,6 +26,7 @@ class WateringExecutionPlan:
 
 
 def plan_watering_command(command: IoTCommand, device: IoTDeviceSpec) -> WateringExecutionPlan:
+    # 급수 명령를 어떤 순서와 조건으로 처리할지 계획한다.
     normalized_command_type = command.command_type.strip()
     if command.device_type.strip() != 'watering':
         return WateringExecutionPlan(
@@ -113,6 +116,7 @@ def build_watering_state(
     current_value: float,
     detail_message: str,
 ) -> IoTDeviceState:
+    # 급수 상태를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     message = IoTDeviceState()
     message.device_id = device.device_id
     message.zone_id = device.zone_id
@@ -133,6 +137,7 @@ def build_watering_result_payload(
     detail_message: str,
     executed_duration_sec: float,
 ) -> str:
+    # 급수 결과 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     payload = {
         'command_id': plan.command_id,
         'zone_id': plan.zone_id,

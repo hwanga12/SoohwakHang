@@ -1,3 +1,4 @@
+# 이 테스트는 자율주행과 경로 계획 패키지의 generate static map 동작을 검증한다.
 from agribot_navigation.generate_static_map import (
     DEFAULT_RESOLUTION,
     FREE,
@@ -15,6 +16,7 @@ def _cell_value(
     world_x: float,
     world_y: float,
 ) -> int:
+    # cell 값 정보를 계산해 반환한다.
     map_x, map_y = world_to_index(
         world_x,
         world_y,
@@ -26,6 +28,7 @@ def _cell_value(
 
 
 def test_farm_collision_rects_match_hardcoded_world_geometry() -> None:
+    # farm collision rects match hardcoded 월드 geometry 동작과 회귀 여부를 검증한다.
     rects = farm_collision_rects()
 
     assert len(rects) == 12
@@ -44,6 +47,7 @@ def test_farm_collision_rects_match_hardcoded_world_geometry() -> None:
 
 
 def test_build_farm_grid_matches_world_bounds_and_occupancy() -> None:
+    # build farm grid matches 월드 bounds AND occupancy 동작과 회귀 여부를 검증한다.
     grid, origin, extents = build_farm_grid()
 
     assert origin == (-10.25, -10.25)

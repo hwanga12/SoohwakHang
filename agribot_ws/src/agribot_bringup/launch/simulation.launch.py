@@ -1,16 +1,4 @@
-"""
-AgriBot Simulation Launch File
-Brings up the complete simulation environment including:
-- Gazebo Harmonic world
-- Robot model spawn
-- ROS-Gazebo bridge
-- Nav2
-- IoT status/result publishing stack
-
-Usage:
-    ros2 launch agribot_bringup simulation.launch.py
-"""
-
+# 이 런치 파일은 통합 실행과 런치 조율 패키지의 노드와 의존 구성을 한 번에 실행하도록 묶는다.
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -56,6 +44,7 @@ except ModuleNotFoundError:
 
 
 def generate_launch_description():
+    # 실행 description을 생성한다.
     default_gz_ip = os.environ.get('GZ_IP', '127.0.0.1')
     default_ign_ip = os.environ.get('IGN_IP', '127.0.0.1')
     runtime_dir = LaunchConfiguration('runtime_dir')
@@ -343,5 +332,6 @@ def generate_launch_description():
 
 
 def _sanitize_gz_partition_suffix(raw_value: str) -> str:
+    # sanitize gz partition suffix 정보를 계산해 반환한다.
     normalized = re.sub(r'[^A-Za-z0-9_]+', '_', raw_value).strip('_')
     return normalized or 'session'

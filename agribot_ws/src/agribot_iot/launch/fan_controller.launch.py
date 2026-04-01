@@ -1,3 +1,4 @@
+# 이 런치 파일은 IoT 장치 연동 패키지의 노드와 의존 구성을 한 번에 실행하도록 묶는다.
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -7,6 +8,7 @@ import os
 
 
 def generate_launch_description():
+    # 실행 description을 생성한다.
     package_share = get_package_share_directory('agribot_iot')
     default_params = os.path.join(package_share, 'config', 'fan_controller.yaml')
 

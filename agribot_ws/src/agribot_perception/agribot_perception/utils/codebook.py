@@ -1,14 +1,4 @@
-"""AI Hub 525 tomato codebook helpers.
-
-This module is intentionally runtime-agnostic. It centralizes the raw AI Hub code
-values and readable names so dataset audit, manifest generation, and YOLO
-conversion scripts can share one policy surface.
-
-Normal images are not treated as a detection class. Disease code ``00`` is
-preserved in the codebook, but detection pipelines should treat it as a negative
-sample with an empty label file.
-"""
-
+# 이 모듈은 인지와 추론 패키지에서 codebook 기능을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,7 +8,7 @@ from typing import Any, Mapping
 
 @dataclass(frozen=True, slots=True)
 class CodebookEntry:
-    """Readable metadata for a raw dataset code."""
+    # codebook 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     code: str
     name_en: str
@@ -30,7 +20,7 @@ class CodebookEntry:
 
 @dataclass(frozen=True, slots=True)
 class DetectionTarget:
-    """Detection label metadata for a selected disease code."""
+    # detection 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     class_index: int
     disease_code: str
@@ -58,6 +48,7 @@ def _entry(
     description: str = "",
     verified: bool = True,
 ) -> CodebookEntry:
+    # 항목 정보를 계산해 반환한다.
     return CodebookEntry(
         code=code,
         name_en=name_en,
@@ -69,6 +60,7 @@ def _entry(
 
 
 def _unknown_entry(code: str, group: str) -> CodebookEntry:
+    # 알 수 없는 항목 정보를 계산해 반환한다.
     group_name_ko = {
         "disease": "질병",
         "physiological_disorder": "생리장해",
@@ -91,6 +83,7 @@ def _unknown_entry(code: str, group: str) -> CodebookEntry:
 
 
 def _build_crop_codebook() -> Mapping[str, CodebookEntry]:
+    # 작물 codebook를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     entries = {
         "1": _entry(
             "1",
@@ -159,6 +152,7 @@ def _build_crop_codebook() -> Mapping[str, CodebookEntry]:
 
 
 def _build_area_codebook() -> Mapping[str, CodebookEntry]:
+    # area codebook를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     entries = {
         "1": _entry(
             "1",
@@ -196,6 +190,7 @@ def _build_area_codebook() -> Mapping[str, CodebookEntry]:
 
 
 def _build_grow_codebook() -> Mapping[str, CodebookEntry]:
+    # grow codebook를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     entries = {
         "11": _entry(
             "11",
@@ -223,6 +218,7 @@ def _build_grow_codebook() -> Mapping[str, CodebookEntry]:
 
 
 def _build_disease_codebook() -> Mapping[str, CodebookEntry]:
+    # disease codebook를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     entries: dict[str, CodebookEntry] = {
         NORMAL_DISEASE_CODE: _entry(
             NORMAL_DISEASE_CODE,
@@ -338,7 +334,7 @@ DETECTION_CLASS_NAME_BY_DISEASE_CODE = MappingProxyType(
 
 
 def normalize_code(value: Any) -> str:
-    """Normalize raw JSON values into a stable string code."""
+    # code를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
 
     if value is None:
         return ""
@@ -349,7 +345,7 @@ def lookup_codebook_entry(
     codebook: Mapping[str, CodebookEntry],
     code: Any,
 ) -> CodebookEntry | None:
-    """Return a codebook entry by raw code value."""
+    # lookup codebook 항목 정보를 계산해 반환한다.
 
     normalized = normalize_code(code)
     if not normalized:
@@ -358,66 +354,81 @@ def lookup_codebook_entry(
 
 
 def get_crop_entry(code: Any) -> CodebookEntry | None:
+    # 작물 entry를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return lookup_codebook_entry(CROP_CODEBOOK, code)
 
 
 def get_disease_entry(code: Any) -> CodebookEntry | None:
+    # disease entry를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return lookup_codebook_entry(DISEASE_CODEBOOK, code)
 
 
 def get_area_entry(code: Any) -> CodebookEntry | None:
+    # area entry를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return lookup_codebook_entry(AREA_CODEBOOK, code)
 
 
 def get_grow_entry(code: Any) -> CodebookEntry | None:
+    # grow entry를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return lookup_codebook_entry(GROW_CODEBOOK, code)
 
 
 def get_crop_name(code: Any, default: str | None = None) -> str | None:
+    # 작물 이름를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     entry = get_crop_entry(code)
     return entry.name_en if entry else default
 
 
 def get_disease_name(code: Any, default: str | None = None) -> str | None:
+    # disease 이름를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     entry = get_disease_entry(code)
     return entry.name_en if entry else default
 
 
 def get_area_name(code: Any, default: str | None = None) -> str | None:
+    # area 이름를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     entry = get_area_entry(code)
     return entry.name_en if entry else default
 
 
 def get_grow_name(code: Any, default: str | None = None) -> str | None:
+    # grow 이름를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     entry = get_grow_entry(code)
     return entry.name_en if entry else default
 
 
 def is_tomato_crop(code: Any) -> bool:
+    # tomato 작물인지 여부를 불리언 값으로 판단한다.
     return normalize_code(code) == TARGET_CROP_TOMATO_CODE
 
 
 def is_leaf_area(code: Any) -> bool:
+    # leaf area인지 여부를 불리언 값으로 판단한다.
     return normalize_code(code) == TARGET_AREA_LEAF_CODE
 
 
 def is_negative_sample_disease(code: Any) -> bool:
+    # negative sample disease인지 여부를 불리언 값으로 판단한다.
     return normalize_code(code) == NORMAL_DISEASE_CODE
 
 
 def is_detection_target_disease(code: Any) -> bool:
+    # detection target disease인지 여부를 불리언 값으로 판단한다.
     return normalize_code(code) in DETECTION_TARGET_BY_DISEASE_CODE
 
 
 def get_detection_target(code: Any) -> DetectionTarget | None:
+    # detection target를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return DETECTION_TARGET_BY_DISEASE_CODE.get(normalize_code(code))
 
 
 def get_detection_class_index(code: Any) -> int | None:
+    # detection class index를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return DETECTION_CLASS_INDEX_BY_DISEASE_CODE.get(normalize_code(code))
 
 
 def get_detection_class_name(code: Any) -> str | None:
+    # detection class 이름를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return DETECTION_CLASS_NAME_BY_DISEASE_CODE.get(normalize_code(code))
 
 

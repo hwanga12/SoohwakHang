@@ -1,3 +1,4 @@
+# 이 테스트는 백엔드의 treatment rule engine 동작과 회귀 여부를 검증한다.
 from __future__ import annotations
 
 import base64
@@ -15,10 +16,13 @@ from services.perception.schemas import ThinInferenceConfirmRequest
 
 
 class _DummyPersistenceService:
+    # 테스트용 저장 서비스 관련 핵심 흐름을 한곳에 모아 제공하는 서비스 클래스다.
     def persist_confirmation(self, **kwargs):
+        # confirmation을 저장한다.
         del kwargs
 
         class _Refs:
+            # refs 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
             robot_row_id = 1
             zone_row_id = 2
             plant_row_id = 3
@@ -29,6 +33,7 @@ class _DummyPersistenceService:
 
 
 def test_powdery_mildew_selects_nearest_sprinkler() -> None:
+    # powdery mildew selects nearest sprinkler 동작과 회귀 여부를 검증한다.
     engine = DiseaseTreatmentRuleEngine()
 
     plan = engine.evaluate(
@@ -48,6 +53,7 @@ def test_powdery_mildew_selects_nearest_sprinkler() -> None:
 
 
 def test_column_aligned_plant_prefers_same_column_sprinkler() -> None:
+    # column aligned 작물 개체 prefers same column sprinkler 동작과 회귀 여부를 검증한다.
     engine = DiseaseTreatmentRuleEngine()
 
     plan = engine.evaluate(
@@ -63,6 +69,7 @@ def test_column_aligned_plant_prefers_same_column_sprinkler() -> None:
 
 
 def test_calcium_deficiency_without_position_waits_for_target() -> None:
+    # calcium deficiency without 위치 waits FOR target 동작과 회귀 여부를 검증한다.
     engine = DiseaseTreatmentRuleEngine()
 
     plan = engine.evaluate(
@@ -78,6 +85,7 @@ def test_calcium_deficiency_without_position_waits_for_target() -> None:
 
 
 def test_gray_mold_is_no_action() -> None:
+    # gray mold IS NO action 동작과 회귀 여부를 검증한다.
     engine = DiseaseTreatmentRuleEngine()
 
     plan = engine.evaluate(
@@ -92,6 +100,7 @@ def test_gray_mold_is_no_action() -> None:
 
 
 def test_confirm_detection_embeds_treatment_plan(tmp_path, monkeypatch) -> None:
+    # confirm detection embeds 처치 계획 동작과 회귀 여부를 검증한다.
     monkeypatch.setenv('AGRIBOT_BACKEND_RUNTIME_DIR', str(tmp_path))
     service = MainInferenceService()
     service._infer = lambda image_path: []  # type: ignore[method-assign]
@@ -122,6 +131,7 @@ def test_confirm_detection_embeds_treatment_plan(tmp_path, monkeypatch) -> None:
 
 
 def test_treatment_rule_engine_accepts_standardized_disease_suffix() -> None:
+    # 처치 rule engine accepts standardized disease suffix 동작과 회귀 여부를 검증한다.
     engine = DiseaseTreatmentRuleEngine()
 
     plan = engine.evaluate(

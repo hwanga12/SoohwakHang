@@ -1,3 +1,4 @@
+# 이 테스트는 백엔드의 mission bridge service 동작과 회귀 여부를 검증한다.
 from __future__ import annotations
 
 import json
@@ -25,16 +26,19 @@ from robot_runtime_state_service import (  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def runtime_dir_isolation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # 런타임 dir isolation 정보를 계산해 반환한다.
     monkeypatch.setenv("AGRIBOT_RUNTIME_DIR", str(tmp_path))
     yield
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
+    # JSON 데이터를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def test_publish_patrol_start_mission_writes_runtime_request_contract() -> None:
+    # publish patrol start 미션 writes 런타임 데이터 요청 데이터 계약 동작과 회귀 여부를 검증한다.
     response = publish_patrol_start_mission(
         robot_id="AGR-02",
         zone_ids=["farm_01_west", "farm_01_center"],
@@ -57,6 +61,7 @@ def test_publish_patrol_start_mission_writes_runtime_request_contract() -> None:
 
 
 def test_publish_harvest_target_mission_writes_plant_and_fruit_ids() -> None:
+    # publish harvest target 미션 writes 작물 개체 AND fruit ID 목록 동작과 회귀 여부를 검증한다.
     response = publish_harvest_target_mission(
         robot_id="AGR-02",
         plant_id="farm01_plant_03",
@@ -82,6 +87,7 @@ def test_publish_harvest_target_mission_writes_plant_and_fruit_ids() -> None:
 
 
 def test_publish_operator_mission_rejects_when_latest_mission_is_running() -> None:
+    # publish operator 미션 rejects when latest 미션 IS running 동작과 회귀 여부를 검증한다.
     _write_json(
         mission_status_file_path(),
         {
@@ -106,6 +112,7 @@ def test_publish_operator_mission_rejects_when_latest_mission_is_running() -> No
 
 
 def test_read_mission_status_payload_prefers_mission_record_file() -> None:
+    # read 미션 상태 payload prefers 미션 기록 파일 동작과 회귀 여부를 검증한다.
     _write_json(
         mission_status_record_file_path("mission-harvest-002"),
         {

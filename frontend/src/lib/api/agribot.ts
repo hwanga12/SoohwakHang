@@ -1,3 +1,6 @@
+/*
+ * 이 모듈은 AgriBot 백엔드 API와 연결되는 화면별 요청 함수를 모은다.
+ */
 import { isAxiosError } from 'axios'
 import { markRouteFailed, markRouteVerified } from '@/app/dev-runtime'
 import { env } from '@/config/env'
@@ -10,9 +13,21 @@ import {
   type SemanticScene,
 } from '@/lib/robot-map/farm-semantic-map'
 
+/**
+ * 카드 톤 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type CardTone = 'accent' | 'warning' | 'danger'
+/**
+ * 데이터 출처 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type DataSource = 'live' | 'fallback'
+/**
+ * 건강도 톤 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type HealthTone = 'healthy' | 'warning' | 'critical'
+/**
+ * 조회 출처 지도 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type QuerySourceMap = Partial<Record<string, DataSource>>
 
 type UnknownRecord = Record<string, unknown>
@@ -27,6 +42,9 @@ type PageDebugMeta = {
   querySources: QuerySourceMap
 }
 
+/**
+ * metric 카드 데이터 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type MetricCardData = {
   label: string
   value: string
@@ -34,6 +52,9 @@ export type MetricCardData = {
   tone: CardTone
 }
 
+/**
+ * log 이벤트 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type LogEvent = {
   tone: CardTone
   title: string
@@ -41,6 +62,9 @@ export type LogEvent = {
   time: string
 }
 
+/**
+ * queue item 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type QueueItem = {
   tone: HealthTone
   label: string
@@ -48,6 +72,9 @@ export type QueueItem = {
   detail: string
 }
 
+/**
+ * 구역 상태 카드 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type ZoneStatusCard = {
   id: string
   name: string
@@ -55,6 +82,9 @@ export type ZoneStatusCard = {
   tone: HealthTone
 }
 
+/**
+ * dashboard 페이지 화면을 구성할 때 필요한 데이터를 묶어 둔 타입이다.
+ */
 export type DashboardPageData = {
   source: DataSource
   debug: PageDebugMeta
@@ -71,6 +101,9 @@ export type DashboardPageData = {
   zones: ZoneStatusCard[]
 }
 
+/**
+ * 로봇 구역 프리셋 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type RobotZonePreset = {
   id: string
   name: string
@@ -78,6 +111,9 @@ export type RobotZonePreset = {
   representativePose: RobotTargetPose
 }
 
+/**
+ * 로봇 target 위치 자세 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type RobotTargetPose = {
   x: number
   y: number
@@ -86,6 +122,9 @@ export type RobotTargetPose = {
   frameId: string
 }
 
+/**
+ * 로봇 관측 목표 후보 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type RobotObservationGoalCandidate = {
   inspectWaypointId: string
   inspectWaypointName: string | null
@@ -93,6 +132,9 @@ export type RobotObservationGoalCandidate = {
   finalTargetPose: RobotTargetPose
 }
 
+/**
+ * 로봇 지도 데이터 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type RobotMapData = {
   source: DataSource
   mapId: string
@@ -109,6 +151,9 @@ export type RobotMapData = {
   }
 }
 
+/**
+ * 로봇 명령 상태를 화면과 로직에서 공통으로 쓰기 위한 타입이다.
+ */
 export type RobotCommandStatus = {
   source: DataSource
   available: boolean
@@ -133,6 +178,9 @@ export type RobotCommandStatus = {
   controlState: RobotControlState | null
 }
 
+/**
+ * 로봇 주행 미리보기 지점 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type RobotNavigationPreviewPoint = {
   x: number
   y: number
@@ -141,6 +189,9 @@ export type RobotNavigationPreviewPoint = {
   frameId: string
 }
 
+/**
+ * 로봇 주행 미리보기 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type RobotNavigationPreview = {
   source: DataSource
   available: boolean
@@ -154,6 +205,9 @@ export type RobotNavigationPreview = {
   note: string
 }
 
+/**
+ * 로봇 명령 전달 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type RobotCommandDispatch = {
   commandId: string
   message: string
@@ -164,6 +218,9 @@ export type RobotCommandDispatch = {
   targetZoneId: string | null
 }
 
+/**
+ * demo 진단 결과 구조를 명확하게 주고받기 위한 타입이다.
+ */
 export type DemoDiagnosisResult = {
   observationId: string
   finalLabel: string
@@ -179,6 +236,9 @@ export type DemoDiagnosisResult = {
   diagnosisNeeded: boolean
 }
 
+/**
+ * 미션 전달 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type MissionDispatch = {
   missionId: string
   commandId: string
@@ -197,6 +257,9 @@ export type MissionDispatch = {
   tomatoId: string | null
 }
 
+/**
+ * 미션 상태를 화면과 로직에서 공통으로 쓰기 위한 타입이다.
+ */
 export type MissionStatus = {
   source: DataSource
   available: boolean
@@ -229,6 +292,9 @@ export type MissionStatus = {
   completedAt: string
 }
 
+/**
+ * 로봇 위치 자세 snapshot 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type RobotPoseSnapshot = {
   x: number
   y: number
@@ -237,6 +303,9 @@ export type RobotPoseSnapshot = {
   updatedAt: string
 }
 
+/**
+ * 로봇 제어 상태를 화면과 로직에서 공통으로 쓰기 위한 타입이다.
+ */
 export type RobotControlState = {
   mode: 'normal' | 'paused' | 'emergency_stop'
   activeActivity: 'idle' | 'manual_navigation' | 'patrol'
@@ -247,6 +316,9 @@ export type RobotControlState = {
   updatedAt: string
 }
 
+/**
+ * 로봇 페이지 화면을 구성할 때 필요한 데이터를 묶어 둔 타입이다.
+ */
 export type RobotPageData = {
   source: DataSource
   debug: PageDebugMeta
@@ -270,6 +342,9 @@ export type RobotPageData = {
   latestCommandStatus: RobotCommandStatus
 }
 
+/**
+ * 작물 alert 카드 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type PlantAlertCard = {
   id: string
   severity: '심각' | '주의'
@@ -282,6 +357,9 @@ export type PlantAlertCard = {
   imageUrl: string
 }
 
+/**
+ * 작물 row 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type PlantRow = {
   name: string
   id: string
@@ -298,6 +376,9 @@ export type PlantRow = {
   latestImageUrl: string
 }
 
+/**
+ * plants 페이지 화면을 구성할 때 필요한 데이터를 묶어 둔 타입이다.
+ */
 export type PlantsPageData = {
   source: DataSource
   debug: PageDebugMeta
@@ -309,6 +390,9 @@ export type PlantsPageData = {
   plants: PlantRow[]
 }
 
+/**
+ * 작물 관측 entry 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type PlantObservationEntry = {
   id: string
   label: string
@@ -320,6 +404,9 @@ export type PlantObservationEntry = {
   detail: string
 }
 
+/**
+ * 작물 관측 feed 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type PlantObservationFeed = {
   source: DataSource
   plantId: string
@@ -327,6 +414,9 @@ export type PlantObservationFeed = {
   items: PlantObservationEntry[]
 }
 
+/**
+ * 실시간 camera snapshot 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type LiveCameraSnapshot = {
   source: DataSource
   available: boolean
@@ -341,6 +431,9 @@ export type LiveCameraSnapshot = {
   detectionConfidence: number | null
 }
 
+/**
+ * device 카드 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type DeviceCard = {
   id: string
   icon: string
@@ -350,6 +443,9 @@ export type DeviceCard = {
   action: 'toggle' | 'button'
 }
 
+/**
+ * recommendation item 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type RecommendationItem = {
   id: string
   title: string
@@ -358,6 +454,9 @@ export type RecommendationItem = {
   status: string
 }
 
+/**
+ * actuation history item 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type ActuationHistoryItem = {
   id: string
   device: string
@@ -367,6 +466,9 @@ export type ActuationHistoryItem = {
   tone: HealthTone
 }
 
+/**
+ * environment 페이지 화면을 구성할 때 필요한 데이터를 묶어 둔 타입이다.
+ */
 export type EnvironmentPageData = {
   source: DataSource
   debug: PageDebugMeta
@@ -377,6 +479,9 @@ export type EnvironmentPageData = {
   history: ActuationHistoryItem[]
 }
 
+/**
+ * harvest batch 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type HarvestBatch = {
   route: string
   summary: string
@@ -390,6 +495,9 @@ export type HarvestBatch = {
   success: boolean | null
 }
 
+/**
+ * harvest 페이지 화면을 구성할 때 필요한 데이터를 묶어 둔 타입이다.
+ */
 export type HarvestPageData = {
   source: DataSource
   debug: PageDebugMeta
@@ -409,6 +517,9 @@ export type HarvestPageData = {
   qualityStats: Array<{ label: string; value: string }>
 }
 
+/**
+ * alert timeline item 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type AlertTimelineItem = {
   id: string
   tone: CardTone
@@ -419,6 +530,9 @@ export type AlertTimelineItem = {
   acknowledged: boolean
 }
 
+/**
+ * alerts 페이지 화면을 구성할 때 필요한 데이터를 묶어 둔 타입이다.
+ */
 export type AlertsPageData = {
   source: DataSource
   debug: PageDebugMeta
@@ -628,6 +742,9 @@ function extractPlantId(value: unknown) {
   return match?.[0] ?? ''
 }
 
+/**
+ * 작물 상태만으로 추가 진단이 필요한지 빠르게 판별하는 함수다.
+ */
 export function plantNeedsDiagnosis(plant?: {
   status?: string
   recommendedAction?: string

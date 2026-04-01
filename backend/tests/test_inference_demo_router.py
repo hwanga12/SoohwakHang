@@ -1,3 +1,4 @@
+# 이 테스트는 백엔드의 inference demo router 동작과 회귀 여부를 검증한다.
 from __future__ import annotations
 
 import base64
@@ -13,6 +14,7 @@ from services.perception.schemas import ThinInferenceConfirmResponse
 
 
 def test_confirm_demo_diagnosis_uses_manifest_preliminary_label(monkeypatch, tmp_path) -> None:
+    # confirm demo diagnosis uses manifest preliminary 라벨 동작과 회귀 여부를 검증한다.
     image_path = tmp_path / "healthy-demo.jpg"
     image_path.write_bytes(b"fake-image-bytes")
 
@@ -30,6 +32,7 @@ def test_confirm_demo_diagnosis_uses_manifest_preliminary_label(monkeypatch, tmp
     captured: dict[str, object] = {}
 
     def _fake_confirm_detection(request):
+        # fake confirm 탐지 결과 정보를 계산해 반환한다.
         captured["request"] = request
         return ThinInferenceConfirmResponse(
             observation_id="demo-observation",

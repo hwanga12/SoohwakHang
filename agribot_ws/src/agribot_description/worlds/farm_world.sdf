@@ -45,7 +45,7 @@
       </link>
     </model>
 
-    <!-- Invisible boundary walls -> Outer 20x20m mapped border -->
+    <!-- 바깥 20x20m 지도를 벗어나지 않도록 두는 보이지 않는 경계 벽 -->
     <model name="invisible_boundaries">
       <static>true</static>
       <link name="link">

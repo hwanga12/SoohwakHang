@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
-"""Convert a tomato detection manifest into a YOLO-style dataset tree.
 
-The converter consumes the CSV produced by ``build_tomato_manifest.py`` or the
-subset-aware builder and only processes rows where ``use_for_detection`` is
-true.
-
-Positive samples are converted from top-level raw JSON bbox annotations into
-YOLO ``.txt`` labels. Normal images (disease code ``00``) remain negative
-samples and receive an empty label file.
-"""
-
+# 이 모듈은 인지와 추론 패키지에서 json to yolo det 기능을 담당한다.
 from __future__ import annotations
 
 import argparse
@@ -91,7 +82,7 @@ SKIPPED_FIELDNAMES = [
 
 @dataclass(frozen=True, slots=True)
 class ManifestRecord:
-    """Normalized manifest row used by the converter."""
+    # manifest 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     line_number: int
     image_path: Path
@@ -106,6 +97,7 @@ class ManifestRecord:
 
 @dataclass(frozen=True, slots=True)
 class LabelBuildResult:
+    # 라벨 build 처리 결과를 한 번에 전달하기 위한 클래스를 정의한다.
     label_lines: list[str]
     raw_bbox_count: int
     clipped_bbox_count: int
@@ -115,6 +107,7 @@ class LabelBuildResult:
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(
         description="Convert a tomato detection manifest CSV into a YOLO dataset."
     )
@@ -144,10 +137,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def parse_bool_text(value: Any) -> bool:
+    # bool text를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return str(value).strip().lower() in {"1", "true", "yes", "y"}
 
 
 def parse_int_text(value: Any, *, default: int = 0) -> int:
+    # INT text를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     text = str(value).strip()
     if not text:
         return default
@@ -155,6 +150,7 @@ def parse_int_text(value: Any, *, default: int = 0) -> int:
 
 
 def resolve_manifest_path(path_text: str, manifest_path: Path) -> Path:
+    # 현재 입력 조건을 바탕으로 manifest 경로를 계산하거나 결정한다.
     raw_path = Path(path_text).expanduser()
     if raw_path.is_absolute():
         return raw_path
@@ -162,6 +158,7 @@ def resolve_manifest_path(path_text: str, manifest_path: Path) -> Path:
 
 
 def extract_annotations(data: dict[str, Any]) -> list[dict[str, Any]]:
+    # 원본 데이터에서 annotations만 골라 추출한다.
     if "annotation" in data:
         raw = data.get("annotation")
     elif "annotations" in data:
@@ -179,11 +176,13 @@ def extract_annotations(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def load_json(json_path: Path) -> dict[str, Any]:
+    # JSON 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with json_path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
 def load_manifest_records(manifest_path: Path) -> tuple[list[ManifestRecord], int]:
+    # manifest 기록 목록를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with manifest_path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         headers = set(reader.fieldnames or [])
@@ -239,15 +238,18 @@ def load_manifest_records(manifest_path: Path) -> tuple[list[ManifestRecord], in
 
 
 def normalize_split_name(value: str) -> str | None:
+    # split 이름를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return SPLIT_ALIASES.get(value.strip().lower())
 
 
 def path_parts(path_text: str) -> list[str]:
+    # 경로 parts 정보를 계산해 반환한다.
     raw_path = Path(path_text)
     return [part for part in raw_path.parts if part not in {"", raw_path.anchor}]
 
 
 def relative_tail_from_path(path_text: str, fallback_name: str) -> Path:
+    # relative tail 경로 정보를 계산해 반환한다.
     if not path_text:
         return Path(fallback_name)
 
@@ -263,6 +265,7 @@ def relative_tail_from_path(path_text: str, fallback_name: str) -> Path:
 
 
 def infer_split_and_tail(record: ManifestRecord, default_split: str) -> tuple[str, Path]:
+    # 입력 데이터를 바탕으로 split AND tail를 추론한다.
     explicit_split = normalize_split_name(record.source_split)
     if explicit_split is not None:
         return explicit_split, relative_tail_from_path(record.image_rel_path, record.image_path.name)
@@ -289,11 +292,13 @@ def infer_split_and_tail(record: ManifestRecord, default_split: str) -> tuple[st
 
 
 def remove_existing_file(path: Path) -> None:
+    # existing 파일를 정리하거나 제거한다.
     if path.is_symlink() or path.exists():
         path.unlink()
 
 
 def materialize_image(source_path: Path, destination_path: Path, image_mode: str) -> None:
+    # materialize 이미지 정보를 계산해 반환한다.
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     remove_existing_file(destination_path)
 
@@ -311,6 +316,7 @@ def materialize_image(source_path: Path, destination_path: Path, image_mode: str
 
 
 def read_png_size(image_path: Path) -> tuple[int, int]:
+    # PNG size를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with image_path.open("rb") as handle:
         header = handle.read(24)
     if header[:8] != b"\x89PNG\r\n\x1a\n":
@@ -320,6 +326,7 @@ def read_png_size(image_path: Path) -> tuple[int, int]:
 
 
 def read_gif_size(image_path: Path) -> tuple[int, int]:
+    # GIF size를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with image_path.open("rb") as handle:
         header = handle.read(10)
     if header[:6] not in {b"GIF87a", b"GIF89a"}:
@@ -329,6 +336,7 @@ def read_gif_size(image_path: Path) -> tuple[int, int]:
 
 
 def read_bmp_size(image_path: Path) -> tuple[int, int]:
+    # BMP size를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with image_path.open("rb") as handle:
         header = handle.read(26)
     if header[:2] != b"BM":
@@ -338,6 +346,7 @@ def read_bmp_size(image_path: Path) -> tuple[int, int]:
 
 
 def read_jpeg_size(image_path: Path) -> tuple[int, int]:
+    # jpeg size를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with image_path.open("rb") as handle:
         if handle.read(2) != b"\xff\xd8":
             raise ValueError("Not a JPEG file.")
@@ -379,6 +388,7 @@ def read_jpeg_size(image_path: Path) -> tuple[int, int]:
 
 
 def read_image_size(image_path: Path) -> tuple[int, int]:
+    # 이미지 size를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         from PIL import Image
     except ImportError:
@@ -405,6 +415,7 @@ def read_image_size(image_path: Path) -> tuple[int, int]:
 
 
 def to_float(value: Any, *, field_name: str) -> float:
+    # 현재 값을 float 형식으로 변환한다.
     try:
         return float(value)
     except (TypeError, ValueError) as exc:
@@ -412,6 +423,7 @@ def to_float(value: Any, *, field_name: str) -> float:
 
 
 def xywh_from_point_list(points: list[Any]) -> tuple[float, float, float, float] | None:
+    # xywh point 목록 정보를 계산해 반환한다.
     if not points:
         return None
 
@@ -438,6 +450,7 @@ def xywh_from_point_list(points: list[Any]) -> tuple[float, float, float, float]
 
 
 def parse_bbox_dict(bbox: dict[str, Any]) -> tuple[float, float, float, float]:
+    # 바운딩 박스 dict를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = {str(key).lower(): value for key, value in bbox.items()}
 
     if {"x", "y", "w", "h"} <= normalized.keys():
@@ -503,6 +516,7 @@ def parse_bbox_dict(bbox: dict[str, Any]) -> tuple[float, float, float, float]:
 
 
 def iter_bbox_items(bbox_value: Any) -> list[dict[str, Any]]:
+    # iter 경계 상자 items 정보를 계산해 반환한다.
     if isinstance(bbox_value, dict):
         return [bbox_value]
     if isinstance(bbox_value, list):
@@ -518,6 +532,7 @@ def clip_bbox_to_image(
     image_width: int,
     image_height: int,
 ) -> tuple[tuple[float, float, float, float] | None, bool]:
+    # clip 경계 상자 이미지 정보를 계산해 반환한다.
     if image_width <= 0 or image_height <= 0:
         raise ValueError("Image size must be positive.")
 
@@ -544,6 +559,7 @@ def to_yolo_line(
     image_width: int,
     image_height: int,
 ) -> str:
+    # 현재 값을 yolo line 형식으로 변환한다.
     x, y, width, height = bbox
     center_x = (x + (width / 2.0)) / image_width
     center_y = (y + (height / 2.0)) / image_height
@@ -565,6 +581,7 @@ def make_skipped_entry(
     bbox_index: int | None = None,
     bbox_raw: str = "",
 ) -> dict[str, str]:
+    # skipped entry를 새로 만들어 다음 처리 단계로 넘긴다.
     return {
         "line_number": str(record.line_number),
         "split": split_name,
@@ -585,6 +602,7 @@ def build_positive_label_lines(
     image_height: int,
     split_name: str,
 ) -> LabelBuildResult:
+    # positive 라벨 lines를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     class_index = get_detection_class_index(record.disease_code)
     if class_index is None:
         raise ValueError(
@@ -678,6 +696,7 @@ def build_positive_label_lines(
 
 
 def write_label_file(label_path: Path, label_lines: list[str]) -> None:
+    # 라벨 파일를 파일이나 저장소에 기록한다.
     label_path.parent.mkdir(parents=True, exist_ok=True)
     with label_path.open("w", encoding="utf-8", newline="\n") as handle:
         if label_lines:
@@ -686,6 +705,7 @@ def write_label_file(label_path: Path, label_lines: list[str]) -> None:
 
 
 def write_dataset_yaml(output_root: Path, split_counts: dict[str, int]) -> Path:
+    # dataset YAML 데이터를 파일이나 저장소에 기록한다.
     dataset_yaml_path = output_root / "dataset.yaml"
     lines = [
         f"path: {output_root}",
@@ -705,6 +725,7 @@ def write_dataset_yaml(output_root: Path, split_counts: dict[str, int]) -> Path:
 
 
 def write_skipped_csv(skipped_entries: list[dict[str, str]], output_path: Path) -> Path:
+    # skipped CSV를 파일이나 저장소에 기록한다.
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=SKIPPED_FIELDNAMES)
@@ -714,6 +735,7 @@ def write_skipped_csv(skipped_entries: list[dict[str, str]], output_path: Path) 
 
 
 def write_stats_json(output_path: Path, payload: dict[str, Any]) -> Path:
+    # stats JSON 데이터를 파일이나 저장소에 기록한다.
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -739,6 +761,7 @@ def print_summary(
     collapsed_bbox_count: int,
     split_counts: dict[str, int],
 ) -> None:
+    # print 요약 정보를 계산해 반환한다.
     print(f"Output root: {output_root}")
     print(f"Dataset YAML: {dataset_yaml_path}")
     print(f"Stats JSON: {stats_path}")
@@ -771,6 +794,7 @@ def convert_manifest(
     image_mode: str,
     default_split: str,
 ) -> int:
+    # manifest를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     records, total_rows = load_manifest_records(manifest_path)
     if not records:
         raise SystemExit("No manifest rows with use_for_detection=true were found.")
@@ -916,6 +940,7 @@ def convert_manifest(
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = parse_args()
     manifest_path = Path(args.manifest).expanduser().resolve()

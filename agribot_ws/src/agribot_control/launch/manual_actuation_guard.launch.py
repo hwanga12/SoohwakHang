@@ -1,3 +1,4 @@
+# 이 런치 파일은 상위 제어와 의사결정 패키지의 노드와 의존 구성을 한 번에 실행하도록 묶는다.
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -8,6 +9,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    # 실행 description을 생성한다.
     default_config = os.path.join(
         get_package_share_directory('agribot_control'),
         'config',

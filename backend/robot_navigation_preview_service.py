@@ -1,3 +1,4 @@
+# 이 모듈은 로봇 이동 미리보기 데이터를 읽어온다.
 from __future__ import annotations
 
 import json
@@ -7,11 +8,13 @@ from robot_runtime_state_service import navigation_path_snapshot_file_path
 
 
 def _sanitize_map_id(map_id: str | None) -> str:
+    # sanitize 지도 id 정보를 계산해 반환한다.
     normalized = str(map_id or '').strip()
     return normalized or 'farm_map'
 
 
 def _fallback_navigation_preview_payload(map_id: str) -> dict[str, Any]:
+    # 대체값 주행 미리보기 페이로드 정보를 계산해 반환한다.
     return {
         'source': 'fallback',
         'available': False,
@@ -27,6 +30,7 @@ def _fallback_navigation_preview_payload(map_id: str) -> dict[str, Any]:
 
 
 def _normalize_navigation_preview_points(raw_points: Any) -> list[dict[str, Any]]:
+    # navigation 미리보기 데이터 points를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     if not isinstance(raw_points, list):
         return []
 
@@ -51,6 +55,7 @@ def _normalize_navigation_preview_points(raw_points: Any) -> list[dict[str, Any]
 
 
 def read_navigation_preview_payload(map_id: str | None = None) -> dict[str, Any]:
+    # navigation 미리보기 데이터 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     resolved_map_id = _sanitize_map_id(map_id)
     snapshot_path = navigation_path_snapshot_file_path()
 

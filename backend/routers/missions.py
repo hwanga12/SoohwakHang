@@ -1,3 +1,4 @@
+# 이 모듈은 백엔드의 미션 API 라우터를 정의하고, 요청을 서비스 계층과 연결한다.
 from typing import List, Literal, Optional
 import uuid
 from datetime import datetime
@@ -31,6 +32,7 @@ MISSION_ID_NAMESPACE = uuid.UUID("3f8f6e6f-2087-4fd0-b0f5-c43dfcc5406b")
 
 
 class PatrolStartReq(BaseModel):
+    # patrol start 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     mission_id: Optional[str] = Field(default=None)
     robot_id: str
     zone_ids: List[str]
@@ -40,6 +42,7 @@ class PatrolStartReq(BaseModel):
 
 
 class PatrolStopReq(BaseModel):
+    # patrol stop 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     command_id: Optional[str] = Field(default=None)
     robot_id: str
     requested_by: str
@@ -47,6 +50,7 @@ class PatrolStopReq(BaseModel):
 
 
 class ReturnHomeReq(BaseModel):
+    # return home 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     command_id: Optional[str] = Field(default=None)
     robot_id: str
     requested_by: str
@@ -57,6 +61,7 @@ class ReturnHomeReq(BaseModel):
 
 
 class HarvestReq(BaseModel):
+    # harvest 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     mission_id: Optional[str] = Field(default=None)
     robot_id: str
     plant_id: str
@@ -67,6 +72,7 @@ class HarvestReq(BaseModel):
 
 
 def _raise_mission_http_error(exc: Exception) -> None:
+    # raise 미션 http error 정보를 계산해 반환한다.
     if isinstance(exc, DuplicateMissionIdError):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if isinstance(exc, MissionBridgeConflictError):
@@ -81,6 +87,7 @@ def _raise_mission_http_error(exc: Exception) -> None:
 
 
 def _raise_robot_command_http_error(exc: Exception) -> None:
+    # raise 로봇 명령 http error 정보를 계산해 반환한다.
     if isinstance(exc, DuplicateCommandIdError):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if isinstance(exc, RobotCommandConflictError):
@@ -95,6 +102,7 @@ def _raise_robot_command_http_error(exc: Exception) -> None:
 
 
 def _publish_command_or_raise(**kwargs):
+    # 명령 OR raise를 외부 시스템이나 다음 처리 단계로 전달한다.
     try:
         return publish_robot_command(**kwargs)
     except Exception as exc:  # pragma: no cover - status mapping helper
@@ -102,6 +110,7 @@ def _publish_command_or_raise(**kwargs):
 
 
 def _publish_mission_or_raise(callback, **kwargs):
+    # 미션 OR raise를 외부 시스템이나 다음 처리 단계로 전달한다.
     try:
         return callback(**kwargs)
     except Exception as exc:  # pragma: no cover - status mapping helper
@@ -109,6 +118,7 @@ def _publish_mission_or_raise(callback, **kwargs):
 
 
 def _normalize_db_status(value: str) -> str:
+    # DB 상태를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = str(value).strip().upper()
     if normalized in {"SUCCEEDED"}:
         return "COMPLETED"
@@ -118,6 +128,7 @@ def _normalize_db_status(value: str) -> str:
 
 
 def _mission_storage_uuid(mission_id: str) -> uuid.UUID:
+    # 미션 storage uuid 정보를 계산해 반환한다.
     try:
         return uuid.UUID(str(mission_id).strip())
     except (ValueError, TypeError, AttributeError):
@@ -125,6 +136,7 @@ def _mission_storage_uuid(mission_id: str) -> uuid.UUID:
 
 
 def _resolve_existing_fk(db, model, value: str | None) -> str | None:
+    # 현재 입력 조건을 바탕으로 existing FK를 계산하거나 결정한다.
     normalized = str(value or "").strip()
     if not normalized:
         return None
@@ -133,6 +145,7 @@ def _resolve_existing_fk(db, model, value: str | None) -> str | None:
 
 
 def _resolve_existing_zone_id(db, zone_id: str | None) -> str | None:
+    # 현재 입력 조건을 바탕으로 existing 구역 ID를 계산하거나 결정한다.
     normalized = _resolve_existing_fk(db, Zone, zone_id)
     if normalized is not None:
         return normalized
@@ -140,6 +153,7 @@ def _resolve_existing_zone_id(db, zone_id: str | None) -> str | None:
 
 
 def _get_or_create_robot_row(db, robot_name: str) -> Robot:
+    # OR create robot ROW를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     robot = db.query(Robot).filter(Robot.name == robot_name).first()
     if robot is not None:
         return robot
@@ -161,6 +175,7 @@ def _upsert_mission_row(
     target_fruit_id: str | None = None,
     progress_percent: int | None = None,
 ) -> None:
+    # upsert 미션 row 정보를 계산해 반환한다.
     db = SessionLocal()
     try:
         mission_uuid = _mission_storage_uuid(mission_id)
@@ -203,6 +218,7 @@ def _upsert_mission_row(
 
 
 def _mission_row_payload(mission: Mission, *, requested_mission_id: str | None = None) -> dict:
+    # 미션 row 페이로드 정보를 계산해 반환한다.
     payload_mission_id = str(requested_mission_id or mission.id)
     return {
         "available": True,
@@ -237,6 +253,7 @@ def _mission_row_payload(mission: Mission, *, requested_mission_id: str | None =
 
 
 def _enrich_from_db(runtime_payload: dict, mission_id: str) -> dict:
+    # enrich db 정보를 계산해 반환한다.
     db = SessionLocal()
     try:
         mission = db.query(Mission).filter(Mission.id == _mission_storage_uuid(mission_id)).first()
@@ -267,7 +284,7 @@ def _enrich_from_db(runtime_payload: dict, mission_id: str) -> dict:
 
 @router.post("/patrol/start")
 def start_patrol(req: PatrolStartReq):
-    """operator patrol 미션 요청을 runtime bridge request 파일로 기록합니다."""
+    # patrol 실행 흐름을 시작하거나 마무리한다.
     payload = _publish_mission_or_raise(
         publish_patrol_start_mission,
         mission_id=req.mission_id,
@@ -290,7 +307,7 @@ def start_patrol(req: PatrolStartReq):
 
 @router.post("/patrol/stop")
 def stop_patrol(req: PatrolStopReq):
-    """순찰 중지 호환 endpoint. 내부적으로 pause_patrol 명령 publish 결과를 반환합니다."""
+    # patrol 실행 흐름을 시작하거나 마무리한다.
     payload = _publish_command_or_raise(
         command_id=req.command_id,
         robot_id=req.robot_id,
@@ -303,7 +320,7 @@ def stop_patrol(req: PatrolStopReq):
 
 @router.post("/return-home")
 def return_home(req: ReturnHomeReq):
-    """홈 복귀 호환 endpoint. 내부적으로 return_home 명령 publish 결과를 반환합니다."""
+    # return home 정보를 계산해 반환한다.
     payload = _publish_command_or_raise(
         command_id=req.command_id,
         robot_id=req.robot_id,
@@ -318,7 +335,7 @@ def return_home(req: ReturnHomeReq):
 
 @router.post("/harvest")
 def harvest_mission(req: HarvestReq):
-    """operator harvest target 요청을 runtime bridge request 파일로 기록합니다."""
+    # 수확 미션 정보를 계산해 반환한다.
     payload = _publish_mission_or_raise(
         publish_harvest_target_mission,
         mission_id=req.mission_id,
@@ -344,7 +361,7 @@ def harvest_mission(req: HarvestReq):
 
 @router.get("/{mission_id}")
 def get_mission_status(mission_id: str):
-    """runtime bridge가 기록한 mission status 파일을 조회합니다."""
+    # 미션 상태를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         base_payload = read_mission_status_payload(mission_id)
     except Exception as exc:  # pragma: no cover - HTTP status mapping helper

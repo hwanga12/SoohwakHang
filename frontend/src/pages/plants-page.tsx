@@ -1,3 +1,6 @@
+/*
+ * 이 컴포넌트는 관제 대시보드의 작물 현황 페이지를 구성한다.
+ */
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -44,6 +47,9 @@ function getPlantPreview(
     : '/mock-images/healthy-default.jpg'
 }
 
+/**
+ * 작물 페이지 화면 조각을 렌더링하는 컴포넌트다.
+ */
 export function PlantsPage() {
   const queryClient = useQueryClient()
   const plantsQuery = useQuery({

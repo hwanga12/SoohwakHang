@@ -1,3 +1,4 @@
+# 이 모듈은 통합 실행과 런치 조율 패키지에서 setup 절차를 담당한다.
 from setuptools import setup
 import os
 from glob import glob

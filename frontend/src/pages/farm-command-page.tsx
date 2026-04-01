@@ -1,3 +1,6 @@
+/*
+ * 이 컴포넌트는 관제 대시보드의 농장 명령 페이지를 구성한다.
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createGetSignal, createPostAction } from '@/app/dev-inspector'
@@ -929,6 +932,9 @@ function buildDiagnoseUiState(
   }
 }
 
+/**
+ * 농장 명령 페이지 화면 조각을 렌더링하는 컴포넌트다.
+ */
 export function FarmCommandPage() {
   const queryClient = useQueryClient()
   const [activeStopRequest, setActiveStopRequest] = useState<

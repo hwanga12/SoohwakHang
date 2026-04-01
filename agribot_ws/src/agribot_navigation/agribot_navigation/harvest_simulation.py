@@ -1,5 +1,4 @@
-"""Gazebo 수확 데모에서 토마토를 팔 앞과 뒤 바구니로 옮길 좌표를 계산한다."""
-
+# 이 모듈은 자율주행과 경로 계획 패키지에서 harvest simulation 기능을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +9,7 @@ from .patrol_config import Pose2D
 
 @dataclass(frozen=True)
 class WorldPose:
+    # 월드 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     x: float
     y: float
     z: float
@@ -17,6 +17,7 @@ class WorldPose:
 
 @dataclass(frozen=True)
 class HarvestAnimationConfig:
+    # harvest animation 실행 설정을 한 번에 묶어 다루기 위한 클래스를 정의한다.
     grasp_forward_m: float = -0.31
     grasp_lateral_m: float = 0.0
     grasp_z_m: float = 0.54
@@ -44,6 +45,7 @@ def compute_relative_world_pose(
     lateral_offset_m: float,
     z_m: float,
 ) -> WorldPose:
+    # 현재 입력 조건을 바탕으로 relative 월드 위치 자세를 계산하거나 결정한다.
     cos_yaw = math.cos(robot_pose.yaw)
     sin_yaw = math.sin(robot_pose.yaw)
     return WorldPose(
@@ -57,6 +59,7 @@ def compute_grasp_pose(
     robot_pose: Pose2D,
     config: HarvestAnimationConfig,
 ) -> WorldPose:
+    # 현재 입력 조건을 바탕으로 grasp 위치 자세를 계산하거나 결정한다.
     return compute_relative_world_pose(
         robot_pose,
         forward_offset_m=config.grasp_forward_m,
@@ -69,6 +72,7 @@ def compute_carry_pose(
     robot_pose: Pose2D,
     config: HarvestAnimationConfig,
 ) -> WorldPose:
+    # 현재 입력 조건을 바탕으로 carry 위치 자세를 계산하거나 결정한다.
     return compute_relative_world_pose(
         robot_pose,
         forward_offset_m=config.carry_forward_m,
@@ -83,6 +87,7 @@ def compute_basket_pose(
     *,
     basket_slot_index: int = 0,
 ) -> WorldPose:
+    # 현재 입력 조건을 바탕으로 basket 위치 자세를 계산하거나 결정한다.
     slot_count = max(1, int(config.basket_slot_count))
     visual_slot_index = min(max(0, basket_slot_index), slot_count - 1)
     centered_slot_index = visual_slot_index - ((slot_count - 1) / 2.0)
@@ -101,6 +106,7 @@ def compute_hidden_pose(
     source_pose: Pose2D,
     config: HarvestAnimationConfig,
 ) -> WorldPose:
+    # 현재 입력 조건을 바탕으로 hidden 위치 자세를 계산하거나 결정한다.
     return WorldPose(
         x=config.hidden_x_m,
         y=config.hidden_y_m,
@@ -109,6 +115,7 @@ def compute_hidden_pose(
 
 
 def build_gz_pose_request(entity_name: str, pose: WorldPose) -> str:
+    # GZ 위치 자세 요청 데이터를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return (
         f'name: "{entity_name}", '
         f'position: {{x: {pose.x:.6f}, y: {pose.y:.6f}, z: {pose.z:.6f}}}, '

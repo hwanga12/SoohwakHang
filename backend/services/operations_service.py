@@ -1,3 +1,4 @@
+# 이 모듈은 백엔드 서비스 계층에서 operations service 책임을 담당한다.
 from __future__ import annotations
 
 from datetime import datetime
@@ -25,19 +26,23 @@ from services.actuation.dispatcher import TreatmentCommandDispatcher
 
 
 def _serialize_datetime(value: datetime | None) -> str:
+    # datetime를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return "" if value is None else value.isoformat()
 
 
 def _serialize_uuid(value: UUID | None) -> str:
+    # uuid를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return "" if value is None else str(value)
 
 
 def _plant_name(plant_id: str) -> str:
+    # 작물 name 정보를 계산해 반환한다.
     suffix = plant_id.split("_")[-1] if plant_id else ""
     return f"토마토 식물 {suffix}" if suffix else plant_id
 
 
 def _zone_center(bounds: dict[str, Any]) -> dict[str, float]:
+    # 구역 center 정보를 계산해 반환한다.
     min_x = float(bounds.get("min_x", bounds.get("x_min", -10.0)))
     max_x = float(bounds.get("max_x", bounds.get("x_max", 10.0)))
     min_y = float(bounds.get("min_y", bounds.get("y_min", -10.0)))
@@ -52,6 +57,7 @@ def _zone_center(bounds: dict[str, Any]) -> dict[str, float]:
 
 
 def _command_title(command_type: str) -> str:
+    # 명령 title 정보를 계산해 반환한다.
     normalized = command_type.strip().upper()
     mapping = {
         "WATERING": "급수 실행",
@@ -66,6 +72,7 @@ def _command_title(command_type: str) -> str:
 
 
 def _normalized_device_type(device_type: str) -> str:
+    # normalized 장치 type 정보를 계산해 반환한다.
     return str(device_type).strip().upper()
 
 
@@ -75,6 +82,7 @@ def _build_dispatch_reason(
     device_type: str,
     recommendation_id: str | None,
 ) -> str:
+    # dispatch reason를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     logical = logical_command_type.strip().upper()
     normalized_device_type = device_type.strip().lower()
     reason = (
@@ -112,6 +120,7 @@ def _build_dispatch_spec(
     value_unit: str,
     recommendation_id: str | None,
 ) -> dict[str, str | float]:
+    # dispatch spec를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     normalized_device_type = _normalized_device_type(device_type)
     normalized_command_type = logical_command_type.strip().upper()
     normalized_unit = str(value_unit).strip().lower()
@@ -152,6 +161,7 @@ def _build_dispatch_spec(
 
 
 def _result_tone(result: str) -> str:
+    # 결과 톤 정보를 계산해 반환한다.
     normalized = result.strip().upper()
     if normalized in {"FAILED", "TIMEOUT"}:
         return "critical"
@@ -161,6 +171,7 @@ def _result_tone(result: str) -> str:
 
 
 def _mission_sort_key(mission: Mission) -> tuple[int, str, str]:
+    # 미션 sort key 정보를 계산해 반환한다.
     priority = {
         "RUNNING": 0,
         "PENDING": 1,
@@ -174,15 +185,18 @@ def _mission_sort_key(mission: Mission) -> tuple[int, str, str]:
 
 
 def _select_focus_mission(missions: list[Mission]) -> Mission | None:
+    # focus 미션 가운데 필요한 대상을 고른다.
     if not missions:
         return None
     return sorted(missions, key=_mission_sort_key)[0]
 
 
 class OperationsService:
+    # 운영 서비스 관련 핵심 흐름을 한곳에 모아 제공하는 서비스 클래스다.
     _manual_command_dispatcher = TreatmentCommandDispatcher()
 
     def list_zones(self) -> list[dict[str, Any]]:
+        # 구역 목록를 모아 순회하기 쉬운 형태로 정리한다.
         db = SessionLocal()
         try:
             zones = db.query(Zone).options(joinedload(Zone.plants)).order_by(Zone.id.asc()).all()
@@ -203,6 +217,7 @@ class OperationsService:
             db.close()
 
     def get_dashboard_summary(self) -> dict[str, Any]:
+        # dashboard summary를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         db = SessionLocal()
         try:
             latest_robot = db.query(Robot).order_by(Robot.updated_at.desc()).first()
@@ -226,6 +241,7 @@ class OperationsService:
             db.close()
 
     def get_latest_environment(self) -> dict[str, Any]:
+        # latest environment를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         db = SessionLocal()
         try:
             latest = (
@@ -243,6 +259,7 @@ class OperationsService:
                 return {}
 
             def _delta(current: float | None, before: float | None) -> str:
+                # delta 정보를 계산해 반환한다.
                 if current is None or before is None:
                     return ""
                 diff = current - before
@@ -268,6 +285,7 @@ class OperationsService:
             db.close()
 
     def get_environment_history(self, limit: int = 20) -> list[dict[str, Any]]:
+        # environment 이력를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         db = SessionLocal()
         try:
             rows = (
@@ -291,6 +309,7 @@ class OperationsService:
             db.close()
 
     def list_iot_devices(self) -> list[dict[str, Any]]:
+        # IoT 장치 목록를 모아 순회하기 쉬운 형태로 정리한다.
         db = SessionLocal()
         try:
             devices = db.query(IotDevice).order_by(IotDevice.id.asc()).all()
@@ -314,6 +333,7 @@ class OperationsService:
             db.close()
 
     def list_recommendations(self) -> list[dict[str, Any]]:
+        # recommendations를 모아 순회하기 쉬운 형태로 정리한다.
         db = SessionLocal()
         try:
             latest_env = (
@@ -370,6 +390,7 @@ class OperationsService:
         request_source: str,
         recommendation_id: str | None = None,
     ) -> dict[str, Any]:
+        # manual 명령를 새로 만들어 다음 처리 단계로 넘긴다.
         db = SessionLocal()
         try:
             device = db.query(IotDevice).filter(IotDevice.id == device_id).first()
@@ -462,6 +483,7 @@ class OperationsService:
         reviewed_by: str,
         auto_execute: bool,
     ) -> dict[str, Any]:
+        # approve recommendation 정보를 계산해 반환한다.
         recommendations = {item["id"]: item for item in self.list_recommendations()}
         recommendation = recommendations.get(recommendation_id)
         if recommendation is None:
@@ -495,6 +517,7 @@ class OperationsService:
         }
 
     def list_actuation_history(self, limit: int = 20) -> list[dict[str, Any]]:
+        # actuation 이력를 모아 순회하기 쉬운 형태로 정리한다.
         db = SessionLocal()
         try:
             logs = (
@@ -526,6 +549,7 @@ class OperationsService:
             db.close()
 
     def list_harvest_history(self, limit: int = 20) -> list[dict[str, Any]]:
+        # harvest 이력를 모아 순회하기 쉬운 형태로 정리한다.
         db = SessionLocal()
         try:
             events = (
@@ -561,6 +585,7 @@ class OperationsService:
             db.close()
 
     def get_harvest_stats(self) -> dict[str, Any]:
+        # harvest stats를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         db = SessionLocal()
         try:
             events = db.query(HarvestEvent).order_by(HarvestEvent.harvested_at.desc()).all()

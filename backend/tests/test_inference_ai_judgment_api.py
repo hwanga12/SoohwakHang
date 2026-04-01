@@ -1,3 +1,4 @@
+# 이 테스트는 백엔드의 inference ai judgment api 동작과 회귀 여부를 검증한다.
 from __future__ import annotations
 
 import sys
@@ -22,6 +23,7 @@ from services.ai_judgments.schemas import (
 
 
 def _sample_judgment(*, judgment_type: str, canonical_code: str) -> AiJudgmentRecordOut:
+    # sample judgment 정보를 계산해 반환한다.
     return AiJudgmentRecordOut(
         id=f"{judgment_type.lower()}-001",
         plant_id="farm01_plant_03",
@@ -48,6 +50,7 @@ def _sample_judgment(*, judgment_type: str, canonical_code: str) -> AiJudgmentRe
 
 
 def _sample_harvest_action_out() -> HarvestDecisionActionOut:
+    # sample 수확 action out 정보를 계산해 반환한다.
     return HarvestDecisionActionOut(
         scope="INDIVIDUAL",
         plant_id="farm01_plant_03",
@@ -72,10 +75,13 @@ def _sample_harvest_action_out() -> HarvestDecisionActionOut:
 
 
 def test_latest_judgment_endpoint_returns_service_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    # latest 판정 결과 endpoint returns 서비스 payload 동작과 회귀 여부를 검증한다.
     expected = _sample_judgment(judgment_type="DISEASE", canonical_code="powdery_mildew")
 
     class StubService:
+        # 대체 구현 서비스 관련 핵심 흐름을 한곳에 모아 제공하는 서비스 클래스다.
         def get_latest_judgment(self, **kwargs):
+            # latest 판정 결과를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
             assert kwargs["plant_id"] == "farm01_plant_03"
             assert kwargs["fruit_id"] == ""
             assert kwargs["judgment_type"] == "DISEASE"
@@ -95,6 +101,7 @@ def test_latest_judgment_endpoint_returns_service_payload(monkeypatch: pytest.Mo
 
 
 def test_history_endpoint_returns_recent_items(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 이력 endpoint returns recent items 동작과 회귀 여부를 검증한다.
     expected = AiJudgmentHistoryOut(
         items=[
             _sample_judgment(judgment_type="HARVEST_DECISION", canonical_code="harvest_candidate"),
@@ -103,7 +110,9 @@ def test_history_endpoint_returns_recent_items(monkeypatch: pytest.MonkeyPatch) 
     )
 
     class StubService:
+        # 대체 구현 서비스 관련 핵심 흐름을 한곳에 모아 제공하는 서비스 클래스다.
         def get_judgment_history(self, **kwargs):
+            # 판정 결과 이력를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
             assert kwargs["fruit_id"] == "farm01_plant_03_tomato_01"
             assert kwargs["limit"] == 5
             return expected
@@ -122,10 +131,13 @@ def test_history_endpoint_returns_recent_items(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_individual_harvest_endpoint_returns_structured_action(monkeypatch: pytest.MonkeyPatch) -> None:
+    # individual harvest endpoint returns structured action 동작과 회귀 여부를 검증한다.
     expected = _sample_harvest_action_out()
 
     class StubService:
+        # 대체 구현 서비스 관련 핵심 흐름을 한곳에 모아 제공하는 서비스 클래스다.
         def create_individual_harvest_action(self, request: HarvestDecisionActionRequest):
+            # individual harvest action를 새로 만들어 다음 처리 단계로 넘긴다.
             assert request.fruit_id == "farm01_plant_03_tomato_01"
             return expected
 
@@ -148,8 +160,11 @@ def test_individual_harvest_endpoint_returns_structured_action(monkeypatch: pyte
 def test_bulk_harvest_endpoint_maps_value_error_to_http_400(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # bulk harvest endpoint 지도 목록 value error TO http 400 동작과 회귀 여부를 검증한다.
     class StubService:
+        # 대체 구현 서비스 관련 핵심 흐름을 한곳에 모아 제공하는 서비스 클래스다.
         def create_bulk_harvest_action(self, request: BulkHarvestDecisionRequest):
+            # bulk harvest action를 새로 만들어 다음 처리 단계로 넘긴다.
             raise ValueError("최신 ripeness judgment가 없습니다.")
 
     monkeypatch.setattr(inference, "_ai_judgment_service", StubService())
@@ -173,11 +188,14 @@ def test_bulk_harvest_endpoint_maps_value_error_to_http_400(
 
 
 def test_bulk_harvest_endpoint_returns_batch_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    # bulk harvest endpoint returns batch 결과 목록 동작과 회귀 여부를 검증한다.
     expected_item = _sample_harvest_action_out()
     expected = BulkHarvestDecisionResponse(items=[expected_item])
 
     class StubService:
+        # 대체 구현 서비스 관련 핵심 흐름을 한곳에 모아 제공하는 서비스 클래스다.
         def create_bulk_harvest_action(self, request: BulkHarvestDecisionRequest):
+            # bulk harvest action를 새로 만들어 다음 처리 단계로 넘긴다.
             assert len(request.targets) == 1
             return expected
 

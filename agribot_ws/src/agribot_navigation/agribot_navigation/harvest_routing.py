@@ -1,5 +1,4 @@
-"""Plan tomato harvest approach and return poses from patrol metadata."""
-
+# 이 모듈은 자율주행과 경로 계획 패키지에서 harvest routing 기능을 담당한다.
 from __future__ import annotations
 
 import argparse
@@ -25,6 +24,7 @@ from .patrol_config import (
 
 @dataclass(frozen=True)
 class PlantInstance:
+    # 작물 개체 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     plant_id: str
     zone_id: str
     display_name: str
@@ -34,6 +34,7 @@ class PlantInstance:
 
 @dataclass(frozen=True)
 class TomatoInstance:
+    # tomato 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     tomato_id: str
     zone_id: str
     parent_plant_id: str
@@ -45,6 +46,7 @@ class TomatoInstance:
 
 @dataclass(frozen=True)
 class CropCatalog:
+    # 작물 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     frame_id: str
     zone_id: str
     plants: dict[str, PlantInstance]
@@ -53,12 +55,14 @@ class CropCatalog:
 
 @dataclass(frozen=True)
 class HarvestObservationContext:
+    # harvest 관측 결과 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     route: PatrolRoute
     inspect_waypoint: Waypoint
 
 
 @dataclass(frozen=True)
 class HarvestRoutePlan:
+    # harvest 경로 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     tomato_id: str
     plant_id: str
     route_id: str
@@ -74,10 +78,12 @@ class HarvestRoutePlan:
 
 
 def get_default_crop_instances_path() -> Path:
+    # default 작물 instances 경로를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return Path(get_package_share_directory('agribot_description')) / 'config' / 'crop_instances.yaml'
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
+    # YAML 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with path.open('r', encoding='utf-8') as stream:
         payload = yaml.safe_load(stream)
     if not isinstance(payload, dict):
@@ -86,6 +92,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def _load_plants(items: list[dict[str, Any]]) -> dict[str, PlantInstance]:
+    # 작물 개체 목록를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     plants: dict[str, PlantInstance] = {}
     for item in items:
         plant_id = str(item['plant_id'])
@@ -102,6 +109,7 @@ def _load_plants(items: list[dict[str, Any]]) -> dict[str, PlantInstance]:
 
 
 def _load_tomatoes(items: list[dict[str, Any]]) -> dict[str, TomatoInstance]:
+    # tomatoes를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     tomatoes: dict[str, TomatoInstance] = {}
     for item in items:
         tomato_id = str(item['tomato_id'])
@@ -120,6 +128,7 @@ def _load_tomatoes(items: list[dict[str, Any]]) -> dict[str, TomatoInstance]:
 
 
 def load_crop_catalog(path: Path) -> CropCatalog:
+    # 작물 카탈로그를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     payload = _load_yaml(path)
     zone_id = str(payload['default_zone_id'])
     catalog = CropCatalog(
@@ -154,6 +163,7 @@ def load_crop_catalog(path: Path) -> CropCatalog:
 
 
 def _route_bounds(plan: PatrolPlan, route: PatrolRoute) -> tuple[float, float, float, float]:
+    # 경로 bounds 정보를 계산해 반환한다.
     referenced_waypoints = (
         route.entry_pose_id,
         *route.inspect_pose_ids,
@@ -166,10 +176,12 @@ def _route_bounds(plan: PatrolPlan, route: PatrolRoute) -> tuple[float, float, f
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
+    # 대상 값을 허용 범위로 제한한다.
     return max(minimum, min(value, maximum))
 
 
 def _approach_limit_for_route(plan: PatrolPlan, route: PatrolRoute) -> float:
+    # 접근 limit 경로 정보를 계산해 반환한다.
     override = plan.harvest_routing.max_lateral_offset_from_inspect_m_by_lane_side.get(
         route.lane_side,
     )
@@ -179,6 +191,7 @@ def _approach_limit_for_route(plan: PatrolPlan, route: PatrolRoute) -> float:
 
 
 def _normalize_vector(delta_x: float, delta_y: float) -> tuple[float, float] | None:
+    # vector를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     magnitude = math.hypot(delta_x, delta_y)
     if magnitude <= 1e-6:
         return None
@@ -193,6 +206,7 @@ def _find_observation_context(
     preferred_inspect_waypoint_id: str | None = None,
     current_pose: Pose2D | None = None,
 ) -> HarvestObservationContext:
+    # 관측 context을 찾아 반환한다.
     tomato = catalog.tomatoes[tomato_id]
     plant_id = tomato.parent_plant_id
     candidates: list[tuple[int, float, float, float, PatrolRoute, Waypoint]] = []
@@ -306,6 +320,7 @@ def _compute_approach_pose(
     inspect_waypoint: Waypoint,
     tomato: TomatoInstance,
 ) -> Pose2D:
+    # 현재 입력 조건을 바탕으로 approach 위치 자세를 계산하거나 결정한다.
     standoff_margin = plan.harvest_routing.approach_margin_from_bed_edge_m
     approach_limit = _approach_limit_for_route(plan, route)
     min_route_x, max_route_x, min_route_y, max_route_y = _route_bounds(plan, route)
@@ -352,6 +367,7 @@ def _compute_align_pose(
     tomato: TomatoInstance,
     approach_pose: Pose2D,
 ) -> Pose2D:
+    # 현재 입력 조건을 바탕으로 align 위치 자세를 계산하거나 결정한다.
     align_standoff = plan.harvest_routing.align_standoff_from_crop_m
     approach_limit = _approach_limit_for_route(plan, route)
     min_route_x, max_route_x, min_route_y, max_route_y = _route_bounds(plan, route)
@@ -420,6 +436,7 @@ def _resolve_return_waypoint_id(
     requested_return_mode: str,
     preferred_return_waypoint_id: str | None,
 ) -> str:
+    # 현재 입력 조건을 바탕으로 return waypoint ID를 계산하거나 결정한다.
     if requested_return_mode == 'home':
         return plan.home_pose_id
     if requested_return_mode == 'resume_patrol':
@@ -442,6 +459,7 @@ def compute_harvest_route(
     preferred_inspect_waypoint_id: str | None = None,
     current_pose: Pose2D | None = None,
 ) -> HarvestRoutePlan:
+    # 현재 입력 조건을 바탕으로 harvest 경로를 계산하거나 결정한다.
     if plan.zone_id != catalog.zone_id:
         raise ValueError(
             f'Patrol plan zone_id {plan.zone_id} does not match crop catalog zone_id {catalog.zone_id}.'
@@ -506,6 +524,7 @@ def compute_harvest_route(
 
 
 def _pose_to_dict(pose: Pose2D) -> dict[str, float]:
+    # 위치 자세 dict 정보를 계산해 반환한다.
     return {
         'x': pose.x,
         'y': pose.y,
@@ -515,6 +534,7 @@ def _pose_to_dict(pose: Pose2D) -> dict[str, float]:
 
 
 def _route_plan_to_dict(plan: PatrolPlan, route_plan: HarvestRoutePlan) -> dict[str, Any]:
+    # 경로 plan dict 정보를 계산해 반환한다.
     return {
         'tomato_id': route_plan.tomato_id,
         'plant_id': route_plan.plant_id,
@@ -537,6 +557,7 @@ def _route_plan_to_dict(plan: PatrolPlan, route_plan: HarvestRoutePlan) -> dict[
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(
         description='Compute a harvest approach pose and return target for a tomato.',
     )
@@ -572,6 +593,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = parse_args()
     try:
         patrol_plan = load_patrol_plan(args.patrol_waypoints)

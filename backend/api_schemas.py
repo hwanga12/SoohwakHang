@@ -1,3 +1,4 @@
+# 이 모듈은 백엔드 API 요청과 응답에 사용하는 공통 스키마를 정의.
 from __future__ import annotations
 
 from typing import Any, Generic, Literal, TypeVar
@@ -9,21 +10,25 @@ T = TypeVar("T")
 
 
 class ApiEnvelope(BaseModel, Generic[T]):
+    # API 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     data: T
 
 
 class Point3DOut(BaseModel):
+    # point 3 D 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     x: float
     y: float
     z: float = 0.0
 
 
 class PoseOut(Point3DOut):
+    # 위치 자세 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     yaw: float = 0.0
     frame_id: str = "map"
 
 
 class ZoneBoundsOut(BaseModel):
+    # 구역 bounds 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     min_x: float | None = None
     max_x: float | None = None
     min_y: float | None = None
@@ -35,6 +40,7 @@ class ZoneBoundsOut(BaseModel):
 
 
 class DashboardSummaryOut(BaseModel):
+    # dashboard summary 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     robot_uptime_pct: str
     active_task: str
     critical_alert_count: int
@@ -44,6 +50,7 @@ class DashboardSummaryOut(BaseModel):
 
 
 class ZoneOut(BaseModel):
+    # 구역 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     name: str
     label: str
@@ -55,6 +62,7 @@ class ZoneOut(BaseModel):
 
 
 class EnvironmentLatestOut(BaseModel):
+    # environment latest 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     zone_id: str
     temperature: float | None = None
     humidity: float | None = None
@@ -67,6 +75,7 @@ class EnvironmentLatestOut(BaseModel):
 
 
 class EnvironmentHistoryItemOut(BaseModel):
+    # environment 이력 item 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     zone_id: str
     temperature: float | None = None
@@ -76,6 +85,7 @@ class EnvironmentHistoryItemOut(BaseModel):
 
 
 class IotDeviceOut(BaseModel):
+    # IoT 장치 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     device_id: str
     zone_id: str
@@ -90,6 +100,7 @@ class IotDeviceOut(BaseModel):
 
 
 class ActuationRecommendationOut(BaseModel):
+    # actuation recommendation 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     title: str
     detail: str
@@ -100,6 +111,7 @@ class ActuationRecommendationOut(BaseModel):
 
 
 class ManualActuationDispatchOut(BaseModel):
+    # manual actuation dispatch 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     command_id: str
     device_id: str
     device_name: str
@@ -109,6 +121,7 @@ class ManualActuationDispatchOut(BaseModel):
 
 
 class RecommendationApprovalOut(BaseModel):
+    # recommendation approval 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     status: str
     message: str
@@ -116,6 +129,7 @@ class RecommendationApprovalOut(BaseModel):
 
 
 class RecommendationRejectOut(BaseModel):
+    # recommendation reject 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     status: str
     reviewed_by: str
@@ -123,6 +137,7 @@ class RecommendationRejectOut(BaseModel):
 
 
 class ActuationHistoryOut(BaseModel):
+    # actuation 이력 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     command_id: str
     device_id: str
@@ -139,10 +154,12 @@ class ActuationHistoryOut(BaseModel):
 
 
 class TreatmentPlanReasonOut(BaseModel):
+    # 처치 계획 reason 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     reason: str = ""
 
 
 class PlantObservationItemOut(BaseModel):
+    # 작물 개체 관측 결과 item 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     class_name: str
     label: str
@@ -156,6 +173,7 @@ class PlantObservationItemOut(BaseModel):
 
 
 class PlantSummaryOut(BaseModel):
+    # 작물 개체 summary 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     plant_id: str
     name: str
@@ -179,6 +197,7 @@ class PlantSummaryOut(BaseModel):
 
 
 class PlantDetailOut(BaseModel):
+    # 작물 개체 detail 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     plant_id: str
     name: str
@@ -191,6 +210,7 @@ class PlantDetailOut(BaseModel):
 
 
 class PlantObservationFeedOut(BaseModel):
+    # 작물 개체 관측 결과 feed 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     plant_id: str
     plant_name: str
     zone_id: str
@@ -199,6 +219,7 @@ class PlantObservationFeedOut(BaseModel):
 
 
 class AlertOut(BaseModel):
+    # alert 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     observation_id: str = ""
     severity: str
@@ -223,12 +244,14 @@ class AlertOut(BaseModel):
 
 
 class AlertAckOut(BaseModel):
+    # alert ACK 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     acknowledged_by: str
     acknowledged_at: str
 
 
 class HarvestHistoryOut(BaseModel):
+    # harvest 이력 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     route_id: str
     batch_id: str
@@ -247,6 +270,7 @@ class HarvestHistoryOut(BaseModel):
 
 
 class HarvestStatsOut(BaseModel):
+    # harvest stats 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     today_weight_kg: str
     today_harvest_kg: str
     basket_fill_rate: str
@@ -266,6 +290,7 @@ class HarvestStatsOut(BaseModel):
 
 
 class RobotControlStateOut(BaseModel):
+    # robot control 상태 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     source: str
     available: bool
     mode: str
@@ -279,6 +304,7 @@ class RobotControlStateOut(BaseModel):
 
 
 class RobotCommandStatusOut(BaseModel):
+    # robot 명령 상태 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     source: str
     available: bool
     command_id: str | None = None
@@ -315,6 +341,7 @@ class RobotCommandStatusOut(BaseModel):
 
 
 class RobotStatusOut(BaseModel):
+    # robot 상태 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     source: str
     robot_id: str
     status: str
@@ -352,6 +379,7 @@ class RobotStatusOut(BaseModel):
 
 
 class RobotPoseOut(BaseModel):
+    # robot 위치 자세 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     source: str
     robot_id: str
     map_id: str
@@ -364,6 +392,7 @@ class RobotPoseOut(BaseModel):
 
 
 class RobotMapOut(BaseModel):
+    # robot 지도 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     source: str
     map_id: str
     image_url: str
@@ -375,6 +404,7 @@ class RobotMapOut(BaseModel):
 
 
 class RobotGuideLineOut(BaseModel):
+    # robot guide line 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     axis: Literal["x", "y"]
     value: float
@@ -382,6 +412,7 @@ class RobotGuideLineOut(BaseModel):
 
 
 class RobotAssetOut(BaseModel):
+    # robot asset 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     linked_id: str | None = None
     kind: Literal["plant", "sprinkler"]
@@ -398,6 +429,7 @@ class RobotAssetOut(BaseModel):
 
 
 class RobotMapLayersOut(BaseModel):
+    # robot 지도 layers 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     source: str
     map_id: str
     bounds: ZoneBoundsOut
@@ -408,6 +440,7 @@ class RobotMapLayersOut(BaseModel):
 
 
 class RequestReceiptOut(BaseModel):
+    # 요청 데이터 receipt 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     accepted: bool
     status: str
     message: str
@@ -415,12 +448,14 @@ class RequestReceiptOut(BaseModel):
 
 
 class RobotTargetZoneOut(BaseModel):
+    # robot target 구역 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     name: str
     representative_waypoint_id: str | None = None
 
 
 class RobotCommandDispatchOut(BaseModel):
+    # robot 명령 dispatch 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     accepted: bool
     request_status: str
     message: str
@@ -442,6 +477,7 @@ class RobotCommandDispatchOut(BaseModel):
 
 
 class MissionDispatchOut(BaseModel):
+    # 미션 dispatch 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     accepted: bool
     request_status: str
     message: str
@@ -464,6 +500,7 @@ class MissionDispatchOut(BaseModel):
 
 
 class MissionStatusOut(BaseModel):
+    # 미션 상태 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     available: bool
     mission_id: str
     command_id: str

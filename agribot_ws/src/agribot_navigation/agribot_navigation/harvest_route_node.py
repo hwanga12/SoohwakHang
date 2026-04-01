@@ -1,5 +1,4 @@
-"""Pause patrol, approach a harvest target, and return home or back to patrol."""
-
+# 이 모듈은 자율주행과 경로 계획 패키지에서 harvest route node 기능을 담당한다.
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -67,10 +66,12 @@ from .patrol_config import Pose2D, PatrolPlan, get_default_patrol_waypoints_path
 
 
 def _normalize_angle(angle: float) -> float:
+    # angle를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
 def _iso_now() -> str:
+    # iso now 정보를 계산해 반환한다.
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -81,6 +82,7 @@ def _poses_are_effectively_same(
     distance_tolerance_m: float = 0.05,
     yaw_tolerance_rad: float = math.radians(5.0),
 ) -> bool:
+    # 위치 자세 are effectively same 정보를 계산해 반환한다.
     return (
         math.hypot(left_pose.x - right_pose.x, left_pose.y - right_pose.y) <= distance_tolerance_m
         and abs(_normalize_angle(left_pose.yaw - right_pose.yaw)) <= yaw_tolerance_rad
@@ -88,9 +90,10 @@ def _poses_are_effectively_same(
 
 
 class HarvestRouteNode(Node):
-    """Coordinate harvest approach and return motions around the patrol node."""
+    # ROS 2 실행 환경에서 harvest 경로 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # HarvestRouteNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('harvest_route_node')
 
         self.declare_parameter('patrol_waypoints_file', str(get_default_patrol_waypoints_path()))
@@ -319,6 +322,7 @@ class HarvestRouteNode(Node):
         self._publish_status()
 
     def _handle_robot_pose(self, msg: Odometry) -> None:
+        # handle 로봇 위치 자세 정보를 계산해 반환한다.
         orientation = msg.pose.pose.orientation
         yaw = math.atan2(
             2.0 * ((orientation.w * orientation.z) + (orientation.x * orientation.y)),
@@ -332,6 +336,7 @@ class HarvestRouteNode(Node):
         )
 
     def _load_patrol_plan(self) -> PatrolPlan:
+        # patrol 계획를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         self._patrol_plan_path = Path(
             str(self.get_parameter('patrol_waypoints_file').value)
         ).expanduser()
@@ -340,6 +345,7 @@ class HarvestRouteNode(Node):
         return load_patrol_plan(self._patrol_plan_path)
 
     def _load_crop_catalog(self) -> CropCatalog:
+        # 작물 카탈로그를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         self._crop_catalog_path = Path(
             str(self.get_parameter('crop_instances_file').value)
         ).expanduser()
@@ -348,6 +354,7 @@ class HarvestRouteNode(Node):
         return load_crop_catalog(self._crop_catalog_path)
 
     def _handle_crop_status(self, msg: CropStatus) -> None:
+        # handle 작물 상태 정보를 계산해 반환한다.
         if not msg.ready_to_harvest:
             return
 
@@ -366,6 +373,7 @@ class HarvestRouteNode(Node):
         )
 
     def _handle_harvest_request(self, msg: String) -> None:
+        # handle 수확 request 정보를 계산해 반환한다.
         request = parse_harvest_route_request(msg.data, default_trigger='manual_request')
         if request is None:
             self.get_logger().warning('Ignoring invalid harvest request payload.')
@@ -373,6 +381,7 @@ class HarvestRouteNode(Node):
         self._begin_harvest_sequence(request)
 
     def _handle_patrol_status(self, msg: String) -> None:
+        # handle patrol 상태 정보를 계산해 반환한다.
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError as exc:
@@ -389,6 +398,7 @@ class HarvestRouteNode(Node):
             self._start_approach_navigation()
 
     def _begin_harvest_sequence(self, request: HarvestRouteRequest) -> None:
+        # begin 수확 sequence 정보를 계산해 반환한다.
         tomato_id = request.tomato_id
         if self._sequence_state not in {'idle', 'completed', 'error'}:
             self.get_logger().warning(
@@ -453,20 +463,24 @@ class HarvestRouteNode(Node):
         self._start_approach_navigation()
 
     def _preferred_return_waypoint_id(self) -> str | None:
+        # preferred return 웨이포인트 id 정보를 계산해 반환한다.
         current_waypoint_id = self._last_patrol_status.get('current_waypoint_id')
         if isinstance(current_waypoint_id, str) and current_waypoint_id in self._plan.waypoints:
             return current_waypoint_id
         return None
 
     def _patrol_is_active(self) -> bool:
+        # patrol is active 정보를 계산해 반환한다.
         state = str(self._last_patrol_status.get('state', '')).strip()
         return state in {'starting', 'running', 'observing', 'stopping'}
 
     def _patrol_is_quiescent(self) -> bool:
+        # patrol is quiescent 정보를 계산해 반환한다.
         state = str(self._last_patrol_status.get('state', '')).strip()
         return state in {'', 'idle', 'stopped', 'completed', 'error'}
 
     def _request_patrol_stop(self) -> None:
+        # request patrol stop 정보를 계산해 반환한다.
         if not self._patrol_stop_client.wait_for_service(timeout_sec=self._patrol_service_wait_sec):
             self._set_error('Patrol stop service is unavailable while patrol is active.')
             return
@@ -487,6 +501,7 @@ class HarvestRouteNode(Node):
         )
 
     def _handle_patrol_stop_response(self, future: Any) -> None:
+        # handle patrol stop response 정보를 계산해 반환한다.
         try:
             response = future.result()
         except Exception as exc:
@@ -508,6 +523,7 @@ class HarvestRouteNode(Node):
             self._start_approach_navigation()
 
     def _start_approach_navigation(self) -> None:
+        # approach navigation 실행 흐름을 시작하거나 마무리한다.
         if self._active_plan is None:
             self._set_error('Cannot start approach navigation without an active harvest plan.')
             return
@@ -543,6 +559,7 @@ class HarvestRouteNode(Node):
         )
 
     def _start_alignment_navigation(self) -> None:
+        # alignment navigation 실행 흐름을 시작하거나 마무리한다.
         if self._active_plan is None:
             self._set_error('Cannot start harvest alignment without an active harvest plan.')
             return
@@ -557,6 +574,7 @@ class HarvestRouteNode(Node):
         )
 
     def _start_return_navigation(self, *, use_fallback: bool) -> None:
+        # return navigation 실행 흐름을 시작하거나 마무리한다.
         if self._active_plan is None:
             self._set_error('Cannot start return navigation without an active harvest plan.')
             return
@@ -587,6 +605,7 @@ class HarvestRouteNode(Node):
         )
 
     def _start_navigation(self, pose: Pose2D, *, phase: str, message: str) -> None:
+        # navigation 실행 흐름을 시작하거나 마무리한다.
         goal = NavigateToPose.Goal()
         goal.pose = self._build_pose_stamped(pose)
         goal.behavior_tree = ''
@@ -606,6 +625,7 @@ class HarvestRouteNode(Node):
         )
 
     def _runtime_phase_for_navigation(self, phase: str) -> str:
+        # 런타임 phase 주행 정보를 계산해 반환한다.
         return {
             'approaching': 'APPROACHING',
             'aligning': 'ALIGNING',
@@ -613,6 +633,7 @@ class HarvestRouteNode(Node):
         }.get(phase, phase.strip().upper())
 
     def _handle_goal_response(self, future: Any, phase: str) -> None:
+        # handle 목표 response 정보를 계산해 반환한다.
         try:
             goal_handle = future.result()
         except Exception as exc:
@@ -648,10 +669,12 @@ class HarvestRouteNode(Node):
         )
 
     def _handle_navigation_feedback(self, feedback_msg: Any) -> None:
+        # handle 주행 feedback 정보를 계산해 반환한다.
         self._last_distance_remaining_m = float(feedback_msg.feedback.distance_remaining)
         self._publish_status()
 
     def _handle_navigation_result(self, future: Any, phase: str) -> None:
+        # handle 주행 결과 정보를 계산해 반환한다.
         self._active_goal_handle = None
         self._goal_result_future = None
         self._last_distance_remaining_m = None
@@ -730,6 +753,7 @@ class HarvestRouteNode(Node):
         self._set_error(error_msg)
 
     def _inspect_waypoint_pose(self) -> Pose2D | None:
+        # inspect 웨이포인트 위치 자세 정보를 계산해 반환한다.
         if self._active_plan is None:
             return None
         waypoint = self._plan.waypoints.get(self._active_plan.inspect_waypoint_id)
@@ -738,6 +762,7 @@ class HarvestRouteNode(Node):
         return waypoint.pose
 
     def _recover_from_failed_approach(self, error_msg: str) -> bool:
+        # recover 검증 실패 접근 정보를 계산해 반환한다.
         if self._active_plan is None:
             return False
 
@@ -769,6 +794,7 @@ class HarvestRouteNode(Node):
         return True
 
     def _recover_from_failed_alignment(self, error_msg: str) -> bool:
+        # recover 검증 실패 alignment 정보를 계산해 반환한다.
         if self._active_plan is None or not self._harvest_demo_recovery_enabled:
             return False
 
@@ -781,6 +807,7 @@ class HarvestRouteNode(Node):
         return True
 
     def _alignment_required(self) -> bool:
+        # alignment required 정보를 계산해 반환한다.
         if self._active_plan is None:
             return False
 
@@ -801,6 +828,7 @@ class HarvestRouteNode(Node):
         return distance > 0.05 or yaw_delta > math.radians(5.0)
 
     def _start_alignment_settle(self) -> None:
+        # alignment settle 실행 흐름을 시작하거나 마무리한다.
         if self._active_plan is None:
             self._set_error('Harvest alignment finished without an active harvest plan.')
             return
@@ -825,10 +853,12 @@ class HarvestRouteNode(Node):
         )
 
     def _finish_alignment_settle(self) -> None:
+        # finish alignment settle 정보를 계산해 반환한다.
         self._cancel_alignment_timer()
         self._start_harvest_dwell()
 
     def _cancel_alignment_timer(self) -> None:
+        # cancel alignment timer 정보를 계산해 반환한다.
         if self._alignment_timer is None:
             return
         self._alignment_timer.cancel()
@@ -836,6 +866,7 @@ class HarvestRouteNode(Node):
         self._alignment_timer = None
 
     def _start_harvest_dwell(self) -> None:
+        # harvest dwell 실행 흐름을 시작하거나 마무리한다.
         if self._active_plan is None:
             self._set_error('Harvest dwell started without an active harvest plan.')
             return
@@ -878,6 +909,7 @@ class HarvestRouteNode(Node):
         self._schedule_harvest_timer(self._harvest_dwell_sec, self._finish_harvest_dwell)
 
     def _continue_harvest_to_grasp(self) -> None:
+        # continue 수확 grasp 정보를 계산해 반환한다.
         self._cancel_harvest_timer()
         if self._active_plan is None:
             return
@@ -914,6 +946,7 @@ class HarvestRouteNode(Node):
         self._schedule_harvest_timer(self._harvest_grasp_sec, self._continue_harvest_to_carry)
 
     def _continue_harvest_to_carry(self) -> None:
+        # continue 수확 carry 정보를 계산해 반환한다.
         self._cancel_harvest_timer()
         if self._active_plan is None:
             return
@@ -951,6 +984,7 @@ class HarvestRouteNode(Node):
         self._schedule_harvest_timer(self._harvest_lift_sec, self._continue_harvest_to_basket)
 
     def _continue_harvest_to_basket(self) -> None:
+        # continue 수확 basket 정보를 계산해 반환한다.
         self._cancel_harvest_timer()
         if self._active_plan is None:
             return
@@ -992,6 +1026,7 @@ class HarvestRouteNode(Node):
         self._schedule_harvest_timer(self._harvest_stow_sec, self._finish_harvest_dwell)
 
     def _finish_harvest_dwell(self) -> None:
+        # finish 수확 dwell 정보를 계산해 반환한다.
         self._cancel_harvest_timer()
         self._publish_arm_position(self._harvest_arm_ready_position)
         if not self._finalize_harvested_tomato_visual():
@@ -1001,6 +1036,7 @@ class HarvestRouteNode(Node):
         self._start_return_navigation(use_fallback=False)
 
     def _finish_sequence_after_return(self) -> None:
+        # finish sequence after return 정보를 계산해 반환한다.
         if self._active_plan is None:
             self._set_error('Return completed without an active harvest plan.')
             return
@@ -1016,6 +1052,7 @@ class HarvestRouteNode(Node):
         )
 
     def _request_patrol_resume(self) -> None:
+        # request patrol resume 정보를 계산해 반환한다.
         if not self._patrol_resume_client.wait_for_service(timeout_sec=self._patrol_service_wait_sec):
             self._set_error('Patrol resume service is unavailable after harvest return.')
             return
@@ -1032,6 +1069,7 @@ class HarvestRouteNode(Node):
         )
 
     def _handle_patrol_resume_response(self, future: Any) -> None:
+        # handle patrol resume response 정보를 계산해 반환한다.
         try:
             response = future.result()
         except Exception as exc:
@@ -1051,6 +1089,7 @@ class HarvestRouteNode(Node):
         )
 
     def _cancel_harvest_timer(self) -> None:
+        # cancel 수확 timer 정보를 계산해 반환한다.
         if self._harvest_timer is None:
             return
         self._harvest_timer.cancel()
@@ -1058,10 +1097,12 @@ class HarvestRouteNode(Node):
         self._harvest_timer = None
 
     def _schedule_harvest_timer(self, duration_sec: float, callback) -> None:
+        # harvest timer를 어떤 순서와 조건으로 처리할지 계획한다.
         self._cancel_harvest_timer()
         self._harvest_timer = self.create_timer(duration_sec, callback)
 
     def _resolve_animation_reference_pose(self) -> Pose2D | None:
+        # 현재 입력 조건을 바탕으로 animation reference 위치 자세를 계산하거나 결정한다.
         if self._latest_robot_pose is not None:
             return self._latest_robot_pose
         if self._active_plan is None:
@@ -1071,9 +1112,11 @@ class HarvestRouteNode(Node):
         return self._approach_navigation_pose()
 
     def _should_use_inspect_waypoint_navigation(self) -> bool:
+        # USE inspect waypoint navigation가 필요한 상황인지 여부를 판단한다.
         return self._harvest_navigation_target_mode == 'inspect_waypoint'
 
     def _approach_navigation_pose(self) -> Pose2D:
+        # 접근 주행 위치 자세 정보를 계산해 반환한다.
         if self._active_plan is None:
             raise RuntimeError('Active harvest plan is required to resolve the approach pose.')
 
@@ -1089,6 +1132,7 @@ class HarvestRouteNode(Node):
         return self._active_plan.approach_pose
 
     def _latest_pose_is_near(self, target_pose: Pose2D) -> bool:
+        # 최신 위치 자세 is near 정보를 계산해 반환한다.
         if self._latest_robot_pose is None:
             return False
         return (
@@ -1100,6 +1144,7 @@ class HarvestRouteNode(Node):
         )
 
     def _navigation_phase_is_effectively_complete(self, phase: str) -> bool:
+        # 주행 phase is effectively complete 정보를 계산해 반환한다.
         if self._active_plan is None:
             return False
         if phase == 'approaching':
@@ -1114,6 +1159,7 @@ class HarvestRouteNode(Node):
         return False
 
     def _publish_arm_position(self, position: float) -> None:
+        # ARM 위치를 외부 시스템이나 다음 처리 단계로 전달한다.
         self._arm_command_pub.publish(Float64(data=float(position)))
 
     def _require_visual_pose_update(
@@ -1124,6 +1170,7 @@ class HarvestRouteNode(Node):
         stage: str,
         failure_reason: str,
     ) -> bool:
+        # require visual 위치 자세 update 정보를 계산해 반환한다.
         if self._set_gazebo_entity_pose(entity_name, pose):
             return True
         self._set_error(
@@ -1132,6 +1179,7 @@ class HarvestRouteNode(Node):
         return False
 
     def _hide_harvested_tomato_visual(self) -> bool:
+        # hide harvested tomato visual 정보를 계산해 반환한다.
         if self._active_plan is None:
             return True
 
@@ -1150,9 +1198,11 @@ class HarvestRouteNode(Node):
         )
 
     def _finalize_harvested_tomato_visual(self) -> bool:
+        # finalize harvested tomato visual 정보를 계산해 반환한다.
         return self._hide_harvested_tomato_visual()
 
     def _active_basket_visual_count(self) -> int:
+        # active basket visual 개수 정보를 계산해 반환한다.
         slot_count = len(getattr(self, '_basket_visual_slot_publishers', ()))
         if slot_count <= 0:
             return 0
@@ -1165,6 +1215,7 @@ class HarvestRouteNode(Node):
         )
 
     def _sync_basket_visual_slots(self, *, force: bool = False) -> None:
+        # sync basket visual slots 정보를 계산해 반환한다.
         visible_count = self._active_basket_visual_count()
         if not force and getattr(self, '_basket_visual_last_visible_count', -1) == visible_count:
             return
@@ -1178,6 +1229,7 @@ class HarvestRouteNode(Node):
         self._basket_visual_last_visible_count = visible_count
 
     def _set_gazebo_entity_pose(self, entity_name: str, pose: WorldPose) -> bool:
+        # gazebo entity 위치 자세을 설정한다.
         command_env = os.environ.copy()
         if self._gazebo_partition:
             command_env['GZ_PARTITION'] = self._gazebo_partition
@@ -1226,6 +1278,7 @@ class HarvestRouteNode(Node):
         return False
 
     def _reset_visual_harvest_state(self) -> None:
+        # reset visual 수확 상태 정보를 계산해 반환한다.
         self._publish_arm_position(self._harvest_arm_ready_position)
         if self._active_plan is None:
             return
@@ -1244,6 +1297,7 @@ class HarvestRouteNode(Node):
         )
 
     def _publish_basket_state(self) -> None:
+        # basket 상태를 외부 시스템이나 다음 처리 단계로 전달한다.
         state = build_basket_state(
             zone_id=self._plan.zone_id,
             frame_id=self._plan.frame_id,
@@ -1268,6 +1322,7 @@ class HarvestRouteNode(Node):
         progress_pct: float | None = None,
         retry_count: int = 0,
     ) -> None:
+        # execution 상태를 외부 시스템이나 다음 처리 단계로 전달한다.
         mission_id = self._active_request.mission_id if self._active_request is not None else ''
         if not mission_id:
             return
@@ -1298,6 +1353,7 @@ class HarvestRouteNode(Node):
         )
 
     def _write_idle_execution_status(self) -> None:
+        # idle execution 상태를 파일이나 저장소에 기록한다.
         payload = {
             'mission_id': '',
             'mission_type': 'HARVEST',
@@ -1316,6 +1372,7 @@ class HarvestRouteNode(Node):
         write_json_atomic(harvest_action_status_path(self._runtime_dir), payload)
 
     def _publish_harvest_event(self, *, success: bool, failure_reason: str = '') -> None:
+        # harvest 이벤트를 외부 시스템이나 다음 처리 단계로 전달한다.
         if self._active_plan is None or self._active_request is None:
             return
 
@@ -1338,6 +1395,7 @@ class HarvestRouteNode(Node):
             self._last_success_event_id = event.event_id
 
     def _publish_failure_alert(self, failure_reason: str) -> None:
+        # failure alert를 외부 시스템이나 다음 처리 단계로 전달한다.
         if self._active_request is None:
             return
 
@@ -1358,6 +1416,7 @@ class HarvestRouteNode(Node):
         write_json_atomic(harvest_failure_alert_path(self._runtime_dir), payload)
 
     def _build_pose_stamped(self, pose: Pose2D) -> PoseStamped:
+        # 위치 자세 stamped를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         return build_latest_pose_stamped(
             frame_id=self._plan.frame_id,
             x_value=pose.x,
@@ -1367,6 +1426,7 @@ class HarvestRouteNode(Node):
         )
 
     def _complete_sequence(self, message: str) -> None:
+        # complete sequence 정보를 계산해 반환한다.
         self._cancel_alignment_timer()
         self._cancel_harvest_timer()
         self._publish_arm_position(self._harvest_arm_ready_position)
@@ -1397,12 +1457,14 @@ class HarvestRouteNode(Node):
         self._set_state('completed', message)
 
     def _set_state(self, state: str, message: str) -> None:
+        # 상태을 설정한다.
         self._sequence_state = state
         self._sequence_message = message
         self.get_logger().info(message)
         self._publish_status()
 
     def _set_error(self, message: str) -> None:
+        # error을 설정한다.
         self._cancel_alignment_timer()
         self._cancel_harvest_timer()
         self._reset_visual_harvest_state()
@@ -1439,6 +1501,7 @@ class HarvestRouteNode(Node):
         self._publish_status()
 
     def _on_status_timer(self) -> None:
+        # on 상태 timer 정보를 계산해 반환한다.
         if (
             self._sequence_state == 'waiting_for_patrol_pause'
             and self._patrol_pause_deadline_ns is not None
@@ -1451,6 +1514,7 @@ class HarvestRouteNode(Node):
         self._publish_status()
 
     def _publish_status(self) -> None:
+        # 상태를 외부 시스템이나 다음 처리 단계로 전달한다.
         active_tomato_id = (
             self._active_request.tomato_id
             if self._active_request is not None
@@ -1482,6 +1546,7 @@ class HarvestRouteNode(Node):
         self._status_pub.publish(String(data=json.dumps(payload, sort_keys=True)))
 
     def destroy_node(self) -> bool:
+        # destroy 노드 정보를 계산해 반환한다.
         self._cancel_alignment_timer()
         self._cancel_harvest_timer()
         self._write_idle_execution_status()
@@ -1490,6 +1555,7 @@ class HarvestRouteNode(Node):
 
 
 def main(args: list[str] | None = None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = HarvestRouteNode()
     try:

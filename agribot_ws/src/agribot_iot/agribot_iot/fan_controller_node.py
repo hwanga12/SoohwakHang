@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 fan controller node 장치 흐름을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,12 +24,14 @@ from .fan_controller_logic import (
 
 @dataclass(slots=True)
 class ActiveFanCommand:
+    # active 환기팬 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     plan: FanExecutionPlan
     started_at_monotonic: float
 
 
 @dataclass(slots=True)
 class FanRuntimeState:
+    # 환기팬 런타임 데이터 상태를 일관된 형태로 보관하기 위한 클래스를 정의한다.
     speed_level: int
     state: str
     detail_message: str
@@ -37,9 +40,10 @@ class FanRuntimeState:
 
 
 class FanControllerNode(Node):
-    """Execute fan commands and keep publishing current fan state."""
+    # ROS 2 실행 환경에서 환기팬 controller 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # FanControllerNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('fan_controller_node')
         callback_group = ReentrantCallbackGroup()
 
@@ -99,6 +103,7 @@ class FanControllerNode(Node):
         )
 
     def _handle_command(self, message: IoTCommand) -> None:
+        # handle 명령 정보를 계산해 반환한다.
         if message.device_type.strip().lower() != 'fan':
             return
 
@@ -176,6 +181,7 @@ class FanControllerNode(Node):
         )
 
     def _resolve_device(self, message: IoTCommand) -> IoTDeviceSpec | None:
+        # 현재 입력 조건을 바탕으로 장치를 계산하거나 결정한다.
         if message.device_id:
             return self._fan_devices.get(message.device_id)
 
@@ -193,6 +199,7 @@ class FanControllerNode(Node):
         *,
         reason: str,
     ) -> float:
+        # interrupt active 명령 정보를 계산해 반환한다.
         active_command = runtime.active_command
         if active_command is None:
             return runtime.last_run_duration_sec
@@ -213,10 +220,12 @@ class FanControllerNode(Node):
         return executed_duration_sec
 
     def _publish_all_states(self) -> None:
+        # ALL 상태 묶음를 외부 시스템이나 다음 처리 단계로 전달한다.
         for device_id, device in self._fan_devices.items():
             self._publish_state(device, self._runtime_states[device_id])
 
     def _publish_state(self, device: IoTDeviceSpec, runtime: FanRuntimeState) -> None:
+        # 상태를 외부 시스템이나 다음 처리 단계로 전달한다.
         run_duration_sec = self._current_run_duration(runtime)
         message = build_fan_state(
             device,
@@ -253,6 +262,7 @@ class FanControllerNode(Node):
         executed_duration_sec: float,
         speed_level: int,
     ) -> None:
+        # 결과를 외부 시스템이나 다음 처리 단계로 전달한다.
         result = String()
         result.data = build_fan_result_payload(
             plan,
@@ -268,6 +278,7 @@ class FanControllerNode(Node):
         )
 
     def _current_run_duration(self, runtime: FanRuntimeState) -> float:
+        # 현재 run duration 정보를 계산해 반환한다.
         active_command = runtime.active_command
         if active_command is None:
             return runtime.last_run_duration_sec
@@ -275,6 +286,7 @@ class FanControllerNode(Node):
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = FanControllerNode()
     try:

@@ -1,3 +1,6 @@
+/*
+ * 이 파일은 프론트엔드에서 vite env.d 역할을 담당한다.
+ */
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {

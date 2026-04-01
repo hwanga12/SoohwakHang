@@ -1,3 +1,4 @@
+# 이 모듈은 백엔드 데이터베이스 테이블 모델을 정의.
 from __future__ import annotations
 
 import uuid
@@ -20,10 +21,12 @@ from database import Base
 
 
 def _uuid_column(*, primary_key: bool = False, nullable: bool = False):
+    # uuid column 정보를 계산해 반환한다.
     return Column(UUID(as_uuid=True), primary_key=primary_key, default=uuid.uuid4, nullable=nullable)
 
 
 class Zone(Base):
+    # 구역 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "zones"
 
     id = Column(String(50), primary_key=True, index=True)
@@ -41,6 +44,7 @@ class Zone(Base):
 
 
 class Robot(Base):
+    # robot 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "robots"
 
     id = _uuid_column(primary_key=True)
@@ -59,6 +63,7 @@ class Robot(Base):
 
 
 class Plant(Base):
+    # 작물 개체 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "plants"
 
     id = Column(String(50), primary_key=True, index=True)
@@ -79,6 +84,7 @@ class Plant(Base):
 
 
 class Fruit(Base):
+    # fruit 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "fruits"
 
     id = Column(String(50), primary_key=True, index=True)
@@ -96,6 +102,7 @@ class Fruit(Base):
 
 
 class Mission(Base):
+    # 미션 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "missions"
 
     id = _uuid_column(primary_key=True)
@@ -119,6 +126,7 @@ class Mission(Base):
 
 
 class CropObservation(Base):
+    # 작물 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "crop_observations"
 
     id = _uuid_column(primary_key=True)
@@ -142,6 +150,7 @@ class CropObservation(Base):
 
 
 class EnvironmentSample(Base):
+    # environment 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "environment_samples"
 
     id = _uuid_column(primary_key=True)
@@ -155,6 +164,7 @@ class EnvironmentSample(Base):
 
 
 class IotDevice(Base):
+    # IoT 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "iot_devices"
 
     id = Column(String(50), primary_key=True, index=True)
@@ -174,6 +184,7 @@ class IotDevice(Base):
 
 
 class ActuationCommand(Base):
+    # actuation 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "actuation_commands"
 
     id = _uuid_column(primary_key=True)
@@ -197,6 +208,7 @@ class ActuationCommand(Base):
 
 
 class ActuationLog(Base):
+    # actuation 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "actuation_logs"
 
     id = _uuid_column(primary_key=True)
@@ -215,6 +227,7 @@ class ActuationLog(Base):
 
 
 class Alert(Base):
+    # alert 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "alerts"
 
     id = _uuid_column(primary_key=True)
@@ -237,6 +250,7 @@ class Alert(Base):
 
 
 class AiJudgment(Base):
+    # AI 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "ai_judgments"
 
     id = _uuid_column(primary_key=True)
@@ -262,6 +276,7 @@ class AiJudgment(Base):
 
 
 class HarvestEvent(Base):
+    # harvest 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     __tablename__ = "harvest_events"
 
     id = _uuid_column(primary_key=True)

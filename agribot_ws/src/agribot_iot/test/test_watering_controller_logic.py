@@ -1,3 +1,4 @@
+# 이 테스트는 IoT 장치 연동 패키지의 watering controller logic 동작을 검증한다.
 from pathlib import Path
 import json
 
@@ -22,6 +23,7 @@ IOT_DEVICES = (
 
 
 def test_dispense_water_command_creates_duration_from_flow_rate() -> None:
+    # dispense water 명령 creates duration from flow rate 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['farm_01_watering']
 
@@ -42,6 +44,7 @@ def test_dispense_water_command_creates_duration_from_flow_rate() -> None:
 
 
 def test_stop_watering_completes_immediately_and_reports_payload() -> None:
+    # stop 급수 completes immediately AND reports payload 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['farm_01_watering']
 

@@ -1,3 +1,4 @@
+# 이 런치 파일은 자율주행과 경로 계획 패키지의 노드와 의존 구성을 한 번에 실행하도록 묶는다.
 import os
 from pathlib import Path
 import sys
@@ -47,6 +48,7 @@ _TRUE_VALUES = ('true', '1', 'yes', 'on')
 
 
 def _bool_expr(name: str) -> PythonExpression:
+    # bool expr 정보를 계산해 반환한다.
     return PythonExpression([
         "'",
         LaunchConfiguration(name),
@@ -55,6 +57,7 @@ def _bool_expr(name: str) -> PythonExpression:
 
 
 def _all_true_expr(*names: str) -> PythonExpression:
+    # all true expr 정보를 계산해 반환한다.
     expression = []
     for index, name in enumerate(names):
         if index:
@@ -68,10 +71,12 @@ def _all_true_expr(*names: str) -> PythonExpression:
 
 
 def _bool_value(context, name: str) -> bool:
+    # bool 값 정보를 계산해 반환한다.
     return LaunchConfiguration(name).perform(context).strip().lower() in _TRUE_VALUES
 
 
 def _configure_mapping_strategy(context, *_args, **_kwargs):
+    # configure mapping strategy 정보를 계산해 반환한다.
     strategy = LaunchConfiguration('mapping_strategy').perform(context).strip().lower()
     if strategy not in {'sweep_hybrid', 'patrol_only', 'frontier_only'}:
         raise RuntimeError(
@@ -116,6 +121,7 @@ def _configure_mapping_strategy(context, *_args, **_kwargs):
 
 
 def generate_launch_description():
+    # 실행 description을 생성한다.
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_agribot_navigation = get_package_share_directory('agribot_navigation')
     pkg_slam_toolbox = get_package_share_directory('slam_toolbox')

@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 environment sensor node 장치 흐름을 담당한다.
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,9 +14,10 @@ from .environment_sensor_profile import generate_environment_sample
 
 
 class EnvironmentSensorNode(Node):
-    """Publish deterministic simulated environment values per zone."""
+    # ROS 2 실행 환경에서 environment sensor 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # EnvironmentSensorNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('environment_sensor_node')
         self.declare_parameter('iot_devices_file', str(get_default_iot_devices_path()))
         self.declare_parameter('environment_topic', '/environment_data')
@@ -46,6 +48,7 @@ class EnvironmentSensorNode(Node):
         )
 
     def _publish_samples(self) -> None:
+        # samples를 외부 시스템이나 다음 처리 단계로 전달한다.
         elapsed_sec = time.monotonic() - self._started_at
         for zone in self._catalog.zones.values():
             if self._zone_id_filter and zone.zone_id != self._zone_id_filter:
@@ -79,6 +82,7 @@ class EnvironmentSensorNode(Node):
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = EnvironmentSensorNode()
     try:

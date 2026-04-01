@@ -1,36 +1,37 @@
 #!/usr/bin/env python3
-# Usage examples:
-#   python tools/ripeness/train_ripeness_yolo_cls.py --data /path/to/ripeness_cls
-#   python tools/ripeness/train_ripeness_yolo_cls.py --data /path/to/ripeness_cls --epochs 50 --batch 32 --imgsz 224 --device 0
-#   python tools/ripeness/train_ripeness_yolo_cls.py --data /path/to/ripeness_cls --export-onnx
-#   python - <<'PY'
-#   from tools.ripeness.train_ripeness_yolo_cls import predict_ripeness_result, build_ripeness_judgment
-#   prediction = predict_ripeness_result('/path/to/best.pt', '/path/to/image.jpg')
-#   payload = build_ripeness_judgment(
-#       raw_label=prediction['raw_label'],
-#       confidence=prediction['confidence'],
-#       plant_id='plant_01',
-#       fruit_id='fruit_01',
-#       zone_id='farm_01',
-#       image_url='/images/fruit_01.jpg',
-#       model_checkpoint_path='/path/to/best.pt',
-#   )
-#   print(prediction)
-#   print(payload)
-#   PY
-"""Train a tomato ripeness classifier with Ultralytics YOLO26 classification mode.
 
-Expected dataset layout:
-- train/unripe
-- train/turning
-- train/ripe
-- val/unripe
-- val/turning
-- val/ripe
-- test/unripe
-- test/turning
-- test/ripe
-"""
+# Ultralytics YOLO 분류 모드로 토마토 익음도 분류기를 학습하고 추론 보조 함수를 제공한다.
+#
+# 사용 예시:
+# python tools/ripeness/train_ripeness_yolo_cls.py --data /path/to/ripeness_cls
+# python tools/ripeness/train_ripeness_yolo_cls.py --data /path/to/ripeness_cls --epochs 50 --batch 32 --imgsz 224 --device 0
+# python tools/ripeness/train_ripeness_yolo_cls.py --data /path/to/ripeness_cls --export-onnx
+# python - <<'PY'
+# from tools.ripeness.train_ripeness_yolo_cls import predict_ripeness_result, build_ripeness_judgment
+# prediction = predict_ripeness_result('/path/to/best.pt', '/path/to/image.jpg')
+# payload = build_ripeness_judgment(
+# raw_label=prediction['raw_label'],
+# confidence=prediction['confidence'],
+# plant_id='plant_01',
+# fruit_id='fruit_01',
+# zone_id='farm_01',
+# image_url='/images/fruit_01.jpg',
+# model_checkpoint_path='/path/to/best.pt',
+# )
+# print(prediction)
+# print(payload)
+# PY
+#
+# 예상 데이터셋 구조:
+# - train/unripe
+# - train/turning
+# - train/ripe
+# - val/unripe
+# - val/turning
+# - val/ripe
+# - test/unripe
+# - test/turning
+# - test/ripe
 
 from __future__ import annotations
 
@@ -71,6 +72,7 @@ RIPENESS_SUMMARY_TEXT = {
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(
         description="Train a YOLO26 classification model for tomato ripeness."
     )
@@ -93,6 +95,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = parse_args()
     data_root = Path(args.data).expanduser().resolve()
 
@@ -191,6 +194,7 @@ def main() -> int:
 
 
 def validate_dataset_root(data_root: Path) -> None:
+    # dataset root가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     if not data_root.exists():
         raise FileNotFoundError(f"Dataset root does not exist: {data_root}")
     if not data_root.is_dir():
@@ -205,6 +209,7 @@ def validate_dataset_root(data_root: Path) -> None:
 
 
 def split_has_images(data_root: Path, split_name: str) -> bool:
+    # split has 이미지 정보를 계산해 반환한다.
     split_dir = data_root / split_name
     if not split_dir.is_dir():
         return False
@@ -215,6 +220,7 @@ def split_has_images(data_root: Path, split_name: str) -> bool:
 
 
 def resolve_class_names(data_root: Path) -> list[str]:
+    # 현재 입력 조건을 바탕으로 class 이름 목록를 계산하거나 결정한다.
     train_dir = data_root / "train"
     if not train_dir.is_dir():
         return list(DEFAULT_CLASSES)
@@ -232,6 +238,7 @@ def resolve_save_dir(
     project: str,
     name: str,
 ) -> Path:
+    # 현재 입력 조건을 바탕으로 save 디렉터리를 계산하거나 결정한다.
     candidate_values = [
         getattr(train_results, "save_dir", None),
         getattr(getattr(model, "trainer", None), "save_dir", None),
@@ -243,6 +250,7 @@ def resolve_save_dir(
 
 
 def resolve_best_checkpoint(save_dir: Path) -> Path:
+    # 현재 입력 조건을 바탕으로 best checkpoint를 계산하거나 결정한다.
     best_checkpoint = save_dir / "weights" / "best.pt"
     if best_checkpoint.is_file():
         return best_checkpoint
@@ -264,6 +272,7 @@ def resolve_exported_onnx_path(
     best_checkpoint: Path,
     save_dir: Path,
 ) -> Path:
+    # 현재 입력 조건을 바탕으로 exported onnx 경로를 계산하거나 결정한다.
     candidate_paths: list[Path] = []
 
     for candidate in flatten_export_result(export_result):
@@ -301,6 +310,7 @@ def resolve_exported_onnx_path(
 
 
 def flatten_export_result(export_result: Any) -> list[Any]:
+    # flatten 내보내기 결과 정보를 계산해 반환한다.
     if export_result is None:
         return []
     if isinstance(export_result, (list, tuple)):
@@ -312,6 +322,7 @@ def flatten_export_result(export_result: Any) -> list[Any]:
 
 
 def metrics_to_dict(metrics: Any) -> dict[str, Any]:
+    # metrics dict 정보를 계산해 반환한다.
     serialized: dict[str, Any] = {}
 
     for attr_name in ("top1", "top5", "fitness"):
@@ -341,6 +352,7 @@ def metrics_to_dict(metrics: Any) -> dict[str, Any]:
 
 
 def to_jsonable(value: Any) -> Any:
+    # 현재 값을 jsonable 형식으로 변환한다.
     if isinstance(value, dict):
         return {str(key): to_jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -361,7 +373,7 @@ def to_jsonable(value: Any) -> Any:
 
 
 def predict_ripeness_result(model_path: str | Path, image_path: str | Path) -> dict[str, Any]:
-    """Run a small inference helper aligned with the backend ripeness contract."""
+    # 입력 데이터를 바탕으로 ripeness 결과를 추론한다.
     from ultralytics import YOLO
 
     model = YOLO(str(model_path))
@@ -399,13 +411,7 @@ def build_ripeness_judgment(
     requires_approval: bool = True,
     risk_level: str | None = None,
 ) -> dict[str, Any]:
-    """Build an ai_judgments-compatible provisional RIPENESS payload.
-
-    The recommended_action_code produced here is derived from ripeness only.
-    It is a provisional recommendation and must not be treated as the final
-    harvest decision. Final harvest decisions must be created separately by the
-    rule-based fusion layer as HARVEST_DECISION.
-    """
+    # ripeness 판정 결과를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     canonical_code = normalize_ripeness_class_name(raw_label)
     resolved_model_version = resolve_model_version(
         model_version=model_version,
@@ -440,6 +446,7 @@ def build_ripeness_judgment(
 
 
 def normalize_ripeness_class_name(raw_label: str) -> str:
+    # ripeness class 이름를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = str(raw_label).strip().lower().replace("-", "_").replace(" ", "_")
     if normalized not in DEFAULT_CLASSES:
         raise ValueError(
@@ -453,6 +460,7 @@ def resolve_model_version(
     model_version: str | None,
     model_checkpoint_path: str | Path | None,
 ) -> str:
+    # 현재 입력 조건을 바탕으로 모델 version를 계산하거나 결정한다.
     if model_version:
         return model_version
     if model_checkpoint_path:

@@ -1,3 +1,4 @@
+# 이 모듈은 지도, 위치, 레이어와 관련된 로봇 맵 데이터를 읽어온다.
 import json
 import math
 import re
@@ -64,6 +65,7 @@ ZONE_LABELS = {
 
 
 def _mission_sort_key(mission: Mission) -> tuple[int, str, str]:
+    # 미션 sort key 정보를 계산해 반환한다.
     priority = {
         "RUNNING": 0,
         "PENDING": 1,
@@ -77,6 +79,7 @@ def _mission_sort_key(mission: Mission) -> tuple[int, str, str]:
 
 
 def _clean_yaml_lines(path: Path) -> list[str]:
+    # clean yaml lines 정보를 계산해 반환한다.
     lines: list[str] = []
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.split("#", 1)[0].rstrip()
@@ -86,6 +89,7 @@ def _clean_yaml_lines(path: Path) -> list[str]:
 
 
 def _read_yaml_mapping(path: Path) -> dict[str, Any]:
+    # YAML 데이터 mapping를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"{path.name} 최상위 형식이 올바르지 않습니다.")
@@ -93,6 +97,7 @@ def _read_yaml_mapping(path: Path) -> dict[str, Any]:
 
 
 def _parse_scalar(value: str) -> Any:
+    # scalar를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     trimmed = value.strip().strip("'").strip('"')
     if not trimmed:
         return ""
@@ -107,6 +112,7 @@ def _parse_scalar(value: str) -> Any:
 
 
 def _parse_pose_text(value: str) -> dict[str, float]:
+    # 위치 자세 text를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     tokens = [float(token) for token in value.split()]
     while len(tokens) < 6:
         tokens.append(0.0)
@@ -121,6 +127,7 @@ def _parse_pose_text(value: str) -> dict[str, float]:
 
 
 def _normalize_vector(delta_x: float, delta_y: float) -> tuple[float, float] | None:
+    # vector를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     magnitude = math.hypot(delta_x, delta_y)
     if magnitude <= 1e-6:
         return None
@@ -128,6 +135,7 @@ def _normalize_vector(delta_x: float, delta_y: float) -> tuple[float, float] | N
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
+    # 대상 값을 허용 범위로 제한한다.
     return max(minimum, min(value, maximum))
 
 
@@ -135,6 +143,7 @@ def _route_bounds(
     route: dict[str, Any],
     waypoint_lookup: dict[str, dict[str, Any]],
 ) -> tuple[float, float, float, float]:
+    # 경로 bounds 정보를 계산해 반환한다.
     referenced_waypoint_ids = [
         route["entry_pose_id"],
         *route["inspect_pose_ids"],
@@ -147,6 +156,7 @@ def _route_bounds(
 
 
 def _build_waypoint_lookup() -> dict[str, dict[str, Any]]:
+    # waypoint lookup를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     payload = _read_yaml_mapping(PATROL_WAYPOINTS_PATH)
     waypoint_lookup: dict[str, dict[str, Any]] = {}
 
@@ -174,6 +184,7 @@ def _build_waypoint_lookup() -> dict[str, dict[str, Any]]:
 
 
 def _build_route_lookup() -> tuple[list[dict[str, Any]], dict[str, float]]:
+    # 경로 lookup를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     payload = _read_yaml_mapping(PATROL_WAYPOINTS_PATH)
     routes: list[dict[str, Any]] = []
 
@@ -238,6 +249,7 @@ def _build_route_lookup() -> tuple[list[dict[str, Any]], dict[str, float]]:
 def _sort_observation_candidate(
     candidate: tuple[int, float, dict[str, Any], dict[str, Any]],
 ) -> tuple[float, float, str, str]:
+    # sort 관측 후보 정보를 계산해 반환한다.
     score, distance, route, waypoint = candidate
     return (
         -score,
@@ -250,6 +262,7 @@ def _sort_observation_candidate(
 def _dedupe_observation_contexts(
     candidates: list[tuple[int, float, dict[str, Any], dict[str, Any]]],
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    # dedupe 관측 contexts 정보를 계산해 반환한다.
     unique_contexts: list[tuple[dict[str, Any], dict[str, Any]]] = []
     seen_waypoint_ids: set[str] = set()
 
@@ -271,6 +284,7 @@ def _find_observation_contexts(
     routes: list[dict[str, Any]],
     waypoint_lookup: dict[str, dict[str, Any]],
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    # 관측 contexts을 찾아 반환한다.
     candidates: list[tuple[int, float, dict[str, Any], dict[str, Any]]] = []
 
     for route in routes:
@@ -348,6 +362,7 @@ def _find_observation_context(
     routes: list[dict[str, Any]],
     waypoint_lookup: dict[str, dict[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    # 관측 context을 찾아 반환한다.
     contexts = _find_observation_contexts(
         plant_id=plant_id,
         tomato_id=tomato_id,
@@ -371,6 +386,7 @@ def _compute_approach_pose(
 ) -> dict[str, float]:
     # Frontend world-map markers should sit closer to the observed crop than the
     # safe aisle-center navigation target so left/right intent is visually clear.
+    # 현재 입력 조건을 바탕으로 approach 위치 자세를 계산하거나 결정한다.
     standoff_margin = routing_config["map_display_standoff_from_crop_m"]
     lane_side = str(route.get("lane_side", "")).strip()
     standoff_margin = routing_config.get(
@@ -424,6 +440,7 @@ def _compute_approach_pose(
 
 
 def _build_navigation_pose(inspect_waypoint: dict[str, Any]) -> dict[str, float]:
+    # navigation 위치 자세를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     inspect_pose = inspect_waypoint["pose"]
     return {
         # 일반 수동 이동은 작물 옆 접근점이 아니라, 통로 중앙의 관측 지점을 우선 사용한다.
@@ -436,6 +453,7 @@ def _build_navigation_pose(inspect_waypoint: dict[str, Any]) -> dict[str, float]
 
 
 def _build_plant_approach_lookup() -> dict[str, dict[str, Any]]:
+    # 작물 개체 approach lookup를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     crop_instances = _read_yaml_mapping(CROP_INSTANCES_PATH)
     waypoint_lookup = _build_waypoint_lookup()
     routes, routing_config = _build_route_lookup()
@@ -500,6 +518,7 @@ def _build_plant_approach_lookup() -> dict[str, dict[str, Any]]:
 
 
 def _read_pgm_dimensions(image_path: Path) -> tuple[int, int]:
+    # PGM dimensions를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     raw = image_path.read_bytes()
     tokens: list[str] = []
     index = 0
@@ -526,6 +545,7 @@ def _read_pgm_dimensions(image_path: Path) -> tuple[int, int]:
 
 
 def _sanitize_map_id(map_id: str | None) -> str:
+    # sanitize 지도 id 정보를 계산해 반환한다.
     resolved = map_id or DEFAULT_MAP_ID
     if not MAP_ID_PATTERN.fullmatch(resolved):
         raise ValueError("유효하지 않은 map_id 입니다.")
@@ -533,6 +553,7 @@ def _sanitize_map_id(map_id: str | None) -> str:
 
 
 def _map_yaml_path(map_id: str) -> Path:
+    # 입력 값을 YAML 데이터 경로에 대응되도록 매핑한다.
     path = MAPS_DIR / f"{map_id}.yaml"
     if not path.exists():
         raise FileNotFoundError(f"{map_id}.yaml 파일을 찾지 못했습니다.")
@@ -540,6 +561,7 @@ def _map_yaml_path(map_id: str) -> Path:
 
 
 def _load_map_yaml(yaml_path: Path) -> dict[str, Any]:
+    # 지도 YAML 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     lines = _clean_yaml_lines(yaml_path)
     metadata: dict[str, Any] = {}
     index = 0
@@ -574,6 +596,7 @@ def _load_map_yaml(yaml_path: Path) -> dict[str, Any]:
 
 
 def _load_crop_instances() -> dict[str, Any]:
+    # 작물 instances를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     lines = _clean_yaml_lines(CROP_INSTANCES_PATH)
     data: dict[str, Any] = {
         "plants": [],
@@ -629,6 +652,7 @@ def _load_crop_instances() -> dict[str, Any]:
 
 
 def _load_iot_devices() -> dict[str, dict[str, Any]]:
+    # IoT 장치 목록를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     lines = _clean_yaml_lines(IOT_DEVICES_PATH)
     current_zone_id = ""
     in_devices = False
@@ -673,6 +697,7 @@ def _load_iot_devices() -> dict[str, dict[str, Any]]:
 
 
 def _load_world_semantics() -> dict[str, Any]:
+    # 월드 semantics를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     root = ET.parse(WORLD_PATH).getroot()
     world = root.find("world")
     if world is None:
@@ -725,6 +750,7 @@ def _load_world_semantics() -> dict[str, Any]:
 
 
 def _build_lane_guides(plant_positions: list[dict[str, float]]) -> list[dict[str, Any]]:
+    # lane guides를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     y_values = sorted({round(position["y"], 3) for position in plant_positions})
     if not y_values:
         return []
@@ -739,6 +765,7 @@ def _build_lane_guides(plant_positions: list[dict[str, float]]) -> list[dict[str
 
 
 def read_map_payload(map_id: str | None = None) -> dict[str, Any]:
+    # 지도 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     resolved_map_id = _sanitize_map_id(map_id)
     yaml_path = _map_yaml_path(resolved_map_id)
     metadata = _load_map_yaml(yaml_path)
@@ -763,6 +790,7 @@ def read_map_payload(map_id: str | None = None) -> dict[str, Any]:
 
 
 def image_path_for_map(map_id: str | None = None) -> Path:
+    # 이미지 경로 지도 정보를 계산해 반환한다.
     resolved_map_id = _sanitize_map_id(map_id)
     yaml_path = _map_yaml_path(resolved_map_id)
     metadata = _load_map_yaml(yaml_path)
@@ -773,15 +801,18 @@ def image_path_for_map(map_id: str | None = None) -> Path:
 
 
 def _guess_zone_id(x_value: float) -> str:
+    # guess 구역 id 정보를 계산해 반환한다.
     del x_value
     return "farm_01"
 
 
 def _pose_snapshot_path() -> Path:
+    # 위치 자세 스냅샷 경로 정보를 계산해 반환한다.
     return runtime_dir_from_env() / POSE_SNAPSHOT_FILENAME
 
 
 def _safe_control_state_payload() -> dict[str, Any]:
+    # safe 제어 상태 페이로드 정보를 계산해 반환한다.
     try:
         return read_control_state_payload()
     except RobotRuntimeStateError as exc:
@@ -791,6 +822,7 @@ def _safe_control_state_payload() -> dict[str, Any]:
 def _safe_latest_command_status_payload(
     control_state: dict[str, Any],
 ) -> dict[str, Any]:
+    # safe 최신 명령 상태 페이로드 정보를 계산해 반환한다.
     try:
         return read_latest_command_status_payload()
     except RobotRuntimeStateError as exc:
@@ -808,6 +840,7 @@ def _safe_latest_command_status_payload(
 
 
 def _load_db_robot_context(robot_identifier: str | None = None) -> dict[str, Any]:
+    # DB robot context를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     db = SessionLocal()
     try:
         robot_query = db.query(Robot)
@@ -844,6 +877,7 @@ def _load_db_robot_context(robot_identifier: str | None = None) -> dict[str, Any
 
 
 def _resolve_db_status_label(db_context: dict[str, Any]) -> str:
+    # 현재 입력 조건을 바탕으로 DB 상태 라벨를 계산하거나 결정한다.
     robot_status = str(db_context.get("robot_status") or "").upper()
     mission_status = str(db_context.get("mission_status") or "").upper()
     mission_type = str(db_context.get("mission_type") or "").upper()
@@ -864,6 +898,7 @@ def _resolve_db_status_label(db_context: dict[str, Any]) -> str:
 
 
 def _resolve_db_mission_state(db_context: dict[str, Any]) -> str:
+    # 현재 입력 조건을 바탕으로 DB 미션 상태를 계산하거나 결정한다.
     mission_type = str(db_context.get("mission_type") or "").upper()
     mission_status = str(db_context.get("mission_status") or "").upper()
 
@@ -880,6 +915,7 @@ def _resolve_status_label(
     control_state: dict[str, Any],
     latest_command_status: dict[str, Any],
 ) -> str:
+    # 현재 입력 조건을 바탕으로 상태 라벨를 계산하거나 결정한다.
     control_mode = control_state["mode"]
     active_activity = control_state["active_activity"]
     command_status = str(latest_command_status.get("status") or "").strip()
@@ -915,6 +951,7 @@ def _resolve_status_label(
 
 
 def _resolve_mode_label(control_state: dict[str, Any]) -> str:
+    # 현재 입력 조건을 바탕으로 모드 라벨를 계산하거나 결정한다.
     control_mode = control_state["mode"]
     active_activity = control_state["active_activity"]
     if control_mode == "emergency_stop":
@@ -934,6 +971,7 @@ def _resolve_mission_state(
     control_state: dict[str, Any],
     latest_command_status: dict[str, Any],
 ) -> str:
+    # 현재 입력 조건을 바탕으로 미션 상태를 계산하거나 결정한다.
     command_status = str(latest_command_status.get("status") or "").strip()
     if command_status in {"pending", "running"}:
         return str(latest_command_status.get("message") or "").strip() or "명령 실행 중"
@@ -954,6 +992,7 @@ def _status_updated_at(
     control_state: dict[str, Any],
     latest_command_status: dict[str, Any],
 ) -> str:
+    # 상태 updated at 정보를 계산해 반환한다.
     for value in (
         latest_command_status.get("updated_at"),
         control_state.get("updated_at"),
@@ -965,6 +1004,7 @@ def _status_updated_at(
 
 
 def _fallback_pose_payload(map_id: str) -> dict[str, Any]:
+    # 대체값 위치 자세 페이로드 정보를 계산해 반환한다.
     updated_at = datetime.now(timezone.utc).isoformat()
     current_zone_id = "farm_01"
     return {
@@ -992,6 +1032,7 @@ def _pose_payload_from_snapshot(
     resolved_map_id: str,
     note: str,
 ) -> dict[str, Any]:
+    # 위치 자세 페이로드 스냅샷 정보를 계산해 반환한다.
     pose = payload["pose"]
     x_value = float(pose.get("x", 0.0))
     current_zone_id = _guess_zone_id(x_value)
@@ -1015,6 +1056,7 @@ def _pose_payload_from_snapshot(
 
 
 def read_pose_payload(map_id: str | None = None) -> dict[str, Any]:
+    # 위치 자세 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     resolved_map_id = _sanitize_map_id(map_id)
     pose_snapshot_path = _pose_snapshot_path()
 
@@ -1057,6 +1099,7 @@ def read_pose_payload(map_id: str | None = None) -> dict[str, Any]:
 
 
 def read_status_payload(map_id: str | None = None) -> dict[str, Any]:
+    # 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     pose_payload = read_pose_payload(map_id)
     control_state = _safe_control_state_payload()
     latest_command_status = _safe_latest_command_status_payload(control_state)
@@ -1143,6 +1186,7 @@ def read_status_payload(map_id: str | None = None) -> dict[str, Any]:
 
 
 def read_layers_payload(map_id: str | None = None) -> dict[str, Any]:
+    # layers payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     resolved_map_id = _sanitize_map_id(map_id)
     crop_instances = _load_crop_instances()
     world = _load_world_semantics()

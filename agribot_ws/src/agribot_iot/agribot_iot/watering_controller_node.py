@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 watering controller node 장치 흐름을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -22,15 +23,17 @@ from .watering_controller_logic import (
 
 @dataclass(slots=True)
 class ActiveWateringCommand:
+    # active 급수 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     plan: WateringExecutionPlan
     started_at_monotonic: float
     timer: object
 
 
 class WateringControllerNode(Node):
-    """Execute watering commands and publish state/result messages."""
+    # ROS 2 실행 환경에서 급수 controller 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # WateringControllerNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('watering_controller_node')
         callback_group = ReentrantCallbackGroup()
 
@@ -93,6 +96,7 @@ class WateringControllerNode(Node):
         )
 
     def _handle_command(self, message: IoTCommand) -> None:
+        # handle 명령 정보를 계산해 반환한다.
         if message.device_type.strip() != 'watering':
             return
 
@@ -134,6 +138,7 @@ class WateringControllerNode(Node):
         )
 
     def _resolve_device(self, message: IoTCommand) -> IoTDeviceSpec | None:
+        # 현재 입력 조건을 바탕으로 장치를 계산하거나 결정한다.
         if message.device_id and message.device_id in self._watering_devices:
             return self._watering_devices[message.device_id]
         zone_id = message.zone_id.strip() or self._catalog.default_zone_id
@@ -144,6 +149,7 @@ class WateringControllerNode(Node):
         return self._watering_devices.get(device.device_id)
 
     def _start_watering(self, device: IoTDeviceSpec, plan: WateringExecutionPlan) -> None:
+        # 급수 실행 흐름을 시작하거나 마무리한다.
         self._stop_active_command(device, reason='Superseded by a newer watering command.')
         self._publish_state(
             device,
@@ -184,6 +190,7 @@ class WateringControllerNode(Node):
         )
 
     def _complete_watering(self, device_id: str) -> None:
+        # complete 급수 정보를 계산해 반환한다.
         active_command = self._active_commands.pop(device_id, None)
         if active_command is None:
             return
@@ -207,6 +214,7 @@ class WateringControllerNode(Node):
         )
 
     def _stop_active_command(self, device: IoTDeviceSpec, *, reason: str) -> None:
+        # active 명령 실행 흐름을 시작하거나 마무리한다.
         active_command = self._active_commands.pop(device.device_id, None)
         if active_command is None:
             return
@@ -229,6 +237,7 @@ class WateringControllerNode(Node):
         current_value: float,
         detail_message: str,
     ) -> None:
+        # 상태를 외부 시스템이나 다음 처리 단계로 전달한다.
         message = build_watering_state(
             device,
             state=state,
@@ -250,6 +259,7 @@ class WateringControllerNode(Node):
         detail_message: str,
         executed_duration_sec: float,
     ) -> None:
+        # 결과를 외부 시스템이나 다음 처리 단계로 전달한다.
         result = String()
         result.data = build_watering_result_payload(
             plan,
@@ -265,6 +275,7 @@ class WateringControllerNode(Node):
         )
 
     def destroy_node(self) -> bool:
+        # destroy 노드 정보를 계산해 반환한다.
         for active_command in self._active_commands.values():
             active_command.timer.cancel()
             self.destroy_timer(active_command.timer)
@@ -273,6 +284,7 @@ class WateringControllerNode(Node):
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = WateringControllerNode()
     try:

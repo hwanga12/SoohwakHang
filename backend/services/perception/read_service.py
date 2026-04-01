@@ -1,3 +1,4 @@
+# 이 모듈은 인지 서비스 계층에서 감지 결과와 스냅샷을 읽어오는 서비스 로직을 제공한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -43,6 +44,7 @@ LABEL_DISPLAY_MAP = {
 
 @dataclass(frozen=True)
 class RuntimeObservationRecord:
+    # 런타임 데이터 관측 결과 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     observation_id: str
     plant_id: str
     zone_id: str
@@ -63,16 +65,19 @@ class RuntimeObservationRecord:
 
 
 def _serialize_datetime(value: datetime | None) -> str:
+    # datetime를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return "" if value is None else value.isoformat()
 
 
 def _serialize_uuid(value: UUID | str | None) -> str:
+    # uuid를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     if value is None:
         return ""
     return str(value)
 
 
 def _parse_uuid(value: str) -> UUID | None:
+    # uuid를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     try:
         return UUID(str(value).strip())
     except (TypeError, ValueError, AttributeError):
@@ -80,27 +85,32 @@ def _parse_uuid(value: str) -> UUID | None:
 
 
 def _utc_now_iso() -> str:
+    # utc now iso 정보를 계산해 반환한다.
     return datetime.now(timezone.utc).isoformat()
 
 
 def _plant_display_name(plant_id: str) -> str:
+    # 작물 display name 정보를 계산해 반환한다.
     suffix = plant_id.split("_")[-1] if plant_id else ""
     return f"토마토 식물 {suffix}" if suffix else plant_id
 
 
 def _zone_label(zone: Zone | None) -> str:
+    # 구역 라벨 정보를 계산해 반환한다.
     if zone is None:
         return "farm_01"
     return zone.name or zone.id
 
 
 def _display_label(finding_label: str) -> str:
+    # display 라벨 정보를 계산해 반환한다.
     normalized = finding_label.strip().lower()
     return LABEL_DISPLAY_MAP.get(normalized, finding_label)
 
 
 @lru_cache(maxsize=1)
 def _canonical_plant_positions() -> dict[str, dict[str, float]]:
+    # 기준 작물 위치 목록 정보를 계산해 반환한다.
     crop_instances = _load_crop_instances()
     positions: dict[str, dict[str, float]] = {}
 
@@ -119,6 +129,7 @@ def _canonical_plant_positions() -> dict[str, dict[str, float]]:
 
 
 def _plant_position(plant_id: str, fallback: dict[str, Any] | None) -> dict[str, Any]:
+    # 작물 위치 정보를 계산해 반환한다.
     canonical = _canonical_plant_positions().get(plant_id.strip())
     if canonical is not None:
         return canonical
@@ -126,6 +137,7 @@ def _plant_position(plant_id: str, fallback: dict[str, Any] | None) -> dict[str,
 
 
 def _health_percent(finding_label: str) -> int:
+    # 건강도 percent 정보를 계산해 반환한다.
     normalized = finding_label.strip().lower()
     if normalized in {"healthy_leaf", "healthy", "normal"}:
         return 96
@@ -141,20 +153,24 @@ def _health_percent(finding_label: str) -> int:
 
 
 def _api_image_url(image_url: str) -> str:
+    # API 이미지 url 정보를 계산해 반환한다.
     return image_url.strip()
 
 
 def _runtime_media_url(observation_id: str) -> str:
+    # 런타임 미디어 url 정보를 계산해 반환한다.
     return f"/api/v1/media/{observation_id}"
 
 
 def _backend_runtime_dir() -> Path:
+    # backend 런타임 dir 정보를 계산해 반환한다.
     return Path(
         os.environ.get("AGRIBOT_BACKEND_RUNTIME_DIR", str(DEFAULT_BACKEND_RUNTIME_DIR))
     ).expanduser()
 
 
 def _robot_camera_runtime_dir() -> Path:
+    # 로봇 카메라 런타임 dir 정보를 계산해 반환한다.
     return Path(
         os.environ.get(
             "AGRIBOT_ROBOT_CAMERA_RUNTIME_DIR",
@@ -164,6 +180,7 @@ def _robot_camera_runtime_dir() -> Path:
 
 
 def _resolve_local_media_path(image_url: str) -> Path | None:
+    # 현재 입력 조건을 바탕으로 local media 경로를 계산하거나 결정한다.
     normalized = image_url.strip()
     if not normalized:
         return None
@@ -181,6 +198,7 @@ def _resolve_local_media_path(image_url: str) -> Path | None:
 
 
 def _parse_iso_datetime(value: str) -> datetime | None:
+    # ISO datetime를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = value.strip()
     if not normalized:
         return None
@@ -191,6 +209,7 @@ def _parse_iso_datetime(value: str) -> datetime | None:
 
 
 def _read_json_file(path: Path) -> dict[str, Any] | None:
+    # JSON 데이터 파일를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, json.JSONDecodeError):
@@ -199,6 +218,7 @@ def _read_json_file(path: Path) -> dict[str, Any] | None:
 
 
 def _resolve_runtime_image_path(metadata_path: Path, image_format: str) -> Path | None:
+    # 현재 입력 조건을 바탕으로 런타임 데이터 이미지 경로를 계산하거나 결정한다.
     normalized_format = str(image_format or "").strip().lstrip(".")
     if normalized_format:
         candidate = metadata_path.with_suffix(f".{normalized_format}")
@@ -214,10 +234,12 @@ def _resolve_runtime_image_path(metadata_path: Path, image_format: str) -> Path 
 
 
 def _live_camera_metadata_path() -> Path:
+    # 실시간 카메라 metadata 경로 정보를 계산해 반환한다.
     return _robot_camera_runtime_dir() / "camera" / "latest_frame.json"
 
 
 def _resolve_live_camera_image_path(metadata_path: Path, payload: dict[str, Any]) -> Path | None:
+    # 현재 입력 조건을 바탕으로 live 카메라 이미지 경로를 계산하거나 결정한다.
     configured_path = str(payload.get("image_path") or "").strip()
     if configured_path:
         candidate = Path(configured_path).expanduser()
@@ -239,6 +261,7 @@ def _resolve_live_camera_image_path(metadata_path: Path, payload: dict[str, Any]
 
 
 def _runtime_detail(payload: dict[str, Any]) -> str:
+    # 런타임 상세 내용 정보를 계산해 반환한다.
     finding_label = str(
         payload.get("final_label")
         or payload.get("request", {}).get("preliminary_label")
@@ -266,6 +289,7 @@ def _runtime_detail(payload: dict[str, Any]) -> str:
 
 
 def _runtime_recommended_action(payload: dict[str, Any], finding_label: str) -> str:
+    # 런타임 recommended action 정보를 계산해 반환한다.
     normalized = finding_label.strip().lower()
     if normalized in {"healthy_leaf", "healthy", "normal"}:
         return "추가 관찰 유지"
@@ -287,6 +311,7 @@ def _runtime_recommended_action(payload: dict[str, Any], finding_label: str) -> 
 
 
 def _runtime_severity(payload: dict[str, Any], finding_label: str) -> str:
+    # 런타임 severity 정보를 계산해 반환한다.
     treatment_plan = payload.get("treatment_plan")
     if isinstance(treatment_plan, dict) and bool(treatment_plan.get("action_required")):
         return "warning"
@@ -299,6 +324,7 @@ def _runtime_severity(payload: dict[str, Any], finding_label: str) -> str:
 
 
 def _runtime_observation_records() -> list[RuntimeObservationRecord]:
+    # 런타임 관측 records 정보를 계산해 반환한다.
     runtime_dir = _backend_runtime_dir()
     if not runtime_dir.exists():
         return []
@@ -351,6 +377,7 @@ def _runtime_observation_records() -> list[RuntimeObservationRecord]:
 
 
 def _runtime_record_by_observation_id(observation_id: str) -> RuntimeObservationRecord | None:
+    # 런타임 record 관측 id 정보를 계산해 반환한다.
     normalized_id = str(observation_id).strip()
     if not normalized_id:
         return None
@@ -361,6 +388,7 @@ def _runtime_record_by_observation_id(observation_id: str) -> RuntimeObservation
 
 
 def _runtime_observation_item(record: RuntimeObservationRecord) -> dict[str, Any]:
+    # 런타임 관측 item 정보를 계산해 반환한다.
     return {
         "id": record.observation_id,
         "class_name": record.finding_label,
@@ -379,6 +407,7 @@ def _runtime_observation_item(record: RuntimeObservationRecord) -> dict[str, Any
 
 
 def _rollback_quietly(db: Any) -> None:
+    # rollback quietly 정보를 계산해 반환한다.
     try:
         db.rollback()
     except Exception:
@@ -386,7 +415,9 @@ def _rollback_quietly(db: Any) -> None:
 
 
 class ObservationReadService:
+    # observation 조회 서비스 관련 핵심 흐름을 한곳에 모아 제공하는 서비스 클래스다.
     def list_alerts(self) -> list[dict[str, Any]]:
+        # alerts를 모아 순회하기 쉬운 형태로 정리한다.
         runtime_records = _runtime_observation_records()
         runtime_rows = [
             {
@@ -472,6 +503,7 @@ class ObservationReadService:
             db.close()
 
     def list_plants(self) -> list[dict[str, Any]]:
+        # 작물 개체 목록를 모아 순회하기 쉬운 형태로 정리한다.
         runtime_records = _runtime_observation_records()
         db = SessionLocal()
         try:
@@ -597,6 +629,7 @@ class ObservationReadService:
             db.close()
 
     def get_plant_detail(self, plant_id: str) -> dict[str, Any]:
+        # 작물 개체 detail를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         observation_feed = self.get_plant_observations(plant_id)
         latest = observation_feed["items"][0] if observation_feed["items"] else None
 
@@ -641,6 +674,7 @@ class ObservationReadService:
             db.close()
 
     def get_plant_observations(self, plant_id: str) -> dict[str, Any]:
+        # 작물 개체 observations를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         runtime_records = _runtime_observation_records()
         runtime_items = [
             _runtime_observation_item(record)
@@ -721,6 +755,7 @@ class ObservationReadService:
             db.close()
 
     def resolve_media_path(self, asset_id: str) -> Path:
+        # 현재 입력 조건을 바탕으로 media 경로를 계산하거나 결정한다.
         runtime_record = _runtime_record_by_observation_id(asset_id)
         if runtime_record is not None and runtime_record.image_path is not None:
             return runtime_record.image_path
@@ -746,6 +781,7 @@ class ObservationReadService:
             db.close()
 
     def media_response_meta(self, asset_id: str) -> dict[str, str]:
+        # 미디어 response meta 정보를 계산해 반환한다.
         image_path = self.resolve_media_path(asset_id)
         return {
             "filename": image_path.name,
@@ -753,6 +789,7 @@ class ObservationReadService:
         }
 
     def get_live_camera_snapshot(self) -> dict[str, Any]:
+        # live 카메라 스냅샷를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         metadata_path = _live_camera_metadata_path()
         payload = _read_json_file(metadata_path)
         if payload is None:
@@ -805,6 +842,7 @@ class ObservationReadService:
         }
 
     def resolve_live_camera_path(self) -> Path:
+        # 현재 입력 조건을 바탕으로 live 카메라 경로를 계산하거나 결정한다.
         metadata_path = _live_camera_metadata_path()
         payload = _read_json_file(metadata_path)
         if payload is None:
@@ -816,6 +854,7 @@ class ObservationReadService:
         return image_path
 
     def live_camera_response_meta(self) -> dict[str, str]:
+        # 실시간 카메라 response meta 정보를 계산해 반환한다.
         image_path = self.resolve_live_camera_path()
         return {
             "filename": image_path.name,
@@ -823,6 +862,7 @@ class ObservationReadService:
         }
 
     def acknowledge_alert(self, alert_id: str, acknowledged_by: str) -> dict[str, str]:
+        # acknowledge 알림 정보를 계산해 반환한다.
         runtime_record = _runtime_record_by_observation_id(alert_id)
         if runtime_record is not None:
             payload = _read_json_file(runtime_record.metadata_path)

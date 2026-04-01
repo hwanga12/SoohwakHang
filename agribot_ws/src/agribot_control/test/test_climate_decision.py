@@ -1,3 +1,4 @@
+# 이 테스트는 상위 제어와 의사결정 패키지의 climate decision 동작을 검증한다.
 from agribot_control.climate_decision import (
     DeviceDecisionState,
     evaluate_curtain_decision,
@@ -8,6 +9,7 @@ from agribot_control.environment_disease_rules import DiseaseSignal, Environment
 
 
 def test_hot_and_bright_environment_closes_curtain_strongly() -> None:
+    # HOT AND bright environment closes 커튼 strongly 동작과 회귀 여부를 검증한다.
     decision = evaluate_curtain_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -25,6 +27,7 @@ def test_hot_and_bright_environment_closes_curtain_strongly() -> None:
 
 
 def test_moderate_hot_bright_environment_closes_curtain_partially() -> None:
+    # moderate HOT bright environment closes 커튼 partially 동작과 회귀 여부를 검증한다.
     decision = evaluate_curtain_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -41,6 +44,7 @@ def test_moderate_hot_bright_environment_closes_curtain_partially() -> None:
 
 
 def test_curtain_no_action_when_conditions_are_normal() -> None:
+    # 커튼 NO action when conditions ARE normal 동작과 회귀 여부를 검증한다.
     decision = evaluate_curtain_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -57,6 +61,7 @@ def test_curtain_no_action_when_conditions_are_normal() -> None:
 
 
 def test_hot_humid_environment_selects_fan_level_two() -> None:
+    # HOT humid environment selects 환기팬 level TWO 동작과 회귀 여부를 검증한다.
     decision = evaluate_fan_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -74,6 +79,7 @@ def test_hot_humid_environment_selects_fan_level_two() -> None:
 
 
 def test_humid_fungal_repeat_selects_fan_level_three() -> None:
+    # humid fungal repeat selects 환기팬 level three 동작과 회귀 여부를 검증한다.
     decision = evaluate_fan_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -96,6 +102,7 @@ def test_humid_fungal_repeat_selects_fan_level_three() -> None:
 
 
 def test_fan_no_action_when_conditions_are_normal() -> None:
+    # 환기팬 NO action when conditions ARE normal 동작과 회귀 여부를 검증한다.
     decision = evaluate_fan_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -112,6 +119,7 @@ def test_fan_no_action_when_conditions_are_normal() -> None:
 
 
 def test_device_log_formatter_exposes_rule_and_context() -> None:
+    # 장치 LOG formatter exposes rule AND context 동작과 회귀 여부를 검증한다.
     decision = evaluate_fan_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',

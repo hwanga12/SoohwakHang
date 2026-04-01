@@ -1,3 +1,4 @@
+# 이 모듈은 상위 제어와 의사결정 패키지에서 watering decision 판단과 실행 보조 로직을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from .environment_disease_rules import (
 
 
 class WateringDecisionState(str, Enum):
+    # 급수 decision 상태 값을 명확히 구분하기 위한 열거형 클래스를 정의한다.
     AUTO_EXECUTE = 'AUTO_EXECUTE'
     REQUIRES_APPROVAL = 'REQUIRES_APPROVAL'
     HOLD = 'HOLD'
@@ -21,6 +23,7 @@ class WateringDecisionState(str, Enum):
 
 @dataclass(slots=True)
 class WateringDecision:
+    # 급수 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     zone_id: str
     state: str
     command_type: str
@@ -39,6 +42,7 @@ def evaluate_watering_decision(
     environment: EnvironmentSnapshot,
     disease_signal: DiseaseSignal | None = None,
 ) -> WateringDecision:
+    # 급수 decision 조건을 평가한다.
     disease_signal = disease_signal or DiseaseSignal()
     all_decisions = evaluate_environment_disease_rules(environment, disease_signal)
     watering_candidates = [
@@ -93,6 +97,7 @@ def evaluate_watering_decision(
 
 
 def format_watering_decision_log(decision: WateringDecision) -> str:
+    # 급수 decision LOG를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     target_text = (
         f'{decision.target_value:.1f}{decision.unit}'
         if decision.command_type != 'noop'
@@ -117,6 +122,7 @@ def _select_candidate(
     *,
     decision_type: str,
 ) -> RuleDecision | None:
+    # 후보 가운데 필요한 대상을 고른다.
     filtered_candidates = [
         candidate for candidate in candidates if candidate.decision_type == decision_type
     ]
@@ -135,6 +141,7 @@ def _build_watering_decision(
     *,
     state: str,
 ) -> WateringDecision:
+    # 급수 decision를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return WateringDecision(
         zone_id=environment.zone_id,
         state=state,
@@ -152,6 +159,7 @@ def _build_watering_decision(
 
 
 def _format_disease_context(disease_signal: DiseaseSignal) -> str:
+    # disease context를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     disease_parts = [
         item.strip()
         for item in (disease_signal.class_name, disease_signal.disease_name)

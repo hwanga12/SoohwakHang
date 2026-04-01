@@ -1,5 +1,4 @@
-"""종료 정리 로직이 AgriBot 관련 프로세스만 안전하게 신호 보내는지 검증한다."""
-
+# 이 테스트는 통합 실행과 런치 조율 패키지의 shutdown cleanup 동작을 검증한다.
 import signal
 
 from agribot_bringup.shutdown_cleanup import (
@@ -11,6 +10,7 @@ import agribot_bringup.shutdown_cleanup as shutdown_cleanup
 
 
 def test_cleanup_launch_session_only_signals_live_tagged_processes(monkeypatch) -> None:
+    # 정리 작업 launch session only signals live tagged processes 동작과 회귀 여부를 검증한다.
     shutdown_cleanup._CLEANED_SESSION_IDS.clear()
     live_process = SessionProcess(pid=101, ppid=10, state='S', command='gz sim')
     zombie_process = SessionProcess(pid=202, ppid=10, state='Z', command='planner_server')
@@ -39,6 +39,7 @@ def test_cleanup_launch_session_only_signals_live_tagged_processes(monkeypatch) 
 
 
 def test_cleanup_launch_session_runs_once_per_session(monkeypatch) -> None:
+    # 정리 작업 launch session runs once PER session 동작과 회귀 여부를 검증한다.
     shutdown_cleanup._CLEANED_SESSION_IDS.clear()
     signaled: list[tuple[int, signal.Signals]] = []
     process = SessionProcess(pid=301, ppid=30, state='S', command='rviz2')
@@ -68,6 +69,7 @@ def test_cleanup_launch_session_runs_once_per_session(monkeypatch) -> None:
 
 
 def test_cleanup_user_simulation_processes_only_signals_live_targets(monkeypatch) -> None:
+    # 정리 작업 user 시뮬레이션 processes only signals live targets 동작과 회귀 여부를 검증한다.
     live_process = SessionProcess(pid=401, ppid=40, state='S', command='ros2 launch agribot_bringup simulation.launch.py')
     zombie_process = SessionProcess(pid=402, ppid=40, state='Z', command='gz sim greenhouse.sdf')
     signaled: list[tuple[int, signal.Signals]] = []
@@ -99,6 +101,7 @@ def test_cleanup_user_simulation_processes_only_signals_live_targets(monkeypatch
 
 
 def test_matches_user_cleanup_target_prefers_agribot_processes_only() -> None:
+    # matches user 정리 작업 target prefers agribot processes only 동작과 회귀 여부를 검증한다.
     assert shutdown_cleanup._matches_user_cleanup_target(
         ['ros2', 'launch', 'agribot_bringup', 'simulation.launch.py'],
         '/home/ssafy/SSAFY/S14P21A602/agribot_ws',
@@ -125,6 +128,7 @@ def test_matches_user_cleanup_target_prefers_agribot_processes_only() -> None:
 
 
 def test_matches_user_cleanup_target_includes_safe_ros_support_processes() -> None:
+    # matches user 정리 작업 target includes safe ROS support processes 동작과 회귀 여부를 검증한다.
     workspace_path = '/home/ssafy/SSAFY/S14P21A602/agribot_ws'
 
     assert shutdown_cleanup._matches_user_cleanup_target(

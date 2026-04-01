@@ -1,3 +1,4 @@
+# 이 테스트는 상위 제어와 의사결정 패키지의 observation priority 동작을 검증한다.
 from agribot_control.observation_priority import ObservationInput, ObservationPriorityArbiter
 
 
@@ -10,6 +11,7 @@ def build_observation(
     confidence: float = 0.9,
     ready_to_harvest: bool = False,
 ) -> ObservationInput:
+    # 관측 결과를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return ObservationInput(
         observation_id=observation_id,
         zone_id='farm_01',
@@ -23,6 +25,7 @@ def build_observation(
 
 
 def test_diseased_leaf_has_higher_priority_than_ripe_tomato() -> None:
+    # diseased leaf HAS higher priority than ripe tomato 동작과 회귀 여부를 검증한다.
     arbiter = ObservationPriorityArbiter()
 
     ripe = build_observation(
@@ -50,6 +53,7 @@ def test_diseased_leaf_has_higher_priority_than_ripe_tomato() -> None:
 
 
 def test_standardized_disease_suffix_is_recognized_as_disease_event() -> None:
+    # standardized disease suffix IS recognized AS disease 이벤트 동작과 회귀 여부를 검증한다.
     arbiter = ObservationPriorityArbiter()
     disease = build_observation(
         observation_id='obs-disease-standardized',
@@ -67,6 +71,7 @@ def test_standardized_disease_suffix_is_recognized_as_disease_event() -> None:
 
 
 def test_duplicate_observation_inside_window_is_ignored() -> None:
+    # duplicate 관측 결과 inside window IS ignored 동작과 회귀 여부를 검증한다.
     arbiter = ObservationPriorityArbiter(duplicate_window_sec=60.0)
     candidate = build_observation(
         observation_id='obs-01',
@@ -89,6 +94,7 @@ def test_duplicate_observation_inside_window_is_ignored() -> None:
 
 
 def test_next_pending_candidate_can_be_activated_after_active_is_completed() -> None:
+    # next pending candidate CAN BE activated after active IS completed 동작과 회귀 여부를 검증한다.
     arbiter = ObservationPriorityArbiter()
     disease = build_observation(
         observation_id='obs-disease',

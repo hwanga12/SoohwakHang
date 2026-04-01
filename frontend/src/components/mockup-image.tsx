@@ -1,3 +1,6 @@
+/*
+ * 이 컴포넌트는 프론트엔드 화면에서 목업 이미지 역할을 맡는다.
+ */
 type MockupImageProps = {
   alt: string
   className?: string
@@ -8,6 +11,9 @@ type MockupImageProps = {
   width?: number | string
 }
 
+/**
+ * mockup 이미지 화면 조각을 렌더링하는 컴포넌트다.
+ */
 export function MockupImage({
   alt,
   className = '',

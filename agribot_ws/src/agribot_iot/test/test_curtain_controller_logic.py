@@ -1,3 +1,4 @@
+# 이 테스트는 IoT 장치 연동 패키지의 curtain controller logic 동작을 검증한다.
 from pathlib import Path
 import json
 
@@ -23,6 +24,7 @@ IOT_DEVICES = (
 
 
 def test_set_curtain_position_translates_percent_closed_to_open_ratio() -> None:
+    # SET 커튼 위치 translates percent closed TO open ratio 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['farm_01_curtain']
 
@@ -49,6 +51,7 @@ def test_set_curtain_position_translates_percent_closed_to_open_ratio() -> None:
 
 
 def test_open_curtain_completes_immediately_when_already_open() -> None:
+    # open 커튼 completes immediately when already open 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['farm_01_curtain']
 
@@ -90,6 +93,7 @@ def test_open_curtain_completes_immediately_when_already_open() -> None:
 
 
 def test_close_curtain_produces_closed_state() -> None:
+    # close 커튼 produces closed 상태 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['farm_01_curtain']
 

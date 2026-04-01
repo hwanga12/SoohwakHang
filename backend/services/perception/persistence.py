@@ -1,3 +1,4 @@
+# 이 모듈은 인지 서비스 계층에서 인지 결과를 파일이나 저장소에 기록하는 로직을 모은다한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ DEFAULT_ZONE_ID = "farm_01"
 
 @dataclass(frozen=True)
 class PersistenceRefs:
+    # persistence 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     robot_row_id: str
     zone_row_id: str
     plant_row_id: str
@@ -40,9 +42,10 @@ class PersistenceRefs:
 
 
 class ObservationPersistenceService:
-    """Persist backend-confirmed observations into the normalized greenhouse schema."""
+    # observation 저장 서비스 관련 핵심 흐름을 한곳에 모아 제공하는 서비스 클래스다.
 
     def __init__(self) -> None:
+        # ObservationPersistenceService 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         self._ai_judgment_service = AiJudgmentService()
 
     def persist_confirmation(
@@ -58,6 +61,7 @@ class ObservationPersistenceService:
         model_name: str = "tomato_disease_detector",
         model_version: str = "v1",
     ) -> PersistenceRefs:
+        # confirmation을 저장한다.
         db = SessionLocal()
         try:
             zone = _get_or_create_zone(db, request.zone_id)
@@ -176,6 +180,7 @@ class ObservationPersistenceService:
 
 
 def _get_or_create_zone(db: Any, zone_id: str) -> Zone:
+    # OR create 구역를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     normalized_zone_id = zone_id.strip() or DEFAULT_ZONE_ID
     zone = db.query(Zone).filter(Zone.id == normalized_zone_id).first()
     if zone is not None:
@@ -193,6 +198,7 @@ def _get_or_create_zone(db: Any, zone_id: str) -> Zone:
 
 
 def _get_or_create_robot(db: Any, robot_name: str, *, zone_id: str) -> Robot:
+    # OR create robot를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     normalized_robot_name = robot_name.strip() or "AGR-02"
     robot = db.query(Robot).filter(Robot.name == normalized_robot_name).first()
     if robot is not None:
@@ -214,6 +220,7 @@ def _get_or_create_robot(db: Any, robot_name: str, *, zone_id: str) -> Robot:
 
 
 def _point_to_json(point: Point3D | None) -> dict[str, float]:
+    # point json 정보를 계산해 반환한다.
     if point is None:
         return {"x": 0.0, "y": 0.0, "z": 0.0}
     return {
@@ -225,6 +232,7 @@ def _point_to_json(point: Point3D | None) -> dict[str, float]:
 
 @lru_cache(maxsize=1)
 def _canonical_plant_positions() -> dict[str, dict[str, float]]:
+    # 기준 작물 위치 목록 정보를 계산해 반환한다.
     crop_instances = _load_crop_instances()
     positions: dict[str, dict[str, float]] = {}
 
@@ -243,6 +251,7 @@ def _canonical_plant_positions() -> dict[str, dict[str, float]]:
 
 
 def _canonical_plant_position(plant_id: str) -> dict[str, float] | None:
+    # 기준 작물 위치 정보를 계산해 반환한다.
     return _canonical_plant_positions().get(plant_id.strip())
 
 
@@ -255,6 +264,7 @@ def _get_or_create_plant(
     reviewed_at: datetime,
     final_label: str,
 ) -> Plant:
+    # OR create 작물 개체를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     normalized_plant_id = plant_id.strip() or "farm01_plant_unknown"
     plant = db.query(Plant).filter(Plant.id == normalized_plant_id).first()
     if plant is None:
@@ -293,6 +303,7 @@ def _get_or_create_fruit(
     reviewed_at: datetime,
     final_label: str,
 ) -> Fruit | None:
+    # OR create fruit를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     normalized_fruit_id = fruit_id.strip()
     if not normalized_fruit_id:
         return None
@@ -324,6 +335,7 @@ def _recommended_action(
     final_label: str,
     treatment_plan: DiseaseTreatmentPlan | None,
 ) -> str:
+    # recommended action 정보를 계산해 반환한다.
     normalized = final_label.strip().lower()
     if treatment_plan is not None and treatment_plan.action_required and treatment_plan.treatment_label:
         return treatment_plan.treatment_label
@@ -341,6 +353,7 @@ def _build_evidence_text(
     final_confidence: float,
     treatment_plan: DiseaseTreatmentPlan | None,
 ) -> str:
+    # evidence text를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     evidence = (
         f"preliminary={request.preliminary_label or 'n/a'}, "
         f"final={final_label}, confidence={final_confidence:.2f}"
@@ -362,6 +375,7 @@ def _build_ai_evidence_items(
     final_confidence: float,
     treatment_plan: DiseaseTreatmentPlan | None,
 ) -> list[str]:
+    # AI evidence items를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     evidence = [
         f"사전 감지 라벨 {request.preliminary_label or 'n/a'}",
         f"최종 확정 라벨 {final_label}",
@@ -386,6 +400,7 @@ def _build_alert(
     observation: CropObservation,
     reviewed_at: datetime,
 ) -> Alert | None:
+    # alert를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     normalized = observation.finding_label.strip().lower()
     if normalized in {"healthy_leaf", "healthy", "normal", "ripe_tomato"}:
         return None
@@ -415,6 +430,7 @@ def _get_or_create_device(
     device_id: str,
     zone_id: str,
 ) -> IotDevice:
+    # OR create 장치를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     device = db.query(IotDevice).filter(IotDevice.id == device_id).first()
     if device is not None:
         return device
@@ -446,6 +462,7 @@ def _build_actuation_command(
     treatment_plan: DiseaseTreatmentPlan | None,
     dispatch_result: ActuationDispatchResult | None,
 ) -> ActuationCommand | None:
+    # actuation 명령를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     if treatment_plan is None or dispatch_result is None:
         return None
     if not treatment_plan.action_required or treatment_plan.command_payload is None:
@@ -482,6 +499,7 @@ def _build_actuation_log(
     reviewed_at: datetime,
     dispatch_result: ActuationDispatchResult | None,
 ) -> ActuationLog | None:
+    # actuation LOG를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     if command is None or dispatch_result is None:
         return None
 

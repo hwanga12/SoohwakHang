@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
-"""Build a subset-aware tomato detection manifest for train + validation.
 
-This builder keeps the original validation-only workflow intact by adding a
-dedicated script for the baseline subset stage:
-
-- train positive rows come from the materialized positive subset
-- train normal rows come from the source-only normal subset
-- validation rows come from the extracted validation root
-
-The output manifest stays compatible with ``json_to_yolo_det.py`` while adding
-``source_split`` and ``source_origin`` metadata so later stages do not need to
-reconstruct where each row came from.
-"""
-
+# 이 모듈은 인지와 추론 패키지에서 build tomato subset manifest 기능을 담당한다.
 from __future__ import annotations
 
 import argparse
@@ -58,6 +46,7 @@ SUBSET_MANIFEST_FIELDNAMES = [
 
 @dataclass(frozen=True, slots=True)
 class ImageIndex:
+    # 이미지 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     by_name: dict[str, list[Path]]
     by_name_ci: dict[str, list[Path]]
     by_stem: dict[str, list[Path]]
@@ -65,6 +54,7 @@ class ImageIndex:
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(
         description="Build a combined tomato detection manifest from prepared train subsets and validation data."
     )
@@ -92,10 +82,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def to_prefixed_relative(path: Path, root: Path, prefix: str) -> str:
+    # 현재 값을 prefixed relative 형식으로 변환한다.
     return str(Path(prefix) / path.relative_to(root))
 
 
 def build_image_index(source_root: Path) -> ImageIndex:
+    # 이미지 index를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     by_name: dict[str, list[Path]] = defaultdict(list)
     by_name_ci: dict[str, list[Path]] = defaultdict(list)
     by_stem: dict[str, list[Path]] = defaultdict(list)
@@ -118,6 +110,7 @@ def build_image_index(source_root: Path) -> ImageIndex:
 
 
 def dedupe_paths(paths: list[Path]) -> list[Path]:
+    # dedupe 경로 정보를 계산해 반환한다.
     seen: set[Path] = set()
     unique_paths: list[Path] = []
     for path in paths:
@@ -129,6 +122,7 @@ def dedupe_paths(paths: list[Path]) -> list[Path]:
 
 
 def filter_candidates_by_category(candidates: list[Path], category_name: str) -> list[Path]:
+    # filter 후보 category 정보를 계산해 반환한다.
     if not category_name:
         return candidates
     category_matches = [path for path in candidates if category_name in path.parts]
@@ -142,6 +136,7 @@ def choose_best_candidate(
     declared_name: str,
     json_stem: str,
 ) -> tuple[Path | None, bool]:
+    # best 후보 가운데 최종 대상을 고른다.
     unique_candidates = filter_candidates_by_category(
         dedupe_paths(candidates),
         label_category,
@@ -194,6 +189,7 @@ def resolve_image_path(
     label_category: str,
     image_index: ImageIndex,
 ) -> tuple[Path | None, bool]:
+    # 현재 입력 조건을 바탕으로 이미지 경로를 계산하거나 결정한다.
     declared_name = str(description_image).strip() if description_image is not None else ""
     json_stem = json_path.stem
     candidates: list[Path] = []
@@ -223,6 +219,7 @@ def build_base_row(
     source_split: str,
     source_origin: str,
 ) -> dict[str, Any]:
+    # base ROW를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return {
         "image_path": "",
         "image_rel_path": "",
@@ -254,6 +251,7 @@ def build_label_row(
     source_split: str,
     source_origin: str,
 ) -> dict[str, Any]:
+    # 라벨 ROW를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     row = build_base_row(
         json_path=json_path,
         json_rel_path=to_prefixed_relative(json_path, label_root, "label"),
@@ -341,6 +339,7 @@ def build_label_row(
 
 
 def build_positive_rows(train_positive_root: Path) -> list[dict[str, Any]]:
+    # positive rows를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     source_root = train_positive_root / "source"
     label_root = train_positive_root / "label"
     image_index = build_image_index(source_root)
@@ -362,6 +361,7 @@ def build_positive_rows(train_positive_root: Path) -> list[dict[str, Any]]:
 
 
 def build_normal_rows(train_normal_root: Path) -> list[dict[str, Any]]:
+    # normal rows를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     source_root = train_normal_root / "source"
     crop_entry = get_crop_entry("2")
     disease_entry = get_disease_entry("00")
@@ -400,6 +400,7 @@ def build_normal_rows(train_normal_root: Path) -> list[dict[str, Any]]:
 
 
 def build_validation_rows(val_extracted_root: Path) -> list[dict[str, Any]]:
+    # validation rows를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     source_root = val_extracted_root / "source"
     label_root = val_extracted_root / "label"
     image_index = build_image_index(source_root)
@@ -421,6 +422,7 @@ def build_validation_rows(val_extracted_root: Path) -> list[dict[str, Any]]:
 
 
 def write_manifest(rows: list[dict[str, Any]], output_path: Path) -> None:
+    # manifest를 파일이나 저장소에 기록한다.
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=SUBSET_MANIFEST_FIELDNAMES)
@@ -429,6 +431,7 @@ def write_manifest(rows: list[dict[str, Any]], output_path: Path) -> None:
 
 
 def print_summary(rows: list[dict[str, Any]], output_path: Path) -> None:
+    # print 요약 정보를 계산해 반환한다.
     total_rows = len(rows)
     detection_rows = sum(row["use_for_detection"] == "true" for row in rows)
     negative_rows = sum(row["is_negative_sample"] == "true" for row in rows)
@@ -460,6 +463,7 @@ def print_summary(rows: list[dict[str, Any]], output_path: Path) -> None:
 
 
 def validate_root(path: Path, *, label: str) -> Path:
+    # root가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     resolved = path.expanduser().resolve()
     if not resolved.exists() or not resolved.is_dir():
         raise SystemExit(f"{label} must point to an existing directory: {resolved}")
@@ -467,6 +471,7 @@ def validate_root(path: Path, *, label: str) -> Path:
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = parse_args()
     train_positive_root = validate_root(

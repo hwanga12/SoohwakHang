@@ -1,5 +1,4 @@
-"""Generate the committed hardcoded occupancy map for farm_world.sdf."""
-
+# 이 모듈은 자율주행과 경로 계획 패키지에서 generate static map 기능을 담당한다.
 from __future__ import annotations
 
 import argparse
@@ -38,6 +37,7 @@ SPRINKLER_SIZE = 0.1
 
 @dataclass(frozen=True)
 class Rect:
+    # rect 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     min_x: float
     min_y: float
     max_x: float
@@ -51,6 +51,7 @@ class Rect:
         size_x: float,
         size_y: float,
     ) -> 'Rect':
+        # 입력된 center 값을 바탕으로 새 값을 만든다.
         half_x = size_x / 2.0
         half_y = size_y / 2.0
         return cls(
@@ -62,6 +63,7 @@ class Rect:
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     package_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(
         description=(
@@ -91,6 +93,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def make_grid(width: int, height: int, value: int = FREE) -> list[bytearray]:
+    # grid를 새로 만들어 다음 처리 단계로 넘긴다.
     return [bytearray([value] * width) for _ in range(height)]
 
 
@@ -101,6 +104,7 @@ def world_to_index(
     origin_y: float,
     resolution: float,
 ) -> tuple[int, int]:
+    # 월드 index 정보를 계산해 반환한다.
     return (
         int(math.floor((x - origin_x) / resolution)),
         int(math.floor((y - origin_y) / resolution)),
@@ -108,6 +112,7 @@ def world_to_index(
 
 
 def clamp(value: int, lower: int, upper: int) -> int:
+    # 대상 값을 허용 범위로 제한한다.
     return max(lower, min(value, upper))
 
 
@@ -118,6 +123,7 @@ def world_range_to_index_range(
     resolution: float,
     limit: int,
 ) -> tuple[int, int] | None:
+    # 월드 range index 정보를 계산해 반환한다.
     start = int(math.ceil(((lower - origin) / resolution) - 0.5))
     end = int(math.floor(((upper - origin) / resolution) - 0.5))
     if end < 0 or start > limit - 1 or start > end:
@@ -136,6 +142,7 @@ def fill_rect(
     rect: Rect,
     value: int,
 ) -> None:
+    # fill rect 정보를 계산해 반환한다.
     width = len(grid[0])
     height = len(grid)
     x_range = world_range_to_index_range(
@@ -164,6 +171,7 @@ def fill_rect(
 
 
 def farm_ground_bounds() -> Rect:
+    # 농장 ground bounds 정보를 계산해 반환한다.
     return Rect(
         min_x=-GROUND_HALF_EXTENT,
         min_y=-GROUND_HALF_EXTENT,
@@ -173,6 +181,7 @@ def farm_ground_bounds() -> Rect:
 
 
 def farm_collision_rects() -> tuple[Rect, ...]:
+    # 농장 collision rects 정보를 계산해 반환한다.
     outer_walls = (
         Rect.from_center(0.0, OUTER_WALL_CENTER, OUTER_WALL_LENGTH, OUTER_WALL_THICKNESS),
         Rect.from_center(0.0, -OUTER_WALL_CENTER, OUTER_WALL_LENGTH, OUTER_WALL_THICKNESS),
@@ -191,6 +200,7 @@ def farm_collision_rects() -> tuple[Rect, ...]:
 
 
 def collision_bounds(rects: tuple[Rect, ...]) -> Rect:
+    # collision bounds 정보를 계산해 반환한다.
     return Rect(
         min_x=min(rect.min_x for rect in rects),
         min_y=min(rect.min_y for rect in rects),
@@ -202,6 +212,7 @@ def collision_bounds(rects: tuple[Rect, ...]) -> Rect:
 def build_farm_grid(
     resolution: float = DEFAULT_RESOLUTION,
 ) -> tuple[list[bytearray], tuple[float, float], Rect]:
+    # farm grid를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     obstacles = farm_collision_rects()
     extents = collision_bounds(obstacles)
     width = int(math.ceil((extents.max_x - extents.min_x) / resolution))
@@ -218,6 +229,7 @@ def build_farm_grid(
 
 
 def write_pgm(path: Path, grid: list[bytearray]) -> None:
+    # PGM를 파일이나 저장소에 기록한다.
     width = len(grid[0])
     height = len(grid)
     with path.open('wb') as stream:
@@ -227,6 +239,7 @@ def write_pgm(path: Path, grid: list[bytearray]) -> None:
 
 
 def write_map_yaml(path: Path, image_name: str, resolution: float, origin: tuple[float, float]) -> None:
+    # 지도 YAML 데이터를 파일이나 저장소에 기록한다.
     payload = {
         'image': image_name,
         'mode': 'trinary',
@@ -241,10 +254,12 @@ def write_map_yaml(path: Path, image_name: str, resolution: float, origin: tuple
 
 
 def relative_image_path(image_path: Path, yaml_path: Path) -> str:
+    # relative 이미지 경로 정보를 계산해 반환한다.
     return os.path.relpath(image_path, yaml_path.parent)
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = parse_args()
     grid, origin, extents = build_farm_grid(args.resolution)
 

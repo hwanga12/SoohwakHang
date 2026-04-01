@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 curtain controller node 장치 흐름을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from .device_mapping import IoTDeviceSpec, get_default_iot_devices_path, load_io
 
 @dataclass(slots=True)
 class ActiveCurtainCommand:
+    # active 커튼 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     plan: CurtainExecutionPlan
     started_at_monotonic: float
     last_update_monotonic: float
@@ -30,6 +32,7 @@ class ActiveCurtainCommand:
 
 @dataclass(slots=True)
 class CurtainRuntimeState:
+    # 커튼 런타임 데이터 상태를 일관된 형태로 보관하기 위한 클래스를 정의한다.
     opening_ratio: float
     target_opening_ratio: float
     state: str
@@ -38,9 +41,10 @@ class CurtainRuntimeState:
 
 
 class CurtainControllerNode(Node):
-    """Execute curtain commands and keep publishing current curtain state."""
+    # ROS 2 실행 환경에서 커튼 controller 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # CurtainControllerNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('curtain_controller_node')
         callback_group = ReentrantCallbackGroup()
 
@@ -116,6 +120,7 @@ class CurtainControllerNode(Node):
         )
 
     def _handle_command(self, message: IoTCommand) -> None:
+        # handle 명령 정보를 계산해 반환한다.
         if message.device_type.strip().lower() != 'curtain':
             return
 
@@ -193,6 +198,7 @@ class CurtainControllerNode(Node):
         )
 
     def _resolve_device(self, message: IoTCommand) -> IoTDeviceSpec | None:
+        # 현재 입력 조건을 바탕으로 장치를 계산하거나 결정한다.
         if message.device_id:
             return self._curtain_devices.get(message.device_id)
 
@@ -210,6 +216,7 @@ class CurtainControllerNode(Node):
         *,
         reason: str,
     ) -> None:
+        # interrupt active 명령 정보를 계산해 반환한다.
         active_command = runtime.active_command
         if active_command is None:
             return
@@ -228,6 +235,7 @@ class CurtainControllerNode(Node):
         self._publish_state(device, runtime)
 
     def _advance_transitions(self) -> None:
+        # advance transitions 정보를 계산해 반환한다.
         now = time.monotonic()
         for device_id, runtime in self._runtime_states.items():
             active_command = runtime.active_command
@@ -275,10 +283,12 @@ class CurtainControllerNode(Node):
             )
 
     def _publish_all_states(self) -> None:
+        # ALL 상태 묶음를 외부 시스템이나 다음 처리 단계로 전달한다.
         for device_id, device in self._curtain_devices.items():
             self._publish_state(device, self._runtime_states[device_id])
 
     def _publish_state(self, device: IoTDeviceSpec, runtime: CurtainRuntimeState) -> None:
+        # 상태를 외부 시스템이나 다음 처리 단계로 전달한다.
         message = build_curtain_state(
             device,
             state=runtime.state,
@@ -312,6 +322,7 @@ class CurtainControllerNode(Node):
         executed_duration_sec: float,
         opening_ratio: float,
     ) -> None:
+        # 결과를 외부 시스템이나 다음 처리 단계로 전달한다.
         result = String()
         result.data = build_curtain_result_payload(
             plan,
@@ -328,10 +339,12 @@ class CurtainControllerNode(Node):
 
 
 def _clamp_percent(value: float) -> float:
+    # percent 값을 허용 범위로 제한한다.
     return max(0.0, min(100.0, float(value)))
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = CurtainControllerNode()
     try:

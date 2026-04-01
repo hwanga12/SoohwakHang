@@ -1,3 +1,4 @@
+# 이 모듈은 백엔드의 로봇 API 라우터를 정의하고, 요청을 서비스 계층과 연결한다.
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -35,6 +36,7 @@ TARGET_POSE_EXAMPLE = {
 
 
 class RobotCommandReq(BaseModel):
+    # robot 명령 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     command_id: Optional[str] = Field(
         default=None,
         description="중복 실행 방지를 위한 선택적 command id. 비워두면 backend가 생성합니다.",
@@ -118,6 +120,7 @@ class RobotCommandReq(BaseModel):
 
 
 class RobotControlReq(BaseModel):
+    # robot control 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     command_id: Optional[str] = Field(
         default=None,
         description="중복 실행 방지를 위한 선택적 command id. 비워두면 backend가 생성합니다.",
@@ -127,6 +130,7 @@ class RobotControlReq(BaseModel):
 
 
 def _raise_robot_command_http_error(exc: Exception) -> None:
+    # raise 로봇 명령 http error 정보를 계산해 반환한다.
     if isinstance(exc, DuplicateCommandIdError):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if isinstance(exc, RobotCommandConflictError):
@@ -141,6 +145,7 @@ def _raise_robot_command_http_error(exc: Exception) -> None:
 
 
 def _publish_command_or_raise(**kwargs: Any) -> dict[str, Any]:
+    # 명령 OR raise를 외부 시스템이나 다음 처리 단계로 전달한다.
     try:
         return publish_robot_command(**kwargs)
     except Exception as exc:  # pragma: no cover - status mapping helper
@@ -149,7 +154,7 @@ def _publish_command_or_raise(**kwargs: Any) -> dict[str, Any]:
 
 @router.get("/status")
 def get_robot_status(map_id: Optional[str] = Query(default=None)):
-    """현재 로봇 상태 카드와 실시간 상태 화면용 authoritative 상태 조회"""
+    # robot 상태를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         return {"data": read_status_payload(map_id)}
     except (FileNotFoundError, ValueError) as exc:
@@ -158,7 +163,7 @@ def get_robot_status(map_id: Optional[str] = Query(default=None)):
 
 @router.get("/pose")
 def get_robot_pose(map_id: Optional[str] = Query(default=None)):
-    """지도 위에 로봇 위치와 방향 표기 용도 데이터"""
+    # robot 위치 자세를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         return {"data": read_pose_payload(map_id)}
     except (FileNotFoundError, ValueError) as exc:
@@ -167,7 +172,7 @@ def get_robot_pose(map_id: Optional[str] = Query(default=None)):
 
 @router.get("/map")
 def get_robot_map(map_id: Optional[str] = Query(default=None)):
-    """정적 occupancy map 메타데이터 반환"""
+    # robot 지도를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         return {"data": read_map_payload(map_id)}
     except (FileNotFoundError, ValueError) as exc:
@@ -176,7 +181,7 @@ def get_robot_map(map_id: Optional[str] = Query(default=None)):
 
 @router.get("/map/raw")
 def get_robot_map_raw(map_id: Optional[str] = Query(default=None)):
-    """정적 occupancy map 원본 PGM 반환"""
+    # robot 지도 RAW를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         image_path = image_path_for_map(map_id)
     except (FileNotFoundError, ValueError) as exc:
@@ -191,7 +196,7 @@ def get_robot_map_raw(map_id: Optional[str] = Query(default=None)):
 
 @router.get("/map/layers")
 def get_robot_map_layers(map_id: Optional[str] = Query(default=None)):
-    """식물, 급수 포인트, row guide 등 semantic layer 반환"""
+    # robot 지도 layers를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         return {"data": read_layers_payload(map_id)}
     except (FileNotFoundError, ValueError) as exc:
@@ -200,7 +205,7 @@ def get_robot_map_layers(map_id: Optional[str] = Query(default=None)):
 
 @router.get("/navigation-preview")
 def get_robot_navigation_preview(map_id: Optional[str] = Query(default=None)):
-    """현재 로봇 기준으로 짧게 잘라낸 예상 주행 경로를 반환"""
+    # robot navigation 미리보기 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         return {"data": read_navigation_preview_payload(map_id)}
     except (FileNotFoundError, ValueError) as exc:
@@ -209,7 +214,7 @@ def get_robot_navigation_preview(map_id: Optional[str] = Query(default=None)):
 
 @router.get("/control/status")
 def get_robot_control_status():
-    """agribot_ws runtime executor가 기록한 현재 제어 상태 조회"""
+    # robot control 상태를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         return {"data": read_control_state_payload()}
     except RobotRuntimeStateError as exc:
@@ -218,7 +223,7 @@ def get_robot_control_status():
 
 @router.post("/control/emergency-stop")
 def post_robot_emergency_stop(command: RobotControlReq):
-    """비상 정지 버튼 전용 endpoint"""
+    # post 로봇 emergency stop 정보를 계산해 반환한다.
     payload = _publish_command_or_raise(
         command_id=command.command_id,
         robot_id=command.robot_id,
@@ -230,7 +235,7 @@ def post_robot_emergency_stop(command: RobotControlReq):
 
 @router.post("/control/pause")
 def post_robot_pause(command: RobotControlReq):
-    """일시정지 버튼 전용 endpoint"""
+    # post 로봇 pause 정보를 계산해 반환한다.
     payload = _publish_command_or_raise(
         command_id=command.command_id,
         robot_id=command.robot_id,
@@ -242,7 +247,7 @@ def post_robot_pause(command: RobotControlReq):
 
 @router.post("/control/resume")
 def post_robot_resume(command: RobotControlReq):
-    """재개 버튼 전용 endpoint"""
+    # post 로봇 resume 정보를 계산해 반환한다.
     payload = _publish_command_or_raise(
         command_id=command.command_id,
         robot_id=command.robot_id,
@@ -254,7 +259,7 @@ def post_robot_resume(command: RobotControlReq):
 
 @router.post("/commands")
 def post_robot_command(command: RobotCommandReq):
-    """파일 브리지 기반으로 로봇 수동/제어 명령을 runtime executor에 전달합니다."""
+    # post 로봇 명령 정보를 계산해 반환한다.
     payload = _publish_command_or_raise(
         command_id=command.command_id,
         robot_id=command.robot_id,
@@ -271,7 +276,7 @@ def post_robot_command(command: RobotCommandReq):
 
 @router.get("/commands/latest")
 def get_latest_robot_command_status():
-    """runtime executor가 마지막으로 기록한 명령 상태와 현재 control state를 함께 조회합니다."""
+    # latest robot 명령 상태를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         return {"data": read_latest_command_status_payload()}
     except RobotRuntimeStateError as exc:

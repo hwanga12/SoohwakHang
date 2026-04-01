@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+# 이 스크립트는 AgriBot 워크스페이스 실행에 필요한 환경 변수를 준비하기 위해 사용하는 실행용 쉘 스크립트다.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     echo "This script must be sourced: source scripts/agribot_env.sh" >&2
     exit 1
@@ -39,6 +40,7 @@ else
     unset ROS_LOCALHOST_ONLY 2>/dev/null || true
 fi
 
+# source_file_without_strict_nounset 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 source_file_without_strict_nounset() {
     local target_file="$1"
     local restore_errexit=0
@@ -70,6 +72,7 @@ source_file_without_strict_nounset() {
     return "${rc}"
 }
 
+# source_ros_setup_files 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 source_ros_setup_files() {
     local ros_setup="/opt/ros/${ROS_DISTRO}/setup.bash"
     local ws_setup="${AGRIBOT_WS}/install/setup.bash"

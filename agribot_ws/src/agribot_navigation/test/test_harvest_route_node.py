@@ -1,5 +1,4 @@
-"""수확 route 노드의 복구 분기와 pose 비교 규칙이 의도대로 동작하는지 검증한다."""
-
+# 이 테스트는 자율주행과 경로 계획 패키지의 harvest route node 동작을 검증한다.
 from types import SimpleNamespace
 
 from agribot_navigation.harvest_simulation import HarvestAnimationConfig
@@ -12,14 +11,18 @@ from agribot_navigation.patrol_config import Pose2D, Waypoint
 
 
 class _StaticFuture:
+    # static 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     def __init__(self, value):
+        # _StaticFuture 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         self._value = value
 
     def result(self):
+        # 결과 정보를 계산해 반환한다.
         return self._value
 
 
 def _build_route_plan(*, approach_pose: Pose2D) -> HarvestRoutePlan:
+    # 경로 계획를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return HarvestRoutePlan(
         tomato_id='farm01_plant_01_tomato_01',
         plant_id='farm01_plant_01',
@@ -37,6 +40,7 @@ def _build_route_plan(*, approach_pose: Pose2D) -> HarvestRoutePlan:
 
 
 def _build_waypoint(*, pose: Pose2D) -> Waypoint:
+    # waypoint를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return Waypoint(
         waypoint_id='farm_01_lane_01_inspect_01',
         display_name='Harvest Aisle 01 Inspect 01',
@@ -59,6 +63,7 @@ def _build_node_for_recovery(
     demo_recovery_enabled: bool = True,
     navigation_target_mode: str = 'approach_pose',
 ):
+    # node FOR recovery를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     node = object.__new__(HarvestRouteNode)
     warnings: list[str] = []
     node._active_plan = _build_route_plan(approach_pose=approach_pose)
@@ -75,6 +80,7 @@ def _build_node_for_recovery(
 
 
 def test_poses_are_effectively_same_uses_distance_and_yaw_tolerance() -> None:
+    # 위치 자세 목록 ARE effectively same uses distance AND YAW tolerance 동작과 회귀 여부를 검증한다.
     base_pose = Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708)
 
     assert _poses_are_effectively_same(
@@ -88,6 +94,7 @@ def test_poses_are_effectively_same_uses_distance_and_yaw_tolerance() -> None:
 
 
 def test_recover_from_failed_approach_retries_inspect_waypoint_first() -> None:
+    # recover from failed approach retries inspect waypoint first 동작과 회귀 여부를 검증한다.
     node, warnings = _build_node_for_recovery(
         approach_pose=Pose2D(x=-6.75, y=-6.0, z=0.0, yaw=0.0),
         inspect_pose=Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708),
@@ -109,6 +116,7 @@ def test_recover_from_failed_approach_retries_inspect_waypoint_first() -> None:
 
 
 def test_recover_from_failed_approach_falls_back_to_demo_when_retry_is_not_available() -> None:
+    # recover from failed approach falls back TO demo when retry IS NOT 사용 가능 상태 동작과 회귀 여부를 검증한다.
     node, warnings = _build_node_for_recovery(
         approach_pose=Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708),
         inspect_pose=Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708),
@@ -130,6 +138,7 @@ def test_recover_from_failed_approach_falls_back_to_demo_when_retry_is_not_avail
 
 
 def test_recover_from_failed_alignment_continues_with_demo_harvest() -> None:
+    # recover from failed alignment continues with demo harvest 동작과 회귀 여부를 검증한다.
     node, warnings = _build_node_for_recovery(
         approach_pose=Pose2D(x=-6.75, y=-6.0, z=0.0, yaw=0.0),
         inspect_pose=Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708),
@@ -149,6 +158,7 @@ def test_recover_from_failed_alignment_continues_with_demo_harvest() -> None:
 
 
 def test_handle_goal_response_recovers_from_rejected_approach_goal() -> None:
+    # handle 목표 응답 데이터 recovers from rejected approach 목표 동작과 회귀 여부를 검증한다.
     node, warnings = _build_node_for_recovery(
         approach_pose=Pose2D(x=-6.75, y=-6.0, z=0.0, yaw=0.0),
         inspect_pose=Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708),
@@ -180,6 +190,7 @@ def test_handle_goal_response_recovers_from_rejected_approach_goal() -> None:
 
 
 def test_handle_goal_response_uses_fallback_return_waypoint_when_return_goal_is_rejected() -> None:
+    # handle 목표 응답 데이터 uses fallback return waypoint when return 목표 IS rejected 동작과 회귀 여부를 검증한다.
     node, warnings = _build_node_for_recovery(
         approach_pose=Pose2D(x=-6.75, y=-6.0, z=0.0, yaw=0.0),
         inspect_pose=Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708),
@@ -205,6 +216,7 @@ def test_handle_goal_response_uses_fallback_return_waypoint_when_return_goal_is_
 
 
 def test_finish_harvest_dwell_stages_basket_slot_preview_when_slot_is_available() -> None:
+    # finish harvest dwell stages basket slot 미리보기 데이터 when slot IS 사용 가능 상태 동작과 회귀 여부를 검증한다.
     node = object.__new__(HarvestRouteNode)
     published_positions: list[float] = []
     return_calls: list[bool] = []
@@ -227,6 +239,7 @@ def test_finish_harvest_dwell_stages_basket_slot_preview_when_slot_is_available(
 
 
 def test_finalize_harvested_tomato_visual_always_hides_actual_harvested_tomato() -> None:
+    # finalize harvested tomato visual always hides actual harvested tomato 동작과 회귀 여부를 검증한다.
     node = object.__new__(HarvestRouteNode)
     hidden = {'called': False}
     node._hide_harvested_tomato_visual = lambda: hidden.__setitem__('called', True) or True
@@ -238,6 +251,7 @@ def test_finalize_harvested_tomato_visual_always_hides_actual_harvested_tomato()
 
 
 def test_sync_basket_visual_slots_publishes_visible_and_hidden_joint_positions() -> None:
+    # sync basket visual slots publishes visible AND hidden joint 위치 목록 동작과 회귀 여부를 검증한다.
     node = object.__new__(HarvestRouteNode)
     published_slot_01: list[float] = []
     published_slot_02: list[float] = []
@@ -259,6 +273,7 @@ def test_sync_basket_visual_slots_publishes_visible_and_hidden_joint_positions()
 
 
 def test_start_approach_navigation_uses_safe_inspect_waypoint_target_in_default_mode() -> None:
+    # start approach navigation uses safe inspect waypoint target IN default 모드 동작과 회귀 여부를 검증한다.
     inspect_pose = Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708)
     node, _ = _build_node_for_recovery(
         approach_pose=Pose2D(x=-6.75, y=-6.0, z=0.0, yaw=0.0),
@@ -278,6 +293,7 @@ def test_start_approach_navigation_uses_safe_inspect_waypoint_target_in_default_
 
 
 def test_start_return_navigation_finishes_immediately_when_robot_is_already_near_target() -> None:
+    # start return navigation finishes immediately when robot IS already near target 동작과 회귀 여부를 검증한다.
     inspect_pose = Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708)
     node, _ = _build_node_for_recovery(
         approach_pose=Pose2D(x=-6.75, y=-6.0, z=0.0, yaw=0.0),
@@ -297,6 +313,7 @@ def test_start_return_navigation_finishes_immediately_when_robot_is_already_near
 
 
 def test_continue_harvest_to_basket_fails_when_visual_update_is_rejected() -> None:
+    # continue harvest TO basket fails when visual update IS rejected 동작과 회귀 여부를 검증한다.
     node = object.__new__(HarvestRouteNode)
     node._cancel_harvest_timer = lambda: None
     node._active_plan = SimpleNamespace(tomato_id='farm01_plant_01_tomato_01')
@@ -334,6 +351,7 @@ def test_continue_harvest_to_basket_fails_when_visual_update_is_rejected() -> No
 
 
 def test_finish_harvest_dwell_stops_when_hiding_visual_fails() -> None:
+    # finish harvest dwell stops when hiding visual fails 동작과 회귀 여부를 검증한다.
     node = object.__new__(HarvestRouteNode)
     published_positions: list[float] = []
     return_calls: list[bool] = []

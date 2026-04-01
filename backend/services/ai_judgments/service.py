@@ -1,3 +1,4 @@
+# 이 모듈은 AI 판정 계층에서 AI 판정 결과를 읽고 조합하는 서비스 로직을 제공한다.
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -38,6 +39,7 @@ DISEASE_VALIDITY_WINDOW_BY_SCOPE = {
 
 
 class AiJudgmentService:
+    # AI 판정 서비스 관련 핵심 흐름을 한곳에 모아 제공하는 서비스 클래스다.
     def get_latest_judgment(
         self,
         *,
@@ -45,6 +47,7 @@ class AiJudgmentService:
         fruit_id: str = "",
         judgment_type: str | None = None,
     ) -> AiJudgmentRecordOut | None:
+        # latest 판정 결과를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         normalized_plant_id = _normalize_optional_id(plant_id)
         normalized_fruit_id = _normalize_optional_id(fruit_id)
         _ensure_target_identifier(normalized_plant_id, normalized_fruit_id)
@@ -68,6 +71,7 @@ class AiJudgmentService:
         judgment_type: str | None = None,
         limit: int = 20,
     ) -> AiJudgmentHistoryOut:
+        # 판정 결과 이력를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         normalized_plant_id = _normalize_optional_id(plant_id)
         normalized_fruit_id = _normalize_optional_id(fruit_id)
         _ensure_target_identifier(normalized_plant_id, normalized_fruit_id)
@@ -102,6 +106,7 @@ class AiJudgmentService:
         created_at: datetime | None = None,
         evidence: list[str] | None = None,
     ) -> AiJudgmentRecordOut:
+        # disease 판정 결과를 새로 만들어 다음 처리 단계로 넘긴다.
         interpretation = build_disease_interpretation(
             raw_label,
             confidence,
@@ -137,6 +142,7 @@ class AiJudgmentService:
         created_at: datetime | None = None,
         evidence: list[str] | None = None,
     ) -> AiJudgmentRecordOut:
+        # ripeness 판정 결과를 새로 만들어 다음 처리 단계로 넘긴다.
         interpretation = build_ripeness_interpretation(
             raw_label,
             confidence,
@@ -169,6 +175,7 @@ class AiJudgmentService:
         created_at: datetime | None = None,
         scope: HarvestActionScope = "INDIVIDUAL",
     ) -> AiJudgmentRecordOut | None:
+        # maybe 생성 수확 decision 정보를 계산해 반환한다.
         owned_db = db is None
         session = db or SessionLocal()
         try:
@@ -259,6 +266,7 @@ class AiJudgmentService:
         self,
         request: RipenessJudgmentCreateRequest,
     ) -> RipenessJudgmentCreateResponse:
+        # ripeness AND fuse를 새로 만들어 다음 처리 단계로 넘긴다.
         db = SessionLocal()
         try:
             ripeness_judgment = self.create_ripeness_judgment(
@@ -294,6 +302,7 @@ class AiJudgmentService:
         self,
         request: HarvestDecisionActionRequest,
     ) -> HarvestDecisionActionOut:
+        # individual harvest action를 새로 만들어 다음 처리 단계로 넘긴다.
         return self._create_harvest_action(
             request=request,
             scope="INDIVIDUAL",
@@ -303,6 +312,7 @@ class AiJudgmentService:
         self,
         request: BulkHarvestDecisionRequest,
     ) -> BulkHarvestDecisionResponse:
+        # bulk harvest action를 새로 만들어 다음 처리 단계로 넘긴다.
         items = []
         for target in request.targets:
             effective_request = HarvestDecisionActionRequest(
@@ -325,6 +335,7 @@ class AiJudgmentService:
         request: HarvestDecisionActionRequest,
         scope: HarvestActionScope,
     ) -> HarvestDecisionActionOut:
+        # harvest action를 새로 만들어 다음 처리 단계로 넘긴다.
         normalized_plant_id = _normalize_optional_id(request.plant_id)
         normalized_fruit_id = _normalize_optional_id(request.fruit_id)
         normalized_zone_id = _normalize_optional_id(request.zone_id)
@@ -433,6 +444,7 @@ class AiJudgmentService:
         created_at: datetime | None,
         interpretation: Any,
     ) -> AiJudgmentRecordOut:
+        # judgment을 저장한다.
         owned_db = db is None
         session = db or SessionLocal()
         try:
@@ -476,6 +488,7 @@ class AiJudgmentService:
         plant_id: str = "",
         fruit_id: str = "",
     ) -> AiJudgment | None:
+        # latest 판정 결과를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         items = self._query_judgments(
             db,
             plant_id=plant_id,
@@ -494,6 +507,7 @@ class AiJudgmentService:
         judgment_type: str | None = None,
         limit: int = 20,
     ) -> list[AiJudgment]:
+        # 조회 judgments 정보를 계산해 반환한다.
         normalized_fruit_id = _normalize_optional_id(fruit_id)
         normalized_plant_id = _normalize_optional_id(plant_id)
         normalized_limit = max(1, min(int(limit), 200))
@@ -512,6 +526,7 @@ class AiJudgmentService:
 
 
 def _serialize_judgment(record: AiJudgment) -> AiJudgmentRecordOut:
+    # 판정 결과를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return AiJudgmentRecordOut(
         id=str(record.id),
         plant_id=record.plant_id,
@@ -533,6 +548,7 @@ def _serialize_judgment(record: AiJudgment) -> AiJudgmentRecordOut:
 
 
 def _normalize_optional_id(value: str | None) -> str | None:
+    # optional ID를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = str(value or "").strip()
     return normalized or None
 
@@ -541,6 +557,7 @@ def _ensure_target_identifier(
     plant_id: str | None,
     fruit_id: str | None,
 ) -> None:
+    # target identifier가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     if plant_id is None and fruit_id is None:
         raise ValueError("plant_id 또는 fruit_id 중 하나는 필요합니다.")
 
@@ -551,6 +568,7 @@ def _assess_disease_validity(
     reference_time: datetime,
     window_seconds: int,
 ) -> tuple[bool, int | None]:
+    # assess disease validity 정보를 계산해 반환한다.
     if judgment is None:
         return False, None
 
@@ -564,6 +582,7 @@ def _derive_harvest_confidence(
     disease_judgment: AiJudgment | None,
     ripeness_judgment: AiJudgment,
 ) -> float:
+    # derive 수확 confidence 정보를 계산해 반환한다.
     ripeness_confidence = float(ripeness_judgment.confidence or 0.0)
     if disease_judgment is None:
         return ripeness_confidence
@@ -572,6 +591,7 @@ def _derive_harvest_confidence(
 
 
 def _coerce_created_at(value: datetime | None) -> datetime:
+    # coerce created at 정보를 계산해 반환한다.
     if value is None:
         return datetime.now(timezone.utc)
     if value.tzinfo is None:
@@ -580,6 +600,7 @@ def _coerce_created_at(value: datetime | None) -> datetime:
 
 
 def _read_value(target: Any, field_name: str) -> str:
+    # value를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     if hasattr(target, field_name):
         value = getattr(target, field_name)
         return "" if value is None else str(value)

@@ -1,3 +1,4 @@
+# 이 테스트는 인지와 추론 패키지의 build tomato subset manifest 동작을 검증한다.
 from __future__ import annotations
 
 import csv
@@ -10,10 +11,12 @@ from pathlib import Path
 
 
 def write_png(path: Path, width: int, height: int) -> None:
+    # PNG를 파일이나 저장소에 기록한다.
     raw_rows = [b"\x00" + (b"\xff\xff\xff" * width) for _ in range(height)]
     raw_image = b"".join(raw_rows)
 
     def chunk(tag: bytes, data: bytes) -> bytes:
+        # chunk 정보를 계산해 반환한다.
         checksum = zlib.crc32(tag + data) & 0xFFFFFFFF
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", checksum)
 
@@ -26,11 +29,13 @@ def write_png(path: Path, width: int, height: int) -> None:
 
 
 def write_json(path: Path, payload: dict[str, object]) -> None:
+    # JSON 데이터를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
 def find_row(rows: list[dict[str, str]], *, source_origin: str, disease_code: str) -> dict[str, str]:
+    # row을 찾아 반환한다.
     for row in rows:
         if row["source_origin"] == source_origin and row["disease_code"] == disease_code:
             return row
@@ -40,6 +45,7 @@ def find_row(rows: list[dict[str, str]], *, source_origin: str, disease_code: st
 def test_build_tomato_subset_manifest_combines_train_subset_and_validation(
     tmp_path: Path,
 ) -> None:
+    # build tomato subset manifest combines train subset AND validation 동작과 회귀 여부를 검증한다.
     train_positive_root = tmp_path / "train_positive_subset"
     train_normal_root = tmp_path / "train_normal_subset"
     val_extracted_root = tmp_path / "val_extracted"

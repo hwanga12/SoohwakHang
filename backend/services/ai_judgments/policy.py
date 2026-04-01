@@ -1,3 +1,4 @@
+# 이 모듈은 AI 판정 계층에서 AI 판정 결과를 운영 규칙에 맞게 해석한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -108,6 +109,7 @@ _RIPENESS_ALIASES = {
 
 @dataclass(frozen=True)
 class JudgmentInterpretation:
+    # 판정 결과 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     canonical_code: str
     risk_level: str | None
     recommended_action_code: str
@@ -116,15 +118,18 @@ class JudgmentInterpretation:
 
 
 def requires_approval_for(action_code: str) -> bool:
+    # requires approval 정보를 계산해 반환한다.
     return action_code in {"SPRAY_PESTICIDE", "CHECK_NUTRIENT", "HARVEST"}
 
 
 def normalize_disease_label(raw_label: str) -> str:
+    # disease 라벨를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = raw_label.strip().lower()
     return _DISEASE_ALIASES.get(normalized, normalized or "normal")
 
 
 def normalize_ripeness_label(raw_label: str) -> str:
+    # ripeness 라벨를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = raw_label.strip().lower()
     canonical_code = _RIPENESS_ALIASES.get(normalized)
     if canonical_code is None:
@@ -138,6 +143,7 @@ def build_disease_interpretation(
     *,
     extra_evidence: list[str] | None = None,
 ) -> JudgmentInterpretation:
+    # disease interpretation를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     canonical_code = normalize_disease_label(raw_label)
     risk_level = _disease_risk_level(canonical_code, confidence)
     action_code = _DISEASE_ACTIONS.get(canonical_code, "REOBSERVE")
@@ -173,6 +179,7 @@ def build_ripeness_interpretation(
     *,
     extra_evidence: list[str] | None = None,
 ) -> JudgmentInterpretation:
+    # ripeness interpretation를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     canonical_code = normalize_ripeness_label(raw_label)
     action_code = _RIPENESS_ACTIONS[canonical_code]
     evidence = [
@@ -206,6 +213,7 @@ def build_harvest_decision_interpretation(
     disease_judgment: Any | None,
     ripeness_judgment: Any | None,
 ) -> JudgmentInterpretation | None:
+    # harvest decision interpretation를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     if disease_judgment is None and ripeness_judgment is None:
         return None
 
@@ -293,6 +301,7 @@ def build_recheck_disease_interpretation(
     reason_text: str,
     evidence: list[str] | None = None,
 ) -> JudgmentInterpretation:
+    # recheck disease interpretation를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     disease_code = _get_value(disease_judgment, "canonical_code", "")
     ripeness_code = _get_value(ripeness_judgment, "canonical_code", "")
     summary_text = (
@@ -323,6 +332,7 @@ def build_recheck_disease_interpretation(
 
 
 def _disease_risk_level(canonical_code: str, confidence: float) -> str:
+    # disease risk level 정보를 계산해 반환한다.
     if canonical_code in {"powdery_mildew", "gray_mold"}:
         if confidence >= 0.80:
             return "HIGH"
@@ -335,6 +345,7 @@ def _disease_risk_level(canonical_code: str, confidence: float) -> str:
 
 
 def _disease_summary_text(canonical_code: str, risk_level: str | None) -> str:
+    # disease 요약 텍스트 정보를 계산해 반환한다.
     if canonical_code == "normal":
         return "현재 프레임에서 뚜렷한 병해 징후는 확인되지 않았습니다."
     if canonical_code == "powdery_mildew":
@@ -357,6 +368,7 @@ def _disease_summary_text(canonical_code: str, risk_level: str | None) -> str:
 
 
 def _ripeness_summary_text(canonical_code: str) -> str:
+    # ripeness 요약 텍스트 정보를 계산해 반환한다.
     if canonical_code == "ripe":
         return "익음 상태가 확인되어 수확 후보로 판단했습니다."
     if canonical_code == "turning":
@@ -373,6 +385,7 @@ def _build_payload_json(
     risk_level: str | None,
     possible_factors: list[str],
 ) -> dict[str, Any]:
+    # payload JSON 데이터를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return {
         "label_ko": label_ko,
         "summary_text": summary_text,
@@ -389,12 +402,14 @@ def _build_payload_json(
 
 
 def _risk_label_ko(risk_level: str | None) -> str:
+    # risk 라벨 ko 정보를 계산해 반환한다.
     if risk_level is None:
         return ""
     return _RISK_LABELS_KO.get(risk_level, risk_level)
 
 
 def _get_value(target: Any | None, field_name: str, default: Any) -> Any:
+    # value를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     if target is None:
         return default
     if hasattr(target, field_name):

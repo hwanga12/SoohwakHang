@@ -1,3 +1,4 @@
+# 이 모듈은 백엔드와 ROS 런타임 사이의 미션 상태 연계를 담당.
 from __future__ import annotations
 
 import json
@@ -22,33 +23,40 @@ ALLOWED_PATROL_MODES = {"diagnosis", "harvest"}
 
 
 class MissionBridgeValidationError(ValueError):
+    # 미션 브리지 validation error 문제를 구분하기 위한 예외 클래스다.
     pass
 
 
 class DuplicateMissionIdError(MissionBridgeValidationError):
+    # duplicate 미션 id error 문제를 구분하기 위한 예외 클래스다.
     pass
 
 
 class MissionBridgeConflictError(MissionBridgeValidationError):
+    # 미션 브리지 conflict error 문제를 구분하기 위한 예외 클래스다.
     pass
 
 
 class MissionBridgeUnavailableError(RuntimeError):
+    # 미션 브리지 unavailable error 문제를 구분하기 위한 예외 클래스다.
     pass
 
 
 def _generate_mission_id(prefix: str) -> str:
+    # 미션 id을 생성한다.
     del prefix
     return str(uuid.uuid4())
 
 
 def _sanitize_mission_id(mission_id: str | None, *, prefix: str) -> str:
+    # sanitize 미션 id 정보를 계산해 반환한다.
     if mission_id is None or not str(mission_id).strip():
         return _generate_mission_id(prefix)
     return str(mission_id).strip()
 
 
 def _normalize_robot_id(robot_id: str) -> str:
+    # robot ID를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = str(robot_id).strip()
     if not normalized:
         raise MissionBridgeValidationError("robot_id 는 비어 있을 수 없습니다.")
@@ -56,6 +64,7 @@ def _normalize_robot_id(robot_id: str) -> str:
 
 
 def _normalize_requested_by(requested_by: str) -> str:
+    # requested BY를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = str(requested_by).strip()
     if not normalized:
         raise MissionBridgeValidationError("requested_by 는 비어 있을 수 없습니다.")
@@ -63,6 +72,7 @@ def _normalize_requested_by(requested_by: str) -> str:
 
 
 def _normalize_zone_ids(zone_ids: list[str]) -> list[str]:
+    # 구역 ID 목록를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized_zone_ids = [str(zone_id).strip() for zone_id in zone_ids if str(zone_id).strip()]
     if not normalized_zone_ids:
         raise MissionBridgeValidationError("zone_ids 는 비어 있을 수 없습니다.")
@@ -70,6 +80,7 @@ def _normalize_zone_ids(zone_ids: list[str]) -> list[str]:
 
 
 def _normalize_loop_count(loop_count: int) -> int:
+    # loop count를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     try:
         normalized = int(loop_count)
     except (TypeError, ValueError) as exc:
@@ -81,6 +92,7 @@ def _normalize_loop_count(loop_count: int) -> int:
 
 
 def _normalize_patrol_mode(patrol_mode: str) -> str:
+    # patrol 모드를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = str(patrol_mode).strip().lower()
     if normalized not in ALLOWED_PATROL_MODES:
         raise MissionBridgeValidationError(
@@ -91,6 +103,7 @@ def _normalize_patrol_mode(patrol_mode: str) -> str:
 
 
 def _safe_read_latest_mission_status_payload() -> dict[str, Any]:
+    # safe 읽기 최신 미션 상태 페이로드 정보를 계산해 반환한다.
     try:
         return _read_latest_mission_status_payload()
     except RobotRuntimeStateError as exc:
@@ -98,6 +111,7 @@ def _safe_read_latest_mission_status_payload() -> dict[str, Any]:
 
 
 def _check_duplicate_mission_id(mission_id: str) -> None:
+    # duplicate 미션 id 상태를 점검한다.
     for path in (
         mission_request_file_path(),
         mission_status_file_path(),
@@ -117,6 +131,7 @@ def _check_duplicate_mission_id(mission_id: str) -> None:
 
 
 def _ensure_no_active_mission() -> None:
+    # NO active 미션가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     latest_status = _safe_read_latest_mission_status_payload()
     if str(latest_status.get("status") or "").strip().lower() not in {"pending", "running"}:
         return
@@ -137,6 +152,7 @@ def _build_request_payload(
     requested_by: str,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
+    # 요청 데이터 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     if request_type not in ALLOWED_REQUEST_TYPES:
         raise MissionBridgeValidationError(
             f"지원하지 않는 request_type 입니다: {request_type!r}. "
@@ -159,6 +175,7 @@ def _build_publish_response(
     bridge_payload: dict[str, Any],
     operator_message: str,
 ) -> dict[str, Any]:
+    # publish 응답 데이터를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     mission_id = str(bridge_payload["mission_id"])
     request_type = str(bridge_payload["request_type"])
 
@@ -208,6 +225,7 @@ def publish_patrol_start_mission(
     patrol_mode: str,
     mission_id: str | None = None,
 ) -> dict[str, Any]:
+    # patrol start 미션를 외부 시스템이나 다음 처리 단계로 전달한다.
     _ensure_no_active_mission()
     normalized_robot_id = _normalize_robot_id(robot_id)
     normalized_requested_by = _normalize_requested_by(requested_by)
@@ -247,6 +265,7 @@ def publish_harvest_target_mission(
     inspect_waypoint_id: str | None = None,
     inspect_waypoint_ids: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
+    # harvest target 미션를 외부 시스템이나 다음 처리 단계로 전달한다.
     _ensure_no_active_mission()
     normalized_robot_id = _normalize_robot_id(robot_id)
     normalized_requested_by = _normalize_requested_by(requested_by)
@@ -292,8 +311,10 @@ def publish_harvest_target_mission(
 
 
 def read_latest_mission_status_payload() -> dict[str, Any]:
+    # latest 미션 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return _read_latest_mission_status_payload()
 
 
 def read_mission_status_payload(mission_id: str) -> dict[str, Any]:
+    # 미션 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return _read_mission_status_payload(mission_id)

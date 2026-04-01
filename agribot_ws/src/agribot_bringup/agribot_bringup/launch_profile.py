@@ -1,3 +1,4 @@
+# 이 모듈은 통합 실행과 런치 조율 패키지에서 launch profile 절차를 담당한다.
 from __future__ import annotations
 
 # 런치 진입점마다 같은 그래픽/네트워크/성능 규칙을 쓰도록 환경 변수를 한곳에서 관리한다.
@@ -94,6 +95,7 @@ _PERFORMANCE_GROUP_DEFAULTS: dict[str, dict[str, dict[str, str]]] = {
 
 
 def resolve_graphics_profile(profile: str | None = None) -> str:
+    # 현재 입력 조건을 바탕으로 graphics 프로필를 계산하거나 결정한다.
     value = str(
         profile
         if profile is not None
@@ -112,6 +114,7 @@ def resolve_graphics_profile(profile: str | None = None) -> str:
 
 
 def resolve_performance_mode(mode: str | None = None) -> str:
+    # 현재 입력 조건을 바탕으로 performance 모드를 계산하거나 결정한다.
     value = str(
         mode
         if mode is not None
@@ -131,6 +134,7 @@ def resolve_performance_defaults(
     group: str,
     mode: str | None = None,
 ) -> dict[str, str]:
+    # 현재 입력 조건을 바탕으로 performance defaults를 계산하거나 결정한다.
     group_defaults = _PERFORMANCE_GROUP_DEFAULTS.get(group)
     if group_defaults is None:
         raise ValueError(
@@ -147,6 +151,7 @@ def build_graphics_environment_actions(
     profile: str | None = None,
     include_gazebo_renderer: bool = False,
 ) -> list[SetEnvironmentVariable]:
+    # graphics environment actions를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     resolved_profile = resolve_graphics_profile(profile)
     actions: list[SetEnvironmentVariable] = [
         SetEnvironmentVariable(GRAPHICS_PROFILE_ENV_VAR, resolved_profile),
@@ -173,6 +178,7 @@ def build_graphics_environment_actions(
 
 
 def resolve_ros_discovery_range(value: str | None = None) -> str:
+    # 현재 입력 조건을 바탕으로 ROS discovery range를 계산하거나 결정한다.
     normalized = str(
         value
         if value is not None
@@ -189,6 +195,7 @@ def resolve_ros_discovery_range(value: str | None = None) -> str:
 
 
 def resolve_gz_ip(value: str | None = None) -> str:
+    # 현재 입력 조건을 바탕으로 GZ IP를 계산하거나 결정한다.
     normalized = str(
         value
         if value is not None
@@ -202,6 +209,7 @@ def build_transport_environment_actions(
     ros_discovery_range: str | None = None,
     gz_ip: str | None = None,
 ) -> list[SetEnvironmentVariable]:
+    # transport environment actions를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return [
         SetEnvironmentVariable(
             'ROS_AUTOMATIC_DISCOVERY_RANGE',
@@ -223,6 +231,7 @@ def build_launch_session_environment_actions(
     gz_ip: str | None = None,
     performance_mode: str | None = None,
 ) -> list[SetEnvironmentVariable]:
+    # launch session environment actions를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     resolved_session_id = resolve_launch_session_id(session_id)
     return [
         SetEnvironmentVariable(LAUNCH_SESSION_ENV_VAR, resolved_session_id),

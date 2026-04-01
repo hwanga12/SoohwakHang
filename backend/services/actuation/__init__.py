@@ -1,1 +1,1 @@
-"""Actuation service package."""
+# 이 모듈은 백엔드 장치 제어 영역에서 장치 제어 서비스 묶음한다.

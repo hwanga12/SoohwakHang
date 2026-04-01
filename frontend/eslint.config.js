@@ -1,3 +1,6 @@
+/*
+ * 이 설정 파일은 프론트엔드 코드 품질을 맞추기 위한 ESLint 규칙을 정의한다.
+ */
 import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'

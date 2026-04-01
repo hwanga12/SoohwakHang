@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 mqtt bridge node 장치 흐름을 담당한다.
 from __future__ import annotations
 
 import json
@@ -25,9 +26,10 @@ except ImportError:  # pragma: no cover - optional runtime dependency
 
 
 class MqttBridgeNode(Node):
-    """Bridge selected ROS topics to MQTT with a log-only fallback."""
+    # ROS 2 실행 환경에서 mqtt 브리지 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # MqttBridgeNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('mqtt_bridge_node')
         self.declare_parameter('topics_file', str(get_default_mqtt_topics_path()))
         self.declare_parameter('force_log_only', False)
@@ -58,6 +60,7 @@ class MqttBridgeNode(Node):
         )
 
     def _create_mqtt_client(self):
+        # mqtt 클라이언트를 새로 만들어 다음 처리 단계로 넘긴다.
         if self._force_log_only:
             self.get_logger().warning('MQTT bridge running in forced log-only mode.')
             return None
@@ -84,6 +87,7 @@ class MqttBridgeNode(Node):
             return None
 
     def _create_ros_subscription(self, route) -> None:
+        # ROS subscription를 새로 만들어 다음 처리 단계로 넘긴다.
         message_type_map = {
             'agribot_interfaces/msg/EnvironmentData': EnvironmentData,
             'agribot_interfaces/msg/IoTCommand': IoTCommand,
@@ -99,6 +103,7 @@ class MqttBridgeNode(Node):
         )
 
     def _forward_ros_message(self, route, message: Any) -> None:
+        # forward ROS 메시지 정보를 계산해 반환한다.
         payload = serialize_message(route.serializer, message)
         topic = resolve_mqtt_topic(route.mqtt_topic_template, message)
         payload_json = json.dumps(payload, ensure_ascii=True, sort_keys=True)
@@ -115,6 +120,7 @@ class MqttBridgeNode(Node):
         )
 
     def _handle_mqtt_message(self, _client, _userdata, message) -> None:  # pragma: no cover - broker runtime path
+        # handle MQTT 메시지 정보를 계산해 반환한다.
         publisher = self._mqtt_to_ros_publishers.get(message.topic)
         if publisher is None:
             return
@@ -127,6 +133,7 @@ class MqttBridgeNode(Node):
         self.get_logger().info(f'MQTT bridge published inbound command to ROS topic from {message.topic}.')
 
     def destroy_node(self) -> bool:
+        # destroy 노드 정보를 계산해 반환한다.
         if self._client is not None:
             self._client.loop_stop()
             self._client.disconnect()
@@ -134,6 +141,7 @@ class MqttBridgeNode(Node):
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = MqttBridgeNode()
     try:

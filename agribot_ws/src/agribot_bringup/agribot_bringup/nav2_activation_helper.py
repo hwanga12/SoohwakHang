@@ -1,3 +1,4 @@
+# 이 모듈은 통합 실행과 런치 조율 패키지에서 nav2 activation helper 절차를 담당한다.
 from __future__ import annotations
 
 import sys
@@ -10,7 +11,9 @@ from rclpy.node import Node
 
 
 class Nav2ActivationHelper(Node):
+    # NAV 2 activation 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     def __init__(self) -> None:
+        # Nav2ActivationHelper 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('nav2_activation_helper')
         self.declare_parameter(
             'node_names',
@@ -20,6 +23,7 @@ class Nav2ActivationHelper(Node):
         self.declare_parameter('state_wait_timeout_sec', 30.0)
 
     def run(self) -> int:
+        # 전체 실행 흐름을 시작하거나 마무리한다.
         node_names = list(self.get_parameter('node_names').value)
         service_wait_timeout_sec = float(self.get_parameter('service_wait_timeout_sec').value)
         state_wait_timeout_sec = float(self.get_parameter('state_wait_timeout_sec').value)
@@ -62,6 +66,7 @@ class Nav2ActivationHelper(Node):
         return 0
 
     def _wait_for_lifecycle_services(self, node_name: str, timeout_sec: float) -> bool:
+        # lifecycle 서비스이 준비될 때까지 기다린다.
         get_state_client = self.create_client(GetState, f'/{node_name}/get_state')
         change_state_client = self.create_client(ChangeState, f'/{node_name}/change_state')
         get_ok = get_state_client.wait_for_service(timeout_sec=timeout_sec)
@@ -74,6 +79,7 @@ class Nav2ActivationHelper(Node):
         return True
 
     def _get_state(self, node_name: str, timeout_sec: float) -> int | None:
+        # 상태를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         client = self.create_client(GetState, f'/{node_name}/get_state')
         request = GetState.Request()
         future = client.call_async(request)
@@ -84,6 +90,7 @@ class Nav2ActivationHelper(Node):
         return int(future.result().current_state.id)
 
     def _change_state(self, node_name: str, transition_id: int, timeout_sec: float) -> bool:
+        # change 상태 정보를 계산해 반환한다.
         client = self.create_client(ChangeState, f'/{node_name}/change_state')
         request = ChangeState.Request()
         request.transition.id = transition_id
@@ -103,6 +110,7 @@ class Nav2ActivationHelper(Node):
 
 
 def main(args: Iterable[str] | None = None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = Nav2ActivationHelper()
     try:

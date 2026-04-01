@@ -1,5 +1,4 @@
-"""Load and validate row-level patrol waypoint metadata."""
-
+# 이 모듈은 자율주행과 경로 계획 패키지에서 patrol config 기능을 담당한다.
 from __future__ import annotations
 
 import argparse
@@ -14,6 +13,7 @@ import yaml
 
 @dataclass(frozen=True)
 class Pose2D:
+    # 위치 자세 2 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     x: float
     y: float
     z: float
@@ -21,6 +21,7 @@ class Pose2D:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any], field_name: str) -> 'Pose2D':
+        # 딕셔너리 값을 읽어 현재 클래스 인스턴스로 복원한다.
         required_fields = {'x', 'y', 'z', 'yaw'}
         missing = required_fields.difference(payload)
         if missing:
@@ -35,6 +36,7 @@ class Pose2D:
 
 @dataclass(frozen=True)
 class Waypoint:
+    # waypoint 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     waypoint_id: str
     display_name: str
     purpose: str
@@ -49,6 +51,7 @@ class Waypoint:
 
 @dataclass(frozen=True)
 class PatrolRoute:
+    # patrol 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     route_id: str
     display_name: str
     zone_id: str
@@ -64,6 +67,7 @@ class PatrolRoute:
 
 @dataclass(frozen=True)
 class SourceBounds:
+    # source 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     left_bed_edge_x: float
     right_bed_edge_x: float
     front_connector_y: float
@@ -71,6 +75,7 @@ class SourceBounds:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> 'SourceBounds':
+        # 딕셔너리 값을 읽어 현재 클래스 인스턴스로 복원한다.
         required_fields = {
             'left_bed_edge_x',
             'right_bed_edge_x',
@@ -90,6 +95,7 @@ class SourceBounds:
 
 @dataclass(frozen=True)
 class HarvestRoutingConfig:
+    # harvest routing 실행 설정을 한 번에 묶어 다루기 위한 클래스를 정의한다.
     approach_margin_from_bed_edge_m: float
     max_lateral_offset_from_inspect_m: float
     align_standoff_from_crop_m: float
@@ -100,6 +106,7 @@ class HarvestRoutingConfig:
 
 @dataclass(frozen=True)
 class PatrolPlan:
+    # patrol 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     schema_version: int
     frame_id: str
     zone_id: str
@@ -113,10 +120,12 @@ class PatrolPlan:
 
 
 def get_default_patrol_waypoints_path() -> Path:
+    # default patrol waypoints 경로를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return Path(get_package_share_directory('agribot_navigation')) / 'config' / 'patrol_waypoints.yaml'
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
+    # YAML 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with path.open('r', encoding='utf-8') as stream:
         payload = yaml.safe_load(stream)
     if not isinstance(payload, dict):
@@ -125,6 +134,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def _load_waypoints(items: list[dict[str, Any]]) -> dict[str, Waypoint]:
+    # waypoints를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     if not items:
         raise ValueError('patrol_waypoints.yaml must define at least one waypoint.')
 
@@ -150,6 +160,7 @@ def _load_waypoints(items: list[dict[str, Any]]) -> dict[str, Waypoint]:
 
 
 def _load_routes(items: list[dict[str, Any]]) -> dict[str, PatrolRoute]:
+    # 경로 목록를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     if not items:
         raise ValueError('patrol_waypoints.yaml must define at least one patrol route.')
 
@@ -178,6 +189,7 @@ def _load_routes(items: list[dict[str, Any]]) -> dict[str, PatrolRoute]:
 
 
 def _load_harvest_routing(payload: dict[str, Any]) -> HarvestRoutingConfig:
+    # harvest routing를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return_modes = payload.get('return_modes', {})
     if return_modes is None:
         return_modes = {}
@@ -206,6 +218,7 @@ def _load_harvest_routing(payload: dict[str, Any]) -> HarvestRoutingConfig:
 
 
 def _validate_references(plan: PatrolPlan) -> None:
+    # references가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     if plan.home_pose_id not in plan.waypoints:
         raise ValueError(f'home_pose_id does not match any waypoint: {plan.home_pose_id}')
 
@@ -271,6 +284,7 @@ def _validate_references(plan: PatrolPlan) -> None:
 
 
 def load_patrol_plan(path: Path) -> PatrolPlan:
+    # patrol 계획를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     payload = _load_yaml(path)
     coordinate_rationale = payload.get('coordinate_rationale', {})
     if not isinstance(coordinate_rationale, dict):
@@ -312,6 +326,7 @@ def load_patrol_plan(path: Path) -> PatrolPlan:
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(
         description='Validate and summarize agribot patrol waypoint metadata.',
     )
@@ -325,6 +340,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = parse_args()
     try:
         plan = load_patrol_plan(args.patrol_waypoints)

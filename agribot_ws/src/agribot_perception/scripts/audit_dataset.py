@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+
+# 이 모듈은 인지와 추론 패키지에서 audit dataset 기능을 담당한다.
 from __future__ import annotations
 
 import argparse
@@ -14,6 +16,7 @@ DESCRIPTION_FIELDS = ("image", "task")
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(
         description="Audit AI Hub tomato dataset JSON structure and image-label matching."
     )
@@ -42,6 +45,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def is_present(value: Any) -> bool:
+    # present인지 여부를 불리언 값으로 판단한다.
     if value is None:
         return False
     if isinstance(value, str):
@@ -52,6 +56,7 @@ def is_present(value: Any) -> bool:
 
 
 def normalize_value(value: Any) -> str:
+    # value를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     if value is None:
         return "missing"
     if isinstance(value, bool):
@@ -60,11 +65,13 @@ def normalize_value(value: Any) -> str:
 
 
 def load_json(json_path: Path) -> dict[str, Any]:
+    # JSON 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with json_path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
 def extract_annotations(data: dict[str, Any]) -> tuple[list[dict[str, Any]], str, str, int]:
+    # 원본 데이터에서 annotations만 골라 추출한다.
     if "annotation" in data:
         raw = data.get("annotation")
         key_name = "annotation"
@@ -86,6 +93,7 @@ def extract_annotations(data: dict[str, Any]) -> tuple[list[dict[str, Any]], str
 
 
 def build_image_index(dataset_root: Path) -> tuple[list[Path], dict[str, list[Path]], dict[str, list[Path]]]:
+    # 이미지 index를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     image_paths = [
         path
         for path in dataset_root.rglob("*")
@@ -102,6 +110,7 @@ def build_image_index(dataset_root: Path) -> tuple[list[Path], dict[str, list[Pa
 
 
 def dedupe_paths(paths: list[Path]) -> list[Path]:
+    # dedupe 경로 정보를 계산해 반환한다.
     unique_paths: list[Path] = []
     seen: set[Path] = set()
     for path in paths:
@@ -112,6 +121,7 @@ def dedupe_paths(paths: list[Path]) -> list[Path]:
 
 
 def choose_best_candidate(json_path: Path, candidates: list[Path]) -> tuple[Path | None, bool]:
+    # best 후보 가운데 최종 대상을 고른다.
     unique_candidates = dedupe_paths(candidates)
     if not unique_candidates:
         return None, False
@@ -137,6 +147,7 @@ def resolve_image_path(
     image_by_name: dict[str, list[Path]],
     image_by_stem: dict[str, list[Path]],
 ) -> tuple[Path | None, bool]:
+    # 현재 입력 조건을 바탕으로 이미지 경로를 계산하거나 결정한다.
     candidates: list[Path] = []
 
     if is_present(description_image):
@@ -159,11 +170,13 @@ def resolve_image_path(
 
 
 def counter_to_sorted_dict(counter: Counter[str]) -> dict[str, int]:
+    # counter sorted dict 정보를 계산해 반환한다.
     items = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
     return {key: value for key, value in items}
 
 
 def relative_sample_paths(paths: list[Path], dataset_root: Path, limit: int) -> list[str]:
+    # relative sample 경로 정보를 계산해 반환한다.
     samples: list[str] = []
     for path in paths[:limit]:
         try:
@@ -174,11 +187,13 @@ def relative_sample_paths(paths: list[Path], dataset_root: Path, limit: int) -> 
 
 
 def append_issue(store: list[Path], path: Path, limit: int) -> None:
+    # append issue 정보를 계산해 반환한다.
     if len(store) < limit:
         store.append(path)
 
 
 def format_counter_lines(title: str, counts: dict[str, int]) -> list[str]:
+    # counter lines를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     lines = [title]
     if not counts:
         lines.append("  - none")
@@ -195,6 +210,7 @@ def audit_dataset(
     sample_limit: int,
     skip_json_paths: set[Path] | None = None,
 ) -> dict[str, Any]:
+    # dataset 상태를 점검해 문제 여부를 확인한다.
     image_paths, image_by_name, image_by_stem = build_image_index(dataset_root)
     skip_json_paths = skip_json_paths or set()
     json_paths = sorted(
@@ -365,6 +381,7 @@ def audit_dataset(
 
 
 def render_summary(summary: dict[str, Any]) -> str:
+    # 렌더링 요약 정보를 계산해 반환한다.
     totals = summary["totals"]
     schema = summary["schema"]
     distributions = summary["distributions"]
@@ -465,6 +482,7 @@ def render_summary(summary: dict[str, Any]) -> str:
 
 
 def main() -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = parse_args()
     dataset_root = Path(args.dataset_root).expanduser().resolve()
     output_path = Path(args.output).expanduser().resolve()

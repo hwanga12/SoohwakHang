@@ -1,3 +1,4 @@
+# 이 테스트는 IoT 장치 연동 패키지의 fan controller logic 동작을 검증한다.
 from pathlib import Path
 import json
 
@@ -23,6 +24,7 @@ IOT_DEVICES = (
 
 
 def test_set_fan_level_uses_level_target() -> None:
+    # SET 환기팬 level uses level target 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['farm_01_fan']
 
@@ -43,6 +45,7 @@ def test_set_fan_level_uses_level_target() -> None:
 
 
 def test_turn_on_fan_uses_default_speed_level() -> None:
+    # turn ON 환기팬 uses default speed level 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['farm_01_fan']
 
@@ -60,6 +63,7 @@ def test_turn_on_fan_uses_default_speed_level() -> None:
 
 
 def test_turn_off_fan_creates_off_state_and_result_payload() -> None:
+    # turn OFF 환기팬 creates OFF 상태 AND 결과 payload 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['farm_01_fan']
 

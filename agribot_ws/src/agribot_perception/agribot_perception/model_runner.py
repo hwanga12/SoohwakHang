@@ -1,3 +1,4 @@
+# 이 모듈은 인지와 추론 패키지에서 model runner 기능을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -44,13 +45,14 @@ _MODEL_DEVICE_ENV_VARS = (
 
 @dataclass(frozen=True)
 class Detection:
+    # 탐지 결과 한 건을 명확한 필드 구조로 담기 위한 데이터 클래스다.
     label: str
     confidence: float
     bbox: tuple[float, float, float, float]
 
 
 class ModelRunner:
-    """Lazy YOLO wrapper used by the thin inference node."""
+    # 모델 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     def __init__(
         self,
@@ -60,6 +62,7 @@ class ModelRunner:
         confidence_threshold: float = 0.35,
         device: str | None = None,
     ) -> None:
+        # ModelRunner 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         repo_root = Path(__file__).resolve().parents[4]
         contract = _load_label_contract(repo_root)
         default_model_path = repo_root / _DEFAULT_MODEL_RELATIVE_PATH
@@ -78,13 +81,16 @@ class ModelRunner:
 
     @property
     def model_path(self) -> Path:
+        # 모델 경로 정보를 계산해 반환한다.
         return self._model_path
 
     @property
     def resolved_device(self) -> str:
+        # resolved 장치 정보를 계산해 반환한다.
         return self._resolved_device
 
     def infer(self, image: Any) -> list[Detection]:
+        # 입력 데이터를 바탕으로 데이터를 추론한다.
         model = self._load_model()
         results = model.predict(
             source=image,
@@ -127,6 +133,7 @@ class ModelRunner:
         return detections
 
     def _load_model(self) -> Any:
+        # 모델를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         if self._model is not None:
             return self._model
         if not self._model_path.exists():
@@ -149,6 +156,7 @@ class ModelRunner:
 
 
 def parse_label_list(raw_value: str) -> set[str]:
+    # 라벨 list를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return {
         _normalize_label_key(item)
         for item in raw_value.split(',')
@@ -162,6 +170,7 @@ def choose_detection(
     allowed_classes: set[str],
     ignored_classes: set[str],
 ) -> Detection | None:
+    # 탐지 결과 가운데 최종 대상을 고른다.
     filtered = detections
     if allowed_classes:
         filtered = [
@@ -177,6 +186,7 @@ def choose_detection(
 
 
 def _resolve_label(names: Any, class_index: int) -> str:
+    # 현재 입력 조건을 바탕으로 라벨를 계산하거나 결정한다.
     if isinstance(names, dict):
         return str(names.get(class_index, class_index))
     if isinstance(names, list) and 0 <= class_index < len(names):
@@ -189,6 +199,7 @@ def normalize_detection_label(
     *,
     label_aliases: dict[str, str] | None = None,
 ) -> str:
+    # detection 라벨를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized_label = raw_label.strip()
     if not normalized_label:
         return ''
@@ -202,6 +213,7 @@ def normalize_detection_label(
 
 
 def resolve_inference_device(raw_device: str) -> str:
+    # 현재 입력 조건을 바탕으로 inference 장치를 계산하거나 결정한다.
     normalized_device = raw_device.strip().lower()
     if not normalized_device or normalized_device == 'auto':
         return 'cuda:0' if _cuda_available() else 'cpu'
@@ -215,6 +227,7 @@ def resolve_inference_device(raw_device: str) -> str:
 
 
 def _read_label_aliases(contract: dict[str, Any]) -> dict[str, str]:
+    # 라벨 별칭 목록를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     contract_aliases = contract.get('canonical_label_aliases')
     if not isinstance(contract_aliases, dict):
         return dict(_DEFAULT_LABEL_ALIASES)
@@ -228,6 +241,7 @@ def _read_label_aliases(contract: dict[str, Any]) -> dict[str, str]:
 
 
 def _load_label_contract(repo_root: Path) -> dict[str, Any]:
+    # 라벨 계약를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     contract_path = repo_root / _DEFAULT_LABEL_CONTRACT_RELATIVE_PATH
     if not contract_path.exists():
         return {}
@@ -238,6 +252,7 @@ def _load_label_contract(repo_root: Path) -> dict[str, Any]:
 
 
 def _read_first_env(names: tuple[str, ...]) -> str | None:
+    # first ENV를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     for name in names:
         value = os.environ.get(name, '').strip()
         if value:
@@ -246,6 +261,7 @@ def _read_first_env(names: tuple[str, ...]) -> str | None:
 
 
 def _normalize_label_key(raw_label: str) -> str:
+    # 라벨 KEY를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = raw_label.strip().lower().replace('-', '_')
     normalized = re.sub(r'\s+', '_', normalized)
     normalized = re.sub(r'_+', '_', normalized)
@@ -253,6 +269,7 @@ def _normalize_label_key(raw_label: str) -> str:
 
 
 def _cuda_available() -> bool:
+    # cuda available 정보를 계산해 반환한다.
     try:
         import torch
     except ImportError:

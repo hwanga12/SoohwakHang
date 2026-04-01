@@ -1,6 +1,18 @@
+/*
+ * 이 모듈은 농장 의미 지도를 정의한다.
+ */
+/**
+ * 의미 기반 자산 kind 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type SemanticAssetKind = 'plant' | 'sprinkler'
+/**
+ * 의미 기반 자산 상태를 화면과 로직에서 공통으로 쓰기 위한 타입이다.
+ */
 export type SemanticAssetStatus = 'normal' | 'target' | 'attention' | 'handled'
 
+/**
+ * 의미 기반 위치 자세 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type SemanticPose = {
   x: number
   y: number
@@ -9,6 +21,9 @@ export type SemanticPose = {
   frameId: string
 }
 
+/**
+ * 의미 기반 관측 후보 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type SemanticObservationCandidate = {
   inspectWaypointId?: string
   inspectWaypointName?: string
@@ -16,6 +31,9 @@ export type SemanticObservationCandidate = {
   approachPose?: SemanticPose
 }
 
+/**
+ * 의미 기반 자산 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type SemanticAsset = {
   id: string
   linkedId?: string
@@ -36,6 +54,9 @@ export type SemanticAsset = {
   status: SemanticAssetStatus
 }
 
+/**
+ * 의미 기반 guide line 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type SemanticGuideLine = {
   id: string
   axis: 'x' | 'y'
@@ -43,6 +64,9 @@ export type SemanticGuideLine = {
   label: string
 }
 
+/**
+ * 의미 기반 장면 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type SemanticScene = {
   bounds: {
     minX: number
@@ -143,6 +167,9 @@ export const farmSemanticScene: SemanticScene = {
   assets: [...buildPlantAssets(), ...buildSprinklerAssets()],
 }
 
+/**
+ * 위치 자세 label을 해석해 내부 표현으로 바꾸는 함수다.
+ */
 export function parsePoseLabel(poseLabel: string) {
   const match = poseLabel.match(/x\s*(-?\d+(?:\.\d+)?)\s*\/\s*y\s*(-?\d+(?:\.\d+)?)/i)
   if (!match) {
@@ -162,6 +189,9 @@ export function parsePoseLabel(poseLabel: string) {
   }
 }
 
+/**
+ * 의미 기반 target id을 현재 입력 기준으로 확정하는 함수다.
+ */
 export function resolveSemanticTargetId(targetLabel: string) {
   const tomatoMatch = targetLabel.match(/farm01_plant_\d{2}_tomato_\d{2}/)
   if (tomatoMatch) {

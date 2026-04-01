@@ -1,3 +1,4 @@
+# 이 테스트는 상위 제어와 의사결정 패키지의 environment disease rules 동작을 검증한다.
 from agribot_control.environment_disease_rules import (
     DecisionType,
     DiseaseSignal,
@@ -7,6 +8,7 @@ from agribot_control.environment_disease_rules import (
 
 
 def test_dry_soil_recommends_auto_watering() -> None:
+    # DRY soil recommends auto 급수 동작과 회귀 여부를 검증한다.
     decisions = evaluate_environment_disease_rules(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -27,6 +29,7 @@ def test_dry_soil_recommends_auto_watering() -> None:
 
 
 def test_hot_and_bright_environment_recommends_curtain() -> None:
+    # HOT AND bright environment recommends 커튼 동작과 회귀 여부를 검증한다.
     decisions = evaluate_environment_disease_rules(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -46,6 +49,7 @@ def test_hot_and_bright_environment_recommends_curtain() -> None:
 
 
 def test_humid_fungal_repeat_holds_watering_and_enables_fan() -> None:
+    # humid fungal repeat holds 급수 AND enables 환기팬 동작과 회귀 여부를 검증한다.
     decisions = evaluate_environment_disease_rules(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -80,6 +84,7 @@ def test_humid_fungal_repeat_holds_watering_and_enables_fan() -> None:
 
 
 def test_fruiting_calcium_disorder_recommends_nutrients_with_approval() -> None:
+    # fruiting calcium disorder recommends nutrients with approval 동작과 회귀 여부를 검증한다.
     decisions = evaluate_environment_disease_rules(
         EnvironmentSnapshot(
             zone_id='farm_01',

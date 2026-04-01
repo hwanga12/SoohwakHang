@@ -1,3 +1,4 @@
+# 이 모듈은 백엔드 장치 제어 영역에서 환경 상태를 바탕으로 장치 제어 규칙을 계산한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ _ZONE_ALIASES = {
 
 @dataclass(frozen=True)
 class _TreatmentRule:
+    # 처치 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     rule_id: str
     treatment_type: str
     treatment_label: str
@@ -34,6 +36,7 @@ class _TreatmentRule:
 
 @dataclass(frozen=True)
 class _SprinklerSpec:
+    # sprinkler 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     device_id: str
     zone_id: str
     position: Point3D
@@ -75,7 +78,7 @@ _NO_ACTION_LABELS = {
 
 
 class DiseaseTreatmentRuleEngine:
-    """Resolve disease-specific treatment and the nearest sprinkler."""
+    # disease 처치 rule 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     def __init__(
         self,
@@ -83,6 +86,7 @@ class DiseaseTreatmentRuleEngine:
         world_path: Path | None = None,
         sprinklers: Iterable[SprinklerSelection | _SprinklerSpec] | None = None,
     ) -> None:
+        # DiseaseTreatmentRuleEngine 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         repo_root = Path(__file__).resolve().parents[3]
         default_world_path = repo_root / _DEFAULT_WORLD_RELATIVE_PATH
         self._world_path = Path(
@@ -100,6 +104,7 @@ class DiseaseTreatmentRuleEngine:
         zone_id: str = '',
         target_position: Point3D | None = None,
     ) -> DiseaseTreatmentPlan:
+        # 대상 조건을 평가한다.
         normalized_label = disease_label.strip().lower()
         canonical_rule_label = _RULE_LABEL_ALIASES.get(normalized_label, normalized_label)
         rule = _ACTION_RULES.get(canonical_rule_label)
@@ -185,6 +190,7 @@ class DiseaseTreatmentRuleEngine:
         target_position: Point3D | None,
         reason: str,
     ) -> DiseaseTreatmentPlan:
+        # NO action 계획를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         del zone_id
         return DiseaseTreatmentPlan(
             disease_label=disease_label,
@@ -207,6 +213,7 @@ class DiseaseTreatmentRuleEngine:
         zone_id: str,
         target_position: Point3D,
     ) -> SprinklerSelection | None:
+        # nearest 스프링클러 가운데 필요한 대상을 고른다.
         if not self._sprinklers:
             return None
 
@@ -237,6 +244,7 @@ class DiseaseTreatmentRuleEngine:
         )
 
     def _load_sprinklers(self) -> list[_SprinklerSpec]:
+        # sprinklers를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         if not self._world_path.exists():
             return []
 
@@ -268,6 +276,7 @@ class DiseaseTreatmentRuleEngine:
         self,
         sprinkler: SprinklerSelection | _SprinklerSpec,
     ) -> _SprinklerSpec:
+        # coerce 스프링클러 정보를 계산해 반환한다.
         if isinstance(sprinkler, _SprinklerSpec):
             return sprinkler
         return _SprinklerSpec(
@@ -278,6 +287,7 @@ class DiseaseTreatmentRuleEngine:
 
 
 def _parse_pose_to_point(pose_text: str) -> Point3D | None:
+    # 위치 자세 TO point를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parts = pose_text.split()
     if len(parts) < 3:
         return None
@@ -292,6 +302,7 @@ def _parse_pose_to_point(pose_text: str) -> Point3D | None:
 
 
 def _distance_between(a: Point3D, b: Point3D) -> float:
+    # distance between 정보를 계산해 반환한다.
     return math.sqrt(
         ((a.x - b.x) ** 2)
         + ((a.y - b.y) ** 2)
@@ -300,6 +311,7 @@ def _distance_between(a: Point3D, b: Point3D) -> float:
 
 
 def _normalize_zone_id(zone_id: str) -> str:
+    # 구역 ID를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = zone_id.strip().lower()
     if not normalized:
         return _DEFAULT_SPRINKLER_ZONE_ID

@@ -1,3 +1,9 @@
+/*
+ * 이 모듈은 프론트엔드 앱 골격에서 앱 내 탐색 메뉴와 이동 규칙을 정의한다.
+ */
+/**
+ * 주행 item 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type NavigationItem = {
   path: string
   label: string

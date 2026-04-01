@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 mqtt contract 장치 흐름을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ import yaml
 
 @dataclass(frozen=True)
 class MqttBrokerConfig:
+    # mqtt broker 실행 설정을 한 번에 묶어 다루기 위한 클래스를 정의한다.
     host: str
     port: int
     client_id: str
@@ -23,6 +25,7 @@ class MqttBrokerConfig:
 
 @dataclass(frozen=True)
 class RosToMqttRoute:
+    # ROS TO mqtt 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     ros_topic: str
     ros_type: str
     mqtt_topic_template: str
@@ -32,6 +35,7 @@ class RosToMqttRoute:
 
 @dataclass(frozen=True)
 class MqttToRosRoute:
+    # mqtt TO ROS 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     mqtt_topic: str
     ros_topic: str
     ros_type: str
@@ -40,6 +44,7 @@ class MqttToRosRoute:
 
 @dataclass(frozen=True)
 class MqttBridgeConfig:
+    # mqtt 브리지 실행 설정을 한 번에 묶어 다루기 위한 클래스를 정의한다.
     schema_version: int
     broker: MqttBrokerConfig
     ros_to_mqtt: tuple[RosToMqttRoute, ...]
@@ -47,10 +52,12 @@ class MqttBridgeConfig:
 
 
 def get_default_mqtt_topics_path() -> Path:
+    # default mqtt topics 경로를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return Path(get_package_share_directory('agribot_iot')) / 'config' / 'mqtt_topics.yaml'
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
+    # YAML 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with path.open('r', encoding='utf-8') as stream:
         payload = yaml.safe_load(stream)
     if not isinstance(payload, dict):
@@ -59,6 +66,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def load_mqtt_bridge_config(path: Path) -> MqttBridgeConfig:
+    # mqtt 브리지 설정를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     payload = _load_yaml(path)
     broker_payload = dict(payload['broker'])
     return MqttBridgeConfig(
@@ -94,6 +102,7 @@ def load_mqtt_bridge_config(path: Path) -> MqttBridgeConfig:
 
 
 def serialize_environment_data(message: EnvironmentData) -> dict[str, Any]:
+    # environment data를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return {
         'zone_id': message.zone_id,
         'temperature': float(message.temperature),
@@ -105,6 +114,7 @@ def serialize_environment_data(message: EnvironmentData) -> dict[str, Any]:
 
 
 def serialize_iot_command(message: IoTCommand) -> dict[str, Any]:
+    # IoT 명령를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return {
         'stamp': {
             'sec': int(message.header.stamp.sec),
@@ -126,6 +136,7 @@ def serialize_iot_command(message: IoTCommand) -> dict[str, Any]:
 
 
 def serialize_iot_device_state(message: IoTDeviceState) -> dict[str, Any]:
+    # IoT 장치 상태를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return {
         'stamp': {
             'sec': int(message.header.stamp.sec),
@@ -146,6 +157,7 @@ def serialize_iot_device_state(message: IoTDeviceState) -> dict[str, Any]:
 
 
 def serialize_std_string_json(message: String) -> dict[str, Any]:
+    # STD string JSON 데이터를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     payload = message.data.strip()
     if not payload:
         return {}
@@ -159,6 +171,7 @@ def serialize_std_string_json(message: String) -> dict[str, Any]:
 
 
 def resolve_mqtt_topic(template: str, message: Any) -> str:
+    # 현재 입력 조건을 바탕으로 mqtt topic를 계산하거나 결정한다.
     zone_id = getattr(message, 'zone_id', '')
     device_id = getattr(message, 'device_id', '')
     command_id = getattr(message, 'command_id', '')
@@ -170,6 +183,7 @@ def resolve_mqtt_topic(template: str, message: Any) -> str:
 
 
 def serialize_message(serializer: str, message: Any) -> dict[str, Any]:
+    # message를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     serializer_map = {
         'environment_data': serialize_environment_data,
         'iot_command': serialize_iot_command,
@@ -184,6 +198,7 @@ def serialize_message(serializer: str, message: Any) -> dict[str, Any]:
 
 
 def deserialize_iot_command_payload(payload: str | bytes | dict[str, Any]) -> IoTCommand:
+    # IoT 명령 payload를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     if isinstance(payload, bytes):
         payload = payload.decode('utf-8')
     if isinstance(payload, str):

@@ -1,3 +1,9 @@
+/*
+ * 이 모듈은 프론트엔드 환경 변수 읽기 규칙을 정의한다.
+ */
+/**
+ * 대체값이 없을 때 기본값을 적용해 반환하는 함수다.
+ */
 const withFallback = (value: string | undefined, fallback: string) =>
   value?.trim() || fallback
 

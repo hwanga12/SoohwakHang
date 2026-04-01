@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 nutrient controller node 장치 흐름을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -22,15 +23,17 @@ from .nutrient_controller_logic import (
 
 @dataclass(slots=True)
 class ActiveNutrientCommand:
+    # active 영양제 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     plan: NutrientExecutionPlan
     started_at_monotonic: float
     timer: object
 
 
 class NutrientControllerNode(Node):
-    """Execute nutrient commands and publish state/result messages."""
+    # ROS 2 실행 환경에서 영양제 controller 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # NutrientControllerNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('nutrient_controller_node')
         callback_group = ReentrantCallbackGroup()
 
@@ -93,6 +96,7 @@ class NutrientControllerNode(Node):
         )
 
     def _handle_command(self, message: IoTCommand) -> None:
+        # handle 명령 정보를 계산해 반환한다.
         if message.device_type.strip().lower() != 'nutrient':
             return
 
@@ -157,6 +161,7 @@ class NutrientControllerNode(Node):
         )
 
     def _resolve_device(self, message: IoTCommand) -> IoTDeviceSpec | None:
+        # 현재 입력 조건을 바탕으로 장치를 계산하거나 결정한다.
         if message.device_id and message.device_id in self._nutrient_devices:
             return self._nutrient_devices[message.device_id]
         zone_id = message.zone_id.strip() or self._catalog.default_zone_id
@@ -167,6 +172,7 @@ class NutrientControllerNode(Node):
         return self._nutrient_devices.get(device.device_id)
 
     def _complete_nutrient(self, device_id: str) -> None:
+        # complete 영양제 정보를 계산해 반환한다.
         active_command = self._active_commands.pop(device_id, None)
         if active_command is None:
             return
@@ -190,6 +196,7 @@ class NutrientControllerNode(Node):
         )
 
     def _stop_active_command(self, device: IoTDeviceSpec, *, reason: str) -> None:
+        # active 명령 실행 흐름을 시작하거나 마무리한다.
         active_command = self._active_commands.pop(device.device_id, None)
         if active_command is None:
             return
@@ -212,6 +219,7 @@ class NutrientControllerNode(Node):
         current_value: float,
         detail_message: str,
     ) -> None:
+        # 상태를 외부 시스템이나 다음 처리 단계로 전달한다.
         message = build_nutrient_state(
             device,
             state=state,
@@ -233,6 +241,7 @@ class NutrientControllerNode(Node):
         detail_message: str,
         executed_duration_sec: float,
     ) -> None:
+        # 결과를 외부 시스템이나 다음 처리 단계로 전달한다.
         result = String()
         result.data = build_nutrient_result_payload(
             plan,
@@ -248,6 +257,7 @@ class NutrientControllerNode(Node):
         )
 
     def destroy_node(self) -> bool:
+        # destroy 노드 정보를 계산해 반환한다.
         for active_command in self._active_commands.values():
             active_command.timer.cancel()
             self.destroy_timer(active_command.timer)
@@ -256,6 +266,7 @@ class NutrientControllerNode(Node):
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = NutrientControllerNode()
     try:

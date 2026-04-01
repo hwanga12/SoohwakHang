@@ -1,3 +1,4 @@
+# 이 모듈은 통합 실행과 런치 조율 패키지에서 runtime snapshot exporter 절차를 담당한다.
 import math
 from datetime import datetime, timezone
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from .runtime_snapshot_service import (
 
 
 def quaternion_to_yaw(x_value: float, y_value: float, z_value: float, w_value: float) -> float:
+    # 쿼터니언 yaw 정보를 계산해 반환한다.
     siny_cosp = 2.0 * (w_value * z_value + x_value * y_value)
     cosy_cosp = 1.0 - 2.0 * (y_value * y_value + z_value * z_value)
     return math.atan2(siny_cosp, cosy_cosp)
@@ -31,6 +33,7 @@ def quaternion_to_yaw(x_value: float, y_value: float, z_value: float, w_value: f
 
 @dataclass
 class OdomRecord:
+    # 오도메트리 기록 한 건을 명확한 필드 구조로 담기 위한 데이터 클래스다.
     x_value: float
     y_value: float
     z_value: float
@@ -42,6 +45,7 @@ class OdomRecord:
 
 @dataclass(frozen=True)
 class NavigationPathPoint:
+    # navigation 경로 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     x_value: float
     y_value: float
     z_value: float
@@ -51,6 +55,7 @@ class NavigationPathPoint:
 
 @dataclass
 class PathRecord:
+    # 경로 기록 한 건을 명확한 필드 구조로 담기 위한 데이터 클래스다.
     points: list[NavigationPathPoint]
     topic: str
     updated_at: str
@@ -61,7 +66,9 @@ PATH_POINT_TOLERANCE_M = 0.02
 
 
 class RuntimeSnapshotExporter(Node):
+    # 런타임 데이터 스냅샷 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     def __init__(self) -> None:
+        # RuntimeSnapshotExporter 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('runtime_snapshot_exporter')
 
         if not self.has_parameter('use_sim_time'):
@@ -133,7 +140,9 @@ class RuntimeSnapshotExporter(Node):
         )
 
     def _make_odom_callback(self, topic: str):
+        # odom callback를 새로 만들어 다음 처리 단계로 넘긴다.
         def _callback(message: Odometry) -> None:
+            # callback 정보를 계산해 반환한다.
             pose = message.pose.pose
             twist = message.twist.twist
             self._latest_odom_records[topic] = OdomRecord(
@@ -157,7 +166,9 @@ class RuntimeSnapshotExporter(Node):
         return _callback
 
     def _make_path_callback(self, topic: str):
+        # 경로 callback를 새로 만들어 다음 처리 단계로 넘긴다.
         def _callback(message: Path) -> None:
+            # callback 정보를 계산해 반환한다.
             points = self._path_points_from_message(message)
             if not points:
                 self._latest_path_records.pop(topic, None)
@@ -177,9 +188,11 @@ class RuntimeSnapshotExporter(Node):
         return _callback
 
     def _clock_now_iso(self) -> str:
+        # clock now iso 정보를 계산해 반환한다.
         return datetime.now(timezone.utc).isoformat()
 
     def _lookup_frame_transform(self, source_frame: str) -> Optional[dict[str, float]]:
+        # lookup frame 변환 정보를 계산해 반환한다.
         try:
             transform = self._tf_buffer.lookup_transform(
                 self._map_frame,
@@ -207,6 +220,7 @@ class RuntimeSnapshotExporter(Node):
         yaw_value: float,
         frame_id: str,
     ) -> Optional[NavigationPathPoint]:
+        # 변환 point 지도 정보를 계산해 반환한다.
         normalized_frame_id = frame_id.strip() or self._map_frame
         if normalized_frame_id == self._map_frame:
             return NavigationPathPoint(
@@ -238,6 +252,7 @@ class RuntimeSnapshotExporter(Node):
         self,
         points: list[NavigationPathPoint],
     ) -> list[NavigationPathPoint]:
+        # trim 경로 points 정보를 계산해 반환한다.
         trimmed: list[NavigationPathPoint] = []
         traversed_distance = 0.0
         previous_point: NavigationPathPoint | None = None
@@ -264,6 +279,7 @@ class RuntimeSnapshotExporter(Node):
         return trimmed
 
     def _path_points_from_message(self, message: Path) -> list[NavigationPathPoint]:
+        # 경로 points 메시지 정보를 계산해 반환한다.
         source_frame = str(message.header.frame_id).strip() or self._map_frame
         transformed_points: list[NavigationPathPoint] = []
 
@@ -288,6 +304,7 @@ class RuntimeSnapshotExporter(Node):
         return self._trim_path_points(transformed_points)
 
     def _lookup_map_pose(self) -> Optional[dict[str, float | str]]:
+        # lookup 지도 위치 자세 정보를 계산해 반환한다.
         try:
             transform = self._tf_buffer.lookup_transform(
                 self._map_frame,
@@ -308,6 +325,7 @@ class RuntimeSnapshotExporter(Node):
         }
 
     def _latest_odom(self) -> Optional[OdomRecord]:
+        # 최신 odom 정보를 계산해 반환한다.
         if not self._latest_odom_records:
             return None
 
@@ -320,6 +338,7 @@ class RuntimeSnapshotExporter(Node):
         self,
         points: list[NavigationPathPoint],
     ) -> list[dict[str, float | str]]:
+        # 경로 points를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
         return [
             {
                 'x': point.x_value,
@@ -332,6 +351,7 @@ class RuntimeSnapshotExporter(Node):
         ]
 
     def _write_pose_snapshot(self) -> None:
+        # 위치 자세 스냅샷를 파일이나 저장소에 기록한다.
         map_pose = self._lookup_map_pose()
         latest_odom = self._latest_odom()
 
@@ -373,10 +393,12 @@ class RuntimeSnapshotExporter(Node):
             self._last_pose_mode = mode
 
     def _write_semantic_snapshot(self) -> None:
+        # semantic 스냅샷를 파일이나 저장소에 기록한다.
         payload = build_semantic_layer_snapshot(self._map_id)
         write_json_atomic(self._semantic_snapshot_path, payload)
 
     def _write_navigation_path_snapshot(self) -> None:
+        # navigation 경로 스냅샷를 파일이나 저장소에 기록한다.
         local_plan_record = self._latest_path_records.get(self._local_plan_topic)
         global_plan_record = self._latest_path_records.get(self._global_plan_topic)
 
@@ -415,6 +437,7 @@ class RuntimeSnapshotExporter(Node):
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = RuntimeSnapshotExporter()
     try:

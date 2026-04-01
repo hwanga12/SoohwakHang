@@ -1,3 +1,4 @@
+# 이 테스트는 자율주행과 경로 계획 패키지의 harvest action support 동작을 검증한다.
 from pathlib import Path
 import json
 
@@ -45,6 +46,7 @@ CROP_INSTANCES = (
 
 
 def test_resolve_harvest_goal_defaults_mission_and_zone() -> None:
+    # resolve harvest 목표 defaults 미션 AND 구역 동작과 회귀 여부를 검증한다.
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
     resolved = resolve_harvest_goal(
@@ -65,6 +67,7 @@ def test_resolve_harvest_goal_defaults_mission_and_zone() -> None:
 
 
 def test_resolve_harvest_goal_accepts_none_for_optional_strings() -> None:
+    # resolve harvest 목표 accepts none FOR optional strings 동작과 회귀 여부를 검증한다.
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
     resolved = resolve_harvest_goal(
@@ -82,6 +85,7 @@ def test_resolve_harvest_goal_accepts_none_for_optional_strings() -> None:
 
 
 def test_resolve_harvest_goal_treats_string_none_as_empty() -> None:
+    # resolve harvest 목표 treats string none AS empty 동작과 회귀 여부를 검증한다.
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
     resolved = resolve_harvest_goal(
@@ -100,6 +104,7 @@ def test_resolve_harvest_goal_treats_string_none_as_empty() -> None:
 
 
 def test_resolve_harvest_goal_rejects_mismatched_plant() -> None:
+    # resolve harvest 목표 rejects mismatched 작물 개체 동작과 회귀 여부를 검증한다.
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
     with pytest.raises(ValueError, match='belongs to plant'):
@@ -115,6 +120,7 @@ def test_resolve_harvest_goal_rejects_mismatched_plant() -> None:
 
 
 def test_ensure_harvest_target_available_rejects_duplicate_runtime_target() -> None:
+    # ensure harvest target 사용 가능 상태 rejects duplicate 런타임 데이터 target 동작과 회귀 여부를 검증한다.
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
     with pytest.raises(ValueError, match='already harvested'):
@@ -126,6 +132,7 @@ def test_ensure_harvest_target_available_rejects_duplicate_runtime_target() -> N
 
 
 def test_alignment_required_reflects_approach_and_align_difference() -> None:
+    # alignment required reflects approach AND align difference 동작과 회귀 여부를 검증한다.
     patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
     route_plan = compute_harvest_route(
@@ -150,6 +157,7 @@ def test_alignment_required_reflects_approach_and_align_difference() -> None:
 
 
 def test_build_feedback_and_result_match_action_contract() -> None:
+    # build feedback AND 결과 match action 계약 동작과 회귀 여부를 검증한다.
     feedback = build_feedback(
         current_phase='VERIFYING',
         progress_pct=PHASE_PROGRESS_PCT['VERIFYING'],
@@ -173,6 +181,7 @@ def test_build_feedback_and_result_match_action_contract() -> None:
 
 
 def test_build_harvest_event_populates_message_fields() -> None:
+    # build harvest 이벤트 populates message fields 동작과 회귀 여부를 검증한다.
     event = build_harvest_event(
         event_id='harvest-event-42',
         mission_id='mission-42',
@@ -194,6 +203,7 @@ def test_build_harvest_event_populates_message_fields() -> None:
 
 
 def test_build_basket_state_tracks_loaded_fruits_and_remaining_count() -> None:
+    # build basket 상태 tracks loaded fruits AND remaining count 동작과 회귀 여부를 검증한다.
     basket_state = build_basket_state(
         zone_id='farm_01',
         frame_id='odom',
@@ -223,6 +233,7 @@ def test_build_basket_state_tracks_loaded_fruits_and_remaining_count() -> None:
 
 
 def test_runtime_payload_helpers_keep_event_basket_and_phase_fields() -> None:
+    # 런타임 데이터 payload helpers keep 이벤트 basket AND 단계 fields 동작과 회귀 여부를 검증한다.
     event = build_harvest_event(
         event_id='harvest-event-55',
         mission_id='mission-55',
@@ -277,6 +288,7 @@ def test_runtime_payload_helpers_keep_event_basket_and_phase_fields() -> None:
 
 
 def test_build_mission_status_captures_return_home_progress() -> None:
+    # build 미션 상태 captures return home progress 동작과 회귀 여부를 검증한다.
     mission_status = build_mission_status(
         mission_id='mission-455',
         mission_type='HARVEST',
@@ -302,6 +314,7 @@ def test_build_mission_status_captures_return_home_progress() -> None:
 
 
 def test_should_retry_phase_respects_allowlist_and_limit() -> None:
+    # should retry 단계 respects allowlist AND limit 동작과 회귀 여부를 검증한다.
     retryable_phases = {'APPROACHING', 'RETURN_HOME', 'RESUME'}
 
     assert should_retry_phase(
@@ -325,6 +338,7 @@ def test_should_retry_phase_respects_allowlist_and_limit() -> None:
 
 
 def test_build_failure_alert_payload_marks_safe_stop_and_failure_reason() -> None:
+    # build failure alert payload marks safe stop AND failure reason 동작과 회귀 여부를 검증한다.
     payload = build_failure_alert_payload(
         mission_id='mission-456',
         zone_id='farm_01',

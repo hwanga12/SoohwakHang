@@ -1,3 +1,4 @@
+# 이 모듈은 상위 제어와 의사결정 패키지에서 actuation request node 판단과 실행 보조 로직을 담당한다.
 from __future__ import annotations
 
 import uuid
@@ -17,9 +18,10 @@ from .environment_disease_rules import DiseaseSignal, EnvironmentSnapshot
 
 
 class ActuationRequestNode(Node):
-    """Publish actionable IoT requests from environment and observation inputs."""
+    # ROS 2 실행 환경에서 actuation 요청 데이터 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # ActuationRequestNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('actuation_request_node')
         self.declare_parameter('environment_topic', '/environment_data')
         self.declare_parameter('plant_observation_topic', '/plant_observation')
@@ -74,6 +76,7 @@ class ActuationRequestNode(Node):
         )
 
     def _handle_plant_observation(self, msg: PlantObservation) -> None:
+        # handle 작물 관측 정보를 계산해 반환한다.
         zone_id = msg.zone_id.strip()
         if not zone_id or not self._matches_zone(zone_id):
             return
@@ -96,6 +99,7 @@ class ActuationRequestNode(Node):
         )
 
     def _handle_environment(self, msg: EnvironmentData) -> None:
+        # handle 환경 정보를 계산해 반환한다.
         zone_id = msg.zone_id.strip()
         if not zone_id or not self._matches_zone(zone_id):
             return
@@ -135,6 +139,7 @@ class ActuationRequestNode(Node):
             self._last_signature_by_zone_device.pop(key, None)
 
     def _publish_request(self, plan: ActuationRequestPlan) -> None:
+        # 요청 데이터를 외부 시스템이나 다음 처리 단계로 전달한다.
         message = IoTCommand()
         message.header.stamp = self.get_clock().now().to_msg()
         message.command_id = str(uuid.uuid4())
@@ -168,6 +173,7 @@ class ActuationRequestNode(Node):
         )
 
     def _build_disease_signal(self, zone_id: str) -> DiseaseSignal:
+        # disease signal를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         observation_state = self._zone_observations.get(zone_id)
         if observation_state is None:
             return DiseaseSignal()
@@ -181,10 +187,12 @@ class ActuationRequestNode(Node):
         )
 
     def _matches_zone(self, zone_id: str) -> bool:
+        # matches 구역 정보를 계산해 반환한다.
         return not self._zone_id_filter or zone_id == self._zone_id_filter
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = ActuationRequestNode()
     try:

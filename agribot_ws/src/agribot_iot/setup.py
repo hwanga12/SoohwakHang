@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 setup 장치 흐름을 담당한다.
 from setuptools import setup
 import os
 from glob import glob

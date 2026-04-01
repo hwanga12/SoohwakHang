@@ -1,3 +1,4 @@
+# 이 모듈은 상위 제어와 의사결정 패키지에서 manual actuation safety 판단과 실행 보조 로직을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -5,12 +6,14 @@ from enum import Enum
 
 
 class CommandSource(str, Enum):
+    # 명령 source 값을 명확히 구분하기 위한 열거형 클래스를 정의한다.
     AUTO = 'auto'
     MANUAL = 'manual'
 
 
 @dataclass(slots=True)
 class ActuationCommand:
+    # actuation 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     command_id: str
     zone_id: str
     device_id: str
@@ -27,6 +30,7 @@ class ActuationCommand:
 
 @dataclass(slots=True)
 class ArbitrationResult:
+    # arbitration 처리 결과를 한 번에 전달하기 위한 클래스를 정의한다.
     accepted: bool
     rule: str
     reason: str
@@ -35,7 +39,7 @@ class ArbitrationResult:
 
 
 class ManualPrioritySafetyLock:
-    """Guard actuation commands with manual priority and short safety locks."""
+    # manual priority safety 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     def __init__(
         self,
@@ -45,6 +49,7 @@ class ManualPrioritySafetyLock:
         execution_lock_seconds: float = 4.0,
         conflict_groups: dict[str, str] | None = None,
     ) -> None:
+        # ManualPrioritySafetyLock 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         self._manual_override_seconds = max(0.0, float(manual_override_seconds))
         self._duplicate_window_seconds = max(0.0, float(duplicate_window_seconds))
         self._execution_lock_seconds = max(0.0, float(execution_lock_seconds))
@@ -59,6 +64,7 @@ class ManualPrioritySafetyLock:
         self._conflict_lock_until_by_group_zone: dict[str, float] = {}
 
     def evaluate(self, command: ActuationCommand, *, now_seconds: float) -> ArbitrationResult:
+        # 대상 조건을 평가한다.
         normalized_command = self._normalize_command(command)
         self._expire(now_seconds)
 
@@ -128,17 +134,20 @@ class ManualPrioritySafetyLock:
         )
 
     def _expire(self, now_seconds: float) -> None:
+        # expire 정보를 계산해 반환한다.
         self._prune(self._manual_override_until_by_lock_key, now_seconds)
         self._prune(self._device_lock_until_by_lock_key, now_seconds)
         self._prune(self._conflict_lock_until_by_group_zone, now_seconds)
         self._prune_duplicates(now_seconds)
 
     def _prune(self, store: dict, now_seconds: float) -> None:
+        # prune 정보를 계산해 반환한다.
         expired_keys = [key for key, until in store.items() if until <= now_seconds]
         for key in expired_keys:
             store.pop(key, None)
 
     def _prune_duplicates(self, now_seconds: float) -> None:
+        # prune duplicates 정보를 계산해 반환한다.
         expired_keys = [
             key
             for key, seen_at in self._last_seen_at_by_signature.items()
@@ -148,6 +157,7 @@ class ManualPrioritySafetyLock:
             self._last_seen_at_by_signature.pop(key, None)
 
     def _normalize_command(self, command: ActuationCommand) -> ActuationCommand:
+        # 명령를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
         return ActuationCommand(
             command_id=command.command_id.strip(),
             zone_id=command.zone_id.strip(),
@@ -164,14 +174,17 @@ class ManualPrioritySafetyLock:
         )
 
     def _lock_key(self, command: ActuationCommand) -> str:
+        # lock key 정보를 계산해 반환한다.
         device_identifier = command.device_id or command.device_type
         return f'{command.zone_id}:{device_identifier}'
 
     def _conflict_group_key(self, command: ActuationCommand) -> str:
+        # conflict group key 정보를 계산해 반환한다.
         group = self._conflict_groups.get(command.device_type, command.device_type)
         return f'{command.zone_id}:{group}'
 
     def _signature(self, command: ActuationCommand) -> tuple[str, ...]:
+        # signature 정보를 계산해 반환한다.
         return (
             self._lock_key(command),
             command.command_type,
@@ -181,6 +194,7 @@ class ManualPrioritySafetyLock:
         )
 
     def _is_duplicate(self, signature: tuple[str, ...], now_seconds: float) -> bool:
+        # duplicate인지 여부를 불리언 값으로 판단한다.
         last_seen_at = self._last_seen_at_by_signature.get(signature)
         if last_seen_at is None:
             return False

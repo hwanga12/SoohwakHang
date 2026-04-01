@@ -1,3 +1,4 @@
+# 이 테스트는 백엔드의 robot command bridge service 동작과 회귀 여부를 검증한다.
 from __future__ import annotations
 
 import json
@@ -23,11 +24,13 @@ from zone_service import read_zones_payload, resolve_zone_representative_pose  #
 
 @pytest.fixture(autouse=True)
 def runtime_dir_isolation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # 런타임 dir isolation 정보를 계산해 반환한다.
     monkeypatch.setenv("AGRIBOT_RUNTIME_DIR", str(tmp_path))
     yield
 
 
 def test_read_zones_payload_returns_real_zone_catalog() -> None:
+    # read 구역 목록 payload returns real 구역 카탈로그 동작과 회귀 여부를 검증한다.
     zones = read_zones_payload()
 
     assert [zone["id"] for zone in zones] == [
@@ -41,6 +44,7 @@ def test_read_zones_payload_returns_real_zone_catalog() -> None:
 
 
 def test_resolve_zone_representative_pose_uses_patrol_waypoint_pose() -> None:
+    # resolve 구역 representative 위치 자세 uses patrol waypoint 위치 자세 동작과 회귀 여부를 검증한다.
     pose = resolve_zone_representative_pose("farm_01_east")
 
     assert pose["frame_id"] == "map"
@@ -49,6 +53,7 @@ def test_resolve_zone_representative_pose_uses_patrol_waypoint_pose() -> None:
 
 
 def test_publish_move_to_zone_resolves_to_navigate_to_pose_bridge() -> None:
+    # publish move TO 구역 resolves TO navigate TO 위치 자세 브리지 동작과 회귀 여부를 검증한다.
     response = publish_robot_command(
         robot_id="AGR-02",
         command_type="move_to_zone",
@@ -70,6 +75,7 @@ def test_publish_move_to_zone_resolves_to_navigate_to_pose_bridge() -> None:
 
 
 def test_publish_navigate_to_pose_rejects_non_map_frame() -> None:
+    # publish navigate TO 위치 자세 rejects NON 지도 frame 동작과 회귀 여부를 검증한다.
     with pytest.raises(RobotCommandValidationError, match="frame_id 는 map 만 허용"):
         publish_robot_command(
             robot_id="AGR-02",
@@ -85,6 +91,7 @@ def test_publish_navigate_to_pose_rejects_non_map_frame() -> None:
 
 
 def test_publish_navigate_to_pose_allows_explicit_preempt_override() -> None:
+    # publish navigate TO 위치 자세 allows explicit preempt override 동작과 회귀 여부를 검증한다.
     response = publish_robot_command(
         robot_id="AGR-02",
         command_type="navigate_to_pose",
@@ -105,6 +112,7 @@ def test_publish_navigate_to_pose_allows_explicit_preempt_override() -> None:
 
 
 def test_publish_pause_patrol_defaults_preempt_to_false() -> None:
+    # publish pause patrol defaults preempt TO false 동작과 회귀 여부를 검증한다.
     control_state_file_path().write_text(
         json.dumps(
             {
@@ -135,6 +143,7 @@ def test_publish_pause_patrol_defaults_preempt_to_false() -> None:
 
 
 def test_read_latest_command_status_payload_returns_idle_when_missing() -> None:
+    # read latest 명령 상태 payload returns idle when missing 동작과 회귀 여부를 검증한다.
     payload = read_latest_command_status_payload()
 
     assert payload["available"] is False

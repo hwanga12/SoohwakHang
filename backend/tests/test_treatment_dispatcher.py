@@ -1,3 +1,4 @@
+# 이 테스트는 백엔드의 treatment dispatcher 동작과 회귀 여부를 검증한다.
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,6 +15,7 @@ from services.actuation.schemas import Point3D
 
 
 def test_dispatcher_skips_no_action_plan() -> None:
+    # dispatcher skips NO action 계획 동작과 회귀 여부를 검증한다.
     engine = DiseaseTreatmentRuleEngine()
     dispatcher = TreatmentCommandDispatcher()
 
@@ -29,12 +31,14 @@ def test_dispatcher_skips_no_action_plan() -> None:
 
 
 def test_dispatcher_reports_successful_ros_publish(monkeypatch) -> None:
+    # dispatcher reports successful ROS publish 동작과 회귀 여부를 검증한다.
     engine = DiseaseTreatmentRuleEngine()
     dispatcher = TreatmentCommandDispatcher()
 
     monkeypatch.setattr(dispatcher, '_validate_runtime', lambda *args, **kwargs: None)
 
     def _fake_run(*args, **kwargs):
+        # fake run 정보를 계산해 반환한다.
         return SimpleNamespace(returncode=0, stdout='published', stderr='')
 
     monkeypatch.setattr('services.actuation.dispatcher.subprocess.run', _fake_run)
@@ -58,11 +62,13 @@ def test_dispatcher_reports_successful_ros_publish(monkeypatch) -> None:
 
 
 def test_dispatcher_reports_successful_manual_ros_publish(monkeypatch) -> None:
+    # dispatcher reports successful manual ROS publish 동작과 회귀 여부를 검증한다.
     dispatcher = TreatmentCommandDispatcher()
 
     monkeypatch.setattr(dispatcher, '_validate_runtime', lambda *args, **kwargs: None)
 
     def _fake_run(*args, **kwargs):
+        # fake run 정보를 계산해 반환한다.
         return SimpleNamespace(returncode=0, stdout='manual-published', stderr='')
 
     monkeypatch.setattr('services.actuation.dispatcher.subprocess.run', _fake_run)
