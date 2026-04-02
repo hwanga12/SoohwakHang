@@ -4,12 +4,12 @@
 
 This document covers the minimum contract added for:
 
-- `S14P-501` IoT device and zone mapping
-- `S14P-502` simulated environment sensor publishing
-- `S14P-503` MQTT topic and payload agreement
-- `S14P-504` watering controller execution
-- `S14P-505` curtain controller execution
-- `S14P-506` fan controller execution
+- IoT device and zone mapping
+- simulated environment sensor publishing
+- MQTT topic and payload agreement
+- watering controller execution
+- nutrient controller execution
+- sprinkler controller execution
 
 ## Shared Device Mapping
 
@@ -21,9 +21,8 @@ Current canonical IDs:
 
 - Zone: `farm_01`
 - Watering: `farm_01_watering`
-- Curtain: `farm_01_curtain`
-- Fan: `farm_01_fan`
 - Nutrient: `farm_01_nutrient`
+- Sprinklers: `sprinkler_0`, `sprinkler_1`, `sprinkler_2`, `sprinkler_3`
 
 ## ROS Topics
 
@@ -105,15 +104,11 @@ Current canonical IDs:
   - `dispense_water`
   - `stop_watering`
   - `hold_watering`
-- The curtain controller currently handles:
-  - `open_curtain`
-  - `close_curtain`
-  - `set_curtain_position`
-- `set_curtain_position` accepts `percent_open`, `percent`, and `percent_closed`.
-- The fan controller currently handles:
-  - `turn_on_fan`
-  - `turn_off_fan`
-  - `set_fan_level`
-  - `set_fan_speed`
-- Fan state uses `speed_level` for the current stage and `current_value` with `unit=sec` for run time.
-- Curtain, fan, and nutrient controllers follow the same `IoTCommand` -> `IoTDeviceState` -> JSON result pattern.
+- The nutrient controller currently handles:
+  - `apply_nutrient_recipe`
+- The sprinkler controller currently handles:
+  - `spray_pesticide`
+  - `spray_calcium_solution`
+  - `stop_spray`
+  - `hold_spray`
+- Watering, nutrient, and sprinkler controllers follow the same `IoTCommand` -> `IoTDeviceState` -> JSON result pattern.

@@ -786,12 +786,6 @@ function isFieldRelevantText(...values: unknown[]) {
   }
 
   return !includesAnyKeyword(normalized, [
-    'curtain',
-    '차광',
-    '커튼',
-    'fan',
-    'vent',
-    '환기',
     'temperature',
     '온도',
     'humidity',

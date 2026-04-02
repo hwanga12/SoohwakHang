@@ -58,8 +58,6 @@ def _command_title(command_type: str) -> str:
         "NUTRIENTS": "영양제 투입",
         "SPRAY_PESTICIDE": "약제 살포",
         "SPRAY_CALCIUM_SOLUTION": "칼슘액비 살포",
-        "CURTAIN": "커튼 제어",
-        "FAN": "환기팬 제어",
         "STOP": "장치 정지",
     }
     return mapping.get(normalized, normalized or "장치 제어")

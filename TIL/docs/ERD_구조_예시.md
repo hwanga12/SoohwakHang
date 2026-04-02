@@ -220,18 +220,18 @@ IoT 장치 자동 제어는 환경 데이터가 없으면 불가능합니다.
 
 왜 필요한가:
 이제 장치 자체가 데이터 모델의 주인공입니다.
-구역마다 펌프, 커튼, 환기팬, 영양제 장치가 무엇인지 알아야 명령을 보낼 수 있습니다.
+구역마다 급수 펌프, 영양제 디스펜서, 스프링클러가 무엇인지 알아야 명령을 보낼 수 있습니다.
 
 | 컬럼 | 타입 / 예시값 | 왜 필요한가 |
 | --- | --- | --- |
-| `id` | `VARCHAR(50)` / `fan_zone_a` | 장치 고유 ID입니다. |
+| `id` | `VARCHAR(50)` / `sprinkler_1` | 장치 고유 ID입니다. |
 | `zone_id` | `VARCHAR(50)` / `zone_A` | 어느 구역 장치인지 연결합니다. |
-| `device_type` | `VARCHAR(30)` / `WATER_PUMP`, `CURTAIN`, `FAN`, `NUTRIENT` | 장치 종류를 구분합니다. |
-| `display_name` | `VARCHAR(100)` / `A구역 환기팬` | 사람이 읽는 장치 이름입니다. |
+| `device_type` | `VARCHAR(30)` / `WATER_PUMP`, `NUTRIENT`, `SPRINKLER` | 장치 종류를 구분합니다. |
+| `display_name` | `VARCHAR(100)` / `A구역 스프링클러 1` | 사람이 읽는 장치 이름입니다. |
 | `control_mode` | `VARCHAR(30)` / `AUTO`, `MANUAL`, `MANUAL_OVERRIDE`, `DISABLED` | 자동 제어 중인지, 수동이 우선인지 표현합니다. |
-| `current_state` | `VARCHAR(30)` / `OFF`, `ON`, `OPEN`, `CLOSED`, `PARTIAL`, `ERROR` | 장치 현재 상태입니다. |
-| `current_value` | `FLOAT` / `50` | 커튼 열림 50%, 팬 속도 2단계, 급수량 등 현재 수치입니다. |
-| `value_unit` | `VARCHAR(20)` / `percent`, `level`, `ml` | 현재 수치의 단위입니다. |
+| `current_state` | `VARCHAR(30)` / `OFF`, `ON`, `RUNNING`, `ERROR` | 장치 현재 상태입니다. |
+| `current_value` | `FLOAT` / `3` | 급수량, 영양제량, 살포 시간 등 현재 수치입니다. |
+| `value_unit` | `VARCHAR(20)` / `ml`, `sec` | 현재 수치의 단위입니다. |
 | `is_online` | `BOOLEAN` / `true` or `false` | 장치가 현재 연결돼 있는지 표시합니다. |
 | `last_seen_at` | `TIMESTAMP` | 마지막 상태 수신 시각입니다. |
 
@@ -247,7 +247,7 @@ IoT에서 가장 중요하게 추가된 테이블입니다.
 | `zone_id` | `VARCHAR(50)` / `zone_A` | 어느 구역에 대한 추천인지 저장합니다. |
 | `plant_id` | `VARCHAR(50)` or `NULL` | 특정 식물에서 시작된 추천이면 연결합니다. |
 | `device_id` | `VARCHAR(50)` or `NULL` | 어떤 장치를 추천 대상으로 보는지 연결합니다. |
-| `recommendation_type` | `VARCHAR(30)` / `WATERING`, `CURTAIN`, `FAN`, `NUTRIENTS` | 추천 종류입니다. |
+| `recommendation_type` | `VARCHAR(30)` / `WATERING`, `NUTRIENTS` | 추천 종류입니다. |
 | `reason_code` | `VARCHAR(50)` / `LOW_SOIL_MOISTURE`, `HIGH_TEMP_LIGHT`, `HIGH_HUMIDITY_DISEASE` | 머신이 이해하기 쉬운 추천 이유 코드입니다. |
 | `reason_text` | `TEXT` / `토양수분이 기준보다 낮아 급수 추천` | 사람이 이해하기 쉬운 설명입니다. |
 | `suggested_value` | `FLOAT` / `300` | 추천량 또는 목표값입니다. |
@@ -274,14 +274,14 @@ IoT에서 가장 중요하게 추가된 테이블입니다.
 | --- | --- | --- |
 | `id` | `UUID` | 명령 1건 ID입니다. |
 | `recommendation_id` | `UUID` or `NULL` | 추천에서 이어진 명령이면 연결합니다. 수동 버튼이면 `NULL`일 수 있습니다. |
-| `device_id` | `VARCHAR(50)` / `fan_zone_a` | 어느 장치에 보낸 명령인지 기록합니다. |
+| `device_id` | `VARCHAR(50)` / `sprinkler_1` | 어느 장치에 보낸 명령인지 기록합니다. |
 | `zone_id` | `VARCHAR(50)` / `zone_A` | 어느 구역 명령인지 빠르게 조회합니다. |
 | `mission_id` | `UUID` or `NULL` | 특정 미션 흐름 중 생성된 명령이면 연결합니다. |
 | `requested_by` | `VARCHAR(100)` / `system`, `user:dashboard` | 누가 요청했는지 표시합니다. |
 | `request_source` | `VARCHAR(30)` / `AUTO_RULE`, `USER_BUTTON`, `MISSION_FLOW` | 왜 이 명령이 생겼는지 구분합니다. |
-| `command_type` | `VARCHAR(30)` / `WATERING`, `CURTAIN`, `FAN`, `NUTRIENTS`, `STOP` | 명령 종류입니다. |
+| `command_type` | `VARCHAR(30)` / `WATERING`, `NUTRIENTS`, `STOP` | 명령 종류입니다. |
 | `target_value` | `FLOAT` / `300`, `50`, `2` | 장치가 목표로 해야 할 값입니다. |
-| `value_unit` | `VARCHAR(20)` / `ml`, `percent`, `level` | 목표값 단위입니다. |
+| `value_unit` | `VARCHAR(20)` / `ml`, `sec` | 목표값 단위입니다. |
 | `command_status` | `VARCHAR(30)` / `REQUESTED`, `SENT`, `ACKED`, `COMPLETED`, `FAILED`, `CANCELED` | 명령 진행 상태입니다. |
 | `requested_at` | `TIMESTAMP` | 명령 생성 시각입니다. |
 
@@ -298,7 +298,7 @@ IoT에서 가장 중요하게 추가된 테이블입니다.
 | `device_id` | `VARCHAR(50)` | 어느 장치가 실행했는지 연결합니다. |
 | `result` | `VARCHAR(20)` / `SUCCESS`, `FAILED`, `TIMEOUT` | 결과가 성공인지 실패인지 표현합니다. |
 | `result_message` | `TEXT` / `pump timeout`, `manual lock active` | 실패 이유나 실행 결과 설명입니다. |
-| `state_after` | `VARCHAR(30)` / `ON`, `PARTIAL`, `LEVEL_2`, `ERROR` | 실행 후 장치 상태를 요약합니다. |
+| `state_after` | `VARCHAR(30)` / `ON`, `RUNNING`, `ERROR` | 실행 후 장치 상태를 요약합니다. |
 | `actual_value` | `FLOAT` / `280`, `50`, `2` | 실제 적용된 값입니다. |
 | `value_unit` | `VARCHAR(20)` / `ml`, `percent`, `level` | 실제 적용값 단위입니다. |
 | `started_at` | `TIMESTAMP` | 실행 시작 시각입니다. |

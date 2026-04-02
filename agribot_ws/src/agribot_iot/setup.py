@@ -29,8 +29,6 @@ setup(
             'environment_sensor_node = agribot_iot.environment_sensor_node:main',
             'mqtt_bridge_node = agribot_iot.mqtt_bridge_node:main',
             'watering_controller_node = agribot_iot.watering_controller_node:main',
-            'curtain_controller_node = agribot_iot.curtain_controller_node:main',
-            'fan_controller_node = agribot_iot.fan_controller_node:main',
             'nutrient_controller_node = agribot_iot.nutrient_controller_node:main',
             'sprinkler_controller_node = agribot_iot.sprinkler_controller_node:main',
         ],

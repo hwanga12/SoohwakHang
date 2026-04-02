@@ -91,9 +91,9 @@ P0 단계에서는 로그인/권한 기능을 필수 범위에서 제외합니�
 | `robot.status` | `IDLE`, `PATROL`, `OBSERVE`, `HARVEST`, `RETURN_HOME`, `IOT_ACTION`, `ERROR`, `STOPPED` |
 | `missions.status` | `PENDING`, `RUNNING`, `PAUSED`, `COMPLETED`, `FAILED`, `CANCELED` |
 | `fruits.ripeness_stage` | `UNRIPE`, `TURNING`, `RIPE` |
-| `iot_devices.device_type` | `WATER_PUMP`, `CURTAIN`, `FAN`, `NUTRIENT` |
+| `iot_devices.device_type` | `WATER_PUMP`, `NUTRIENT`, `SPRINKLER` |
 | `iot_devices.control_mode` | `AUTO`, `MANUAL`, `MANUAL_OVERRIDE`, `DISABLED` |
-| `iot_devices.current_state` | `IDLE`, `OFF`, `ON`, `OPEN`, `CLOSED`, `PARTIAL`, `RUNNING`, `ERROR` |
+| `iot_devices.current_state` | `IDLE`, `OFF`, `ON`, `RUNNING`, `ERROR` |
 | `actuation_recommendations.status` | `PENDING`, `APPROVED`, `REJECTED`, `AUTO_EXECUTED`, `EXPIRED` |
 | `actuation_commands.command_status` | `REQUESTED`, `SENT`, `ACKED`, `COMPLETED`, `FAILED`, `CANCELED` |
 | `actuation_logs.result` | `SUCCESS`, `FAILED`, `TIMEOUT`, `REJECTED` |
@@ -126,8 +126,6 @@ P0 단계에서는 로그인/권한 기능을 필수 범위에서 제외합니�
 | IoT | `POST` | `/api/v1/actuations/recommendations/{id}/approve` | 추천 승인 |
 | IoT | `POST` | `/api/v1/actuations/recommendations/{id}/reject` | 추천 거절 |
 | IoT | `POST` | `/api/v1/actuations/watering` | 급수 명령 |
-| IoT | `POST` | `/api/v1/actuations/curtain` | 천장 커튼 명령 |
-| IoT | `POST` | `/api/v1/actuations/fan` | 환기팬 명령 |
 | IoT | `POST` | `/api/v1/actuations/nutrients` | 영양제 명령 |
 | IoT | `GET` | `/api/v1/actuations/history` | 장치 실행 이력 |
 | Harvest | `GET` | `/api/v1/harvests` | 수확 이력 |
@@ -575,14 +573,14 @@ P0에서는 MQTT 발행 후 `robots`, `missions`, `alerts` 상태 갱신으로 �
 {
   "data": [
     {
-      "id": "fan_zone_a",
-      "zone_id": "zone_A",
-      "device_type": "FAN",
-      "display_name": "A구역 환기팬",
+      "id": "sprinkler_1",
+      "zone_id": "farm_01",
+      "device_type": "SPRINKLER",
+      "display_name": "Farm 01 Sprinkler 1",
       "control_mode": "AUTO",
-      "current_state": "ON",
-      "current_value": 2,
-      "value_unit": "level",
+      "current_state": "RUNNING",
+      "current_value": 3,
+      "value_unit": "sec",
       "is_online": true,
       "last_seen_at": "2026-03-16T16:31:00+09:00"
     }
@@ -703,35 +701,7 @@ IoT 자동 추천 목록 조회
 }
 ```
 
-### 6-23. `POST /api/v1/actuations/curtain`
-
-목적:
-천장 커튼 열기/닫기/부분 제어
-
-요청 핵심 필드:
-
-- `zone_id`
-- `device_id`
-- `target_value`
-- `value_unit = "percent"`
-- `requested_by`
-- `request_source`
-
-### 6-24. `POST /api/v1/actuations/fan`
-
-목적:
-환기팬 on/off 또는 속도 단계 제어
-
-요청 핵심 필드:
-
-- `zone_id`
-- `device_id`
-- `target_value`
-- `value_unit = "level"`
-- `requested_by`
-- `request_source`
-
-### 6-25. `POST /api/v1/actuations/nutrients`
+### 6-23. `POST /api/v1/actuations/nutrients`
 
 목적:
 영양제 실행
@@ -753,7 +723,7 @@ IoT 자동 추천 목록 조회
 }
 ```
 
-### 6-26. `GET /api/v1/actuations/history`
+### 6-24. `GET /api/v1/actuations/history`
 
 목적:
 장치 실행 이력 조회
@@ -788,7 +758,7 @@ IoT 자동 추천 목록 조회
 - `started_at`
 - `finished_at`
 
-### 6-27. `GET /api/v1/harvests`
+### 6-25. `GET /api/v1/harvests`
 
 목적:
 수확 이력 조회
@@ -813,7 +783,7 @@ IoT 자동 추천 목록 조회
 - `basket_count`
 - `harvested_at`
 
-### 6-28. `GET /api/v1/harvests/stats`
+### 6-26. `GET /api/v1/harvests/stats`
 
 목적:
 일별/주별 수확 통계 조회
@@ -842,7 +812,7 @@ IoT 자동 추천 목록 조회
 }
 ```
 
-### 6-29. `GET /api/v1/media/{asset_id}`
+### 6-27. `GET /api/v1/media/{asset_id}`
 
 목적:
 이미지 메타데이터 또는 다운로드 URL 조회
@@ -854,7 +824,7 @@ IoT 자동 추천 목록 조회
 - `media_type`
 - `captured_at`
 
-### 6-30. `WS /ws/live`
+### 6-28. `WS /ws/live`
 
 목적:
 대시보드 실시간 반영
@@ -878,11 +848,11 @@ IoT 자동 추천 목록 조회
   "event": "iot.device.updated",
   "timestamp": "2026-03-16T16:40:00+09:00",
   "data": {
-    "id": "fan_zone_a",
-    "zone_id": "zone_A",
-    "current_state": "ON",
-    "current_value": 2,
-    "value_unit": "level"
+    "id": "sprinkler_1",
+    "zone_id": "farm_01",
+    "current_state": "RUNNING",
+    "current_value": 3,
+    "value_unit": "sec"
   }
 }
 ```
@@ -919,11 +889,9 @@ IoT 자동 추천 목록 조회
 7. `GET /api/v1/environment/latest`
 8. `GET /api/v1/iot/devices`
 9. `POST /api/v1/actuations/watering`
-10. `POST /api/v1/actuations/curtain`
-11. `POST /api/v1/actuations/fan`
-12. `POST /api/v1/actuations/nutrients`
-13. `GET /api/v1/actuations/history`
-14. `GET /api/v1/harvests`
+10. `POST /api/v1/actuations/nutrients`
+11. `GET /api/v1/actuations/history`
+12. `GET /api/v1/harvests`
 15. `GET /ws/live`
 
 ### 8-2. IoT 추천 흐름 때문에 추가 구현이 필요한 API

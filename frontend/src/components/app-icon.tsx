@@ -20,8 +20,6 @@ import {
   Radio,
   Archive,
   Droplets,
-  Blinds,
-  Wind,
   FlaskConical,
   Router,
   X,
@@ -79,8 +77,6 @@ const iconMap: Record<string, LucideIcon> = {
   'sensors': Radio,
   'inventory_2': Archive,
   'water_drop': Droplets,
-  'curtains': Blinds,
-  'air': Wind,
   'science': FlaskConical,
   'router': Router
 };

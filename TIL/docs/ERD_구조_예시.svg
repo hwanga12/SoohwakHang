@@ -225,7 +225,7 @@
 <text text-anchor="start" x="2173.5" y="-1298.3" font-family="Helvetica,sans-Serif" font-size="9.00">어느 구역의 어떤 장치인지</text>
 <polygon fill="none" stroke="black" points="1950.5,-1255 1950.5,-1288 2168.5,-1288 2168.5,-1255 1950.5,-1255"/>
 <text text-anchor="start" x="1999.5" y="-1272.8" font-family="Helvetica,sans-Serif" font-size="14.00">device_type</text>
-<text text-anchor="start" x="1955.5" y="-1262.8" font-family="Helvetica,sans-Serif" font-size="9.00">WATER_PUMP/CURTAIN/FAN/NUTRIENT</text>
+<text text-anchor="start" x="1955.5" y="-1262.8" font-family="Helvetica,sans-Serif" font-size="9.00">WATER_PUMP/NUTRIENT/SPRINKLER</text>
 <polygon fill="none" stroke="black" points="2168.5,-1255 2168.5,-1288 2305.5,-1288 2305.5,-1255 2168.5,-1255"/>
 <text text-anchor="start" x="2173.5" y="-1269.3" font-family="Helvetica,sans-Serif" font-size="9.00">장치 종류</text>
 <polygon fill="none" stroke="black" points="1950.5,-1230 1950.5,-1255 2168.5,-1255 2168.5,-1230 1950.5,-1230"/>
@@ -239,13 +239,13 @@
 <text text-anchor="start" x="2173.5" y="-1211.3" font-family="Helvetica,sans-Serif" font-size="9.00">수동 우선/안전 잠금 표현</text>
 <polygon fill="none" stroke="black" points="1950.5,-1164 1950.5,-1197 2168.5,-1197 2168.5,-1164 1950.5,-1164"/>
 <text text-anchor="start" x="1977" y="-1181.8" font-family="Helvetica,sans-Serif" font-size="14.00">current_state</text>
-<text text-anchor="start" x="1955.5" y="-1171.8" font-family="Helvetica,sans-Serif" font-size="9.00">OFF/ON/OPEN/PARTIAL/ERROR</text>
+<text text-anchor="start" x="1955.5" y="-1171.8" font-family="Helvetica,sans-Serif" font-size="9.00">OFF/ON/RUNNING/ERROR</text>
 <polygon fill="none" stroke="black" points="2168.5,-1164 2168.5,-1197 2305.5,-1197 2305.5,-1164 2168.5,-1164"/>
 <text text-anchor="start" x="2173.5" y="-1178.3" font-family="Helvetica,sans-Serif" font-size="9.00">지금 장치 상태</text>
 <polygon fill="none" stroke="black" points="1950.5,-1139 1950.5,-1164 2168.5,-1164 2168.5,-1139 1950.5,-1139"/>
 <text text-anchor="start" x="1955.5" y="-1147.8" font-family="Helvetica,sans-Serif" font-size="14.00">current_value / value_unit</text>
 <polygon fill="none" stroke="black" points="2168.5,-1139 2168.5,-1164 2305.5,-1164 2305.5,-1139 2168.5,-1139"/>
-<text text-anchor="start" x="2173.5" y="-1149.3" font-family="Helvetica,sans-Serif" font-size="9.00">열림 %, 팬 레벨, 급수량 등</text>
+<text text-anchor="start" x="2173.5" y="-1149.3" font-family="Helvetica,sans-Serif" font-size="9.00">급수량, 영양제량, 살포 시간 등</text>
 <polygon fill="none" stroke="black" points="1950.5,-1106 1950.5,-1139 2168.5,-1139 2168.5,-1106 1950.5,-1106"/>
 <text text-anchor="start" x="1955.5" y="-1123.8" font-family="Helvetica,sans-Serif" font-size="14.00">is_online / last_seen_at</text>
 <text text-anchor="start" x="2013" y="-1113.8" font-family="Helvetica,sans-Serif" font-size="9.00">BOOLEAN</text>
@@ -272,7 +272,7 @@
 <text text-anchor="start" x="2252.5" y="-999.3" font-family="Helvetica,sans-Serif" font-size="9.00">어디에 대한 추천인지</text>
 <polygon fill="none" stroke="black" points="2015.5,-956 2015.5,-989 2247.5,-989 2247.5,-956 2015.5,-956"/>
 <text text-anchor="start" x="2025" y="-973.8" font-family="Helvetica,sans-Serif" font-size="14.00">recommendation_type</text>
-<text text-anchor="start" x="2020.5" y="-963.8" font-family="Helvetica,sans-Serif" font-size="9.00">WATERING/CURTAIN/FAN/NUTRIENTS</text>
+<text text-anchor="start" x="2020.5" y="-963.8" font-family="Helvetica,sans-Serif" font-size="9.00">WATERING/NUTRIENTS</text>
 <polygon fill="none" stroke="black" points="2247.5,-956 2247.5,-989 2336.5,-989 2336.5,-956 2247.5,-956"/>
 <text text-anchor="start" x="2252.5" y="-970.3" font-family="Helvetica,sans-Serif" font-size="9.00">추천 종류</text>
 <polygon fill="none" stroke="black" points="2015.5,-931 2015.5,-956 2247.5,-956 2247.5,-931 2015.5,-931"/>
@@ -562,7 +562,7 @@
 <text text-anchor="start" x="2200.5" y="-612.8" font-family="Helvetica,sans-Serif" font-size="9.00">왜 생성된 명령인지</text>
 <polygon fill="none" stroke="black" points="1962.5,-565.5 1962.5,-598.5 2195.5,-598.5 2195.5,-565.5 1962.5,-565.5"/>
 <text text-anchor="start" x="2009" y="-583.3" font-family="Helvetica,sans-Serif" font-size="14.00">command_type</text>
-<text text-anchor="start" x="1967.5" y="-573.3" font-family="Helvetica,sans-Serif" font-size="9.00">WATERING/CURTAIN/FAN/NUTRIENTS/STOP</text>
+<text text-anchor="start" x="1967.5" y="-573.3" font-family="Helvetica,sans-Serif" font-size="9.00">WATERING/NUTRIENTS/STOP</text>
 <polygon fill="none" stroke="black" points="2195.5,-565.5 2195.5,-598.5 2276.5,-598.5 2276.5,-565.5 2195.5,-565.5"/>
 <text text-anchor="start" x="2200.5" y="-579.8" font-family="Helvetica,sans-Serif" font-size="9.00">명령 종류</text>
 <polygon fill="none" stroke="black" points="1962.5,-540.5 1962.5,-565.5 2195.5,-565.5 2195.5,-540.5 1962.5,-540.5"/>
@@ -676,7 +676,7 @@
 <text text-anchor="start" x="2219.5" y="-317.8" font-family="Helvetica,sans-Serif" font-size="9.00">실패 원인 또는 결과 설명</text>
 <polygon fill="none" stroke="black" points="2032.5,-274.5 2032.5,-307.5 2214.5,-307.5 2214.5,-274.5 2032.5,-274.5"/>
 <text text-anchor="start" x="2064.5" y="-292.3" font-family="Helvetica,sans-Serif" font-size="14.00">state_after</text>
-<text text-anchor="start" x="2037.5" y="-282.3" font-family="Helvetica,sans-Serif" font-size="9.00">ON/PARTIAL/LEVEL_2/ERROR</text>
+<text text-anchor="start" x="2037.5" y="-282.3" font-family="Helvetica,sans-Serif" font-size="9.00">ON/RUNNING/ERROR</text>
 <polygon fill="none" stroke="black" points="2214.5,-274.5 2214.5,-307.5 2316.5,-307.5 2316.5,-274.5 2214.5,-274.5"/>
 <text text-anchor="start" x="2219.5" y="-288.8" font-family="Helvetica,sans-Serif" font-size="9.00">실행 후 장치 상태</text>
 <polygon fill="none" stroke="black" points="2032.5,-249.5 2032.5,-274.5 2214.5,-274.5 2214.5,-249.5 2032.5,-249.5"/>
