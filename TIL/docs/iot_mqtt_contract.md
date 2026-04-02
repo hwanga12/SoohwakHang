@@ -40,8 +40,8 @@ Current canonical IDs:
   - type: `agribot_interfaces/msg/IoTDeviceState`
   - publisher: IoT controller nodes
 - `/iot/command_result`
-  - type: `std_msgs/msg/String`
-  - payload: JSON execution result
+  - type: `agribot_interfaces/msg/IoTCommandResult`
+  - payload: typed execution result contract
 
 ## MQTT Topics
 
@@ -54,7 +54,7 @@ Current canonical IDs:
     - `soil_moisture`
     - `light_level`
     - `co2_level`
-- `agribot/iot/device_state`
+- `agribot/iot/device_state/{device_id}`
   - direction: ROS -> MQTT
   - payload fields:
     - `device_id`
@@ -67,7 +67,7 @@ Current canonical IDs:
     - `unit`
     - `is_available`
     - `detail_message`
-- `agribot/iot/command_result`
+- `agribot/iot/command_result/{command_id}`
   - direction: ROS -> MQTT
   - payload fields:
     - `command_id`
@@ -82,7 +82,7 @@ Current canonical IDs:
     - `planned_duration_sec`
     - `executed_duration_sec`
     - `detail_message`
-- `agribot/commands/actuation`
+- `agribot/commands/manual`
   - direction: MQTT -> ROS
   - forwarded ROS topic: `/iot/commands/manual`
   - payload fields:
@@ -97,10 +97,16 @@ Current canonical IDs:
     - `auto_execute`
     - `requested_by`
     - `reason`
+- `agribot/commands/actuation`
+  - direction: MQTT -> ROS
+  - forwarded ROS topic: `/iot/commands/manual`
+  - purpose: legacy alias kept for backward compatibility
 
 ## Notes
 
-- The current MQTT bridge supports a log-only fallback when `paho-mqtt` is not installed.
+- The MQTT bridge now applies broker policy from `agribot_ws/src/agribot_iot/config/mqtt_topics.yaml`.
+- Broker policy includes reconnect backoff, publish retry, and disk-backed offline queue defaults.
+- The current MQTT bridge still supports a log-only fallback when `paho-mqtt` is not installed.
 - The watering controller currently handles:
   - `dispense_water`
   - `stop_watering`
@@ -116,4 +122,4 @@ Current canonical IDs:
   - `set_fan_level`
   - `set_fan_speed`
 - Fan state uses `speed_level` for the current stage and `current_value` with `unit=sec` for run time.
-- Curtain, fan, and nutrient controllers follow the same `IoTCommand` -> `IoTDeviceState` -> JSON result pattern.
+- Curtain, fan, and nutrient controllers follow the same `IoTCommand` -> `IoTDeviceState` -> `IoTCommandResult` pattern.

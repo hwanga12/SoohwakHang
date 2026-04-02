@@ -5,13 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 import time
 
-from agribot_interfaces.msg import IoTCommand, IoTDeviceState
+from agribot_interfaces.msg import IoTCommand, IoTCommandResult, IoTDeviceState
 from rclpy.callback_groups import ReentrantCallbackGroup
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from std_msgs.msg import String
-
+from .command_result_contract import command_result_message_from_payload
 from .device_mapping import IoTDeviceSpec, get_default_iot_devices_path, load_iot_device_catalog
 from .fan_controller_logic import (
     FanExecutionPlan,
@@ -82,7 +81,11 @@ class FanControllerNode(Node):
         self._last_logged_state_signatures: dict[str, tuple[str, int, str]] = {}
 
         self._device_state_publisher = self.create_publisher(IoTDeviceState, self._device_state_topic, 20)
-        self._command_result_publisher = self.create_publisher(String, self._command_result_topic, 20)
+        self._command_result_publisher = self.create_publisher(
+            IoTCommandResult,
+            self._command_result_topic,
+            20,
+        )
         self._command_subscription = self.create_subscription(
             IoTCommand,
             self._command_topic,
@@ -263,14 +266,16 @@ class FanControllerNode(Node):
         speed_level: int,
     ) -> None:
         # 결과를 외부 시스템이나 다음 처리 단계로 전달한다.
-        result = String()
-        result.data = build_fan_result_payload(
-            plan,
-            success=success,
-            state=state,
-            detail_message=detail_message,
-            executed_duration_sec=executed_duration_sec,
-            speed_level=speed_level,
+        result = command_result_message_from_payload(
+            build_fan_result_payload(
+                plan,
+                success=success,
+                state=state,
+                detail_message=detail_message,
+                executed_duration_sec=executed_duration_sec,
+                speed_level=speed_level,
+            ),
+            stamp=self.get_clock().now().to_msg(),
         )
         self._command_result_publisher.publish(result)
         self.get_logger().info(

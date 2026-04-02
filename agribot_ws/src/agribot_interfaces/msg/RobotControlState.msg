@@ -1,0 +1,23 @@
+# RobotControlState.msg
+# Structured robot control latch state mirrored by the runtime executor.
+
+std_msgs/Header header
+string mode
+string active_activity
+string blocking_reason
+string message
+bool is_latched
+bool resume_available
+string resume_context_type
+string resume_context_command_id
+string resume_context_command_type
+bool has_resume_context_target_pose
+TargetPose resume_context_target_pose
+bool has_resume_context_route_target_pose
+TargetPose resume_context_route_target_pose
+bool has_resume_context_final_target_pose
+TargetPose resume_context_final_target_pose
+string resume_context_navigation_phase
+string resume_context_target_waypoint_id
+string resume_context_home_waypoint_id
+string updated_at

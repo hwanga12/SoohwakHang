@@ -22,6 +22,7 @@ from models import (
     Robot,
     Zone,
 )
+from ros_protocol_bridge import get_ros_protocol_bridge
 from services.actuation.dispatcher import TreatmentCommandDispatcher
 
 
@@ -242,6 +243,26 @@ class OperationsService:
 
     def get_latest_environment(self) -> dict[str, Any]:
         # latest environment를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
+        bridge_payload = get_ros_protocol_bridge().get_latest_environment_data()
+        if bridge_payload is not None:
+            soil_moisture = float(bridge_payload.get("soil_moisture", 0.0) or 0.0)
+            return {
+                "source": "ros_topic",
+                "zone_id": bridge_payload.get("zone_id"),
+                "temperature": bridge_payload.get("temperature"),
+                "humidity": bridge_payload.get("humidity"),
+                "soil_moisture": bridge_payload.get("soil_moisture"),
+                "temperature_delta": "",
+                "humidity_delta": "",
+                "soil_status": "안정" if soil_moisture >= 32.0 else "주의",
+                "recommendation": (
+                    "급수 유지"
+                    if soil_moisture >= 32.0
+                    else "토양 수분이 낮아 급수 권장이 필요합니다."
+                ),
+                "recorded_at": bridge_payload.get("updated_at", ""),
+            }
+
         db = SessionLocal()
         try:
             latest = (

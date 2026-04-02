@@ -5,13 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 import time
 
-from agribot_interfaces.msg import IoTCommand, IoTDeviceState
+from agribot_interfaces.msg import IoTCommand, IoTCommandResult, IoTDeviceState
 from rclpy.callback_groups import ReentrantCallbackGroup
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from std_msgs.msg import String
-
+from .command_result_contract import command_result_message_from_payload
 from .curtain_controller_logic import (
     CurtainExecutionPlan,
     build_curtain_result_payload,
@@ -95,7 +94,7 @@ class CurtainControllerNode(Node):
             20,
         )
         self._command_result_publisher = self.create_publisher(
-            String,
+            IoTCommandResult,
             self._command_result_topic,
             20,
         )
@@ -323,14 +322,16 @@ class CurtainControllerNode(Node):
         opening_ratio: float,
     ) -> None:
         # 결과를 외부 시스템이나 다음 처리 단계로 전달한다.
-        result = String()
-        result.data = build_curtain_result_payload(
-            plan,
-            success=success,
-            state=state,
-            detail_message=detail_message,
-            executed_duration_sec=executed_duration_sec,
-            opening_ratio=opening_ratio,
+        result = command_result_message_from_payload(
+            build_curtain_result_payload(
+                plan,
+                success=success,
+                state=state,
+                detail_message=detail_message,
+                executed_duration_sec=executed_duration_sec,
+                opening_ratio=opening_ratio,
+            ),
+            stamp=self.get_clock().now().to_msg(),
         )
         self._command_result_publisher.publish(result)
         self.get_logger().info(

@@ -12,6 +12,7 @@ import time
 from typing import Any
 
 from action_msgs.msg import GoalStatus
+from agribot_interfaces.msg import RobotCommand, RobotCommandStatus, RobotControlState
 from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped
 from nav2_msgs.action import BackUp, ComputePathToPose, NavigateThroughPoses, NavigateToPose
 import rclpy
@@ -58,6 +59,12 @@ from .runtime_snapshot_service import (
     runtime_dir_from_env,
     write_json_atomic,
 )
+from .runtime_message_contract import (
+    robot_command_payload_from_message,
+    robot_command_status_message_from_payload,
+    robot_control_state_message_from_payload,
+)
+from .protocol_qos import protocol_qos_profile
 
 TERMINAL_STATUSES = {'succeeded', 'failed', 'canceled'}
 FINAL_OBSERVATION_INTERMEDIATE_TARGET_FRACTIONS = (
@@ -937,7 +944,10 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('patrol_status_topic', '/patrol/status')
         self.declare_parameter('patrol_stop_service', '/patrol/stop')
         self.declare_parameter('patrol_resume_service', '/patrol/resume')
+        self.declare_parameter('command_topic', '/robot/commands/manual')
+        self.declare_parameter('command_status_topic', '/robot/commands/status')
         self.declare_parameter('control_state_topic', '/robot/control_state')
+        self.declare_parameter('typed_control_state_topic', '/robot/control_state/typed')
         self.declare_parameter('nav_server_wait_sec', 5.0)
         self.declare_parameter('patrol_service_wait_sec', 1.0)
         self.declare_parameter('backup_action', 'backup')
@@ -985,8 +995,11 @@ class RobotManualCommandExecutor(Node):
         self._batch_action_name = str(self.get_parameter('navigate_through_poses_action').value)
         self._path_probe_action_name = str(self.get_parameter('compute_path_to_pose_action').value)
         self._backup_action_name = str(self.get_parameter('backup_action').value)
+        self._command_topic = str(self.get_parameter('command_topic').value)
+        self._command_status_topic = str(self.get_parameter('command_status_topic').value)
         self._patrol_status_topic = str(self.get_parameter('patrol_status_topic').value)
         self._control_state_topic = str(self.get_parameter('control_state_topic').value)
+        self._typed_control_state_topic = str(self.get_parameter('typed_control_state_topic').value)
         self._nav_server_wait_sec = float(self.get_parameter('nav_server_wait_sec').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
         self._goal_reject_retry_sec = max(0.0, float(self.get_parameter('goal_reject_retry_sec').value))
@@ -1096,16 +1109,32 @@ class RobotManualCommandExecutor(Node):
             Trigger,
             str(self.get_parameter('patrol_resume_service').value),
         )
+        self._command_subscription = self.create_subscription(
+            RobotCommand,
+            self._command_topic,
+            self._handle_command_topic,
+            protocol_qos_profile(self._command_topic, default_depth=20),
+        )
         self._patrol_status_subscription = self.create_subscription(
             String,
             self._patrol_status_topic,
             self._handle_patrol_status,
             20,
         )
+        self._command_status_publisher = self.create_publisher(
+            RobotCommandStatus,
+            self._command_status_topic,
+            protocol_qos_profile(self._command_status_topic, default_depth=20),
+        )
         self._control_state_publisher = self.create_publisher(
             String,
             self._control_state_topic,
             10,
+        )
+        self._typed_control_state_publisher = self.create_publisher(
+            RobotControlState,
+            self._typed_control_state_topic,
+            protocol_qos_profile(self._typed_control_state_topic, default_depth=20),
         )
         self._initial_pose_publisher = self.create_publisher(
             PoseWithCovarianceStamped,
@@ -1157,7 +1186,10 @@ class RobotManualCommandExecutor(Node):
         self.get_logger().info(
             'robot manual command executor started. '
             f'command_path={self._command_path}, '
-            f'control_state_topic={self._control_state_topic}'
+            f'command_topic={self._command_topic}, '
+            f'command_status_topic={self._command_status_topic}, '
+            f'control_state_topic={self._control_state_topic}, '
+            f'typed_control_state_topic={self._typed_control_state_topic}'
         )
 
     def _load_patrol_plan(self) -> PatrolPlan:
@@ -1265,6 +1297,12 @@ class RobotManualCommandExecutor(Node):
         self._control_state = ControlStateSnapshot.from_payload(payload)
         write_json_atomic(self._control_state_path, payload)
         self._control_state_publisher.publish(String(data=json.dumps(payload, sort_keys=True)))
+        self._typed_control_state_publisher.publish(
+            robot_control_state_message_from_payload(
+                payload,
+                stamp=self.get_clock().now().to_msg(),
+            )
+        )
 
     def _resume_context(self) -> ResumeContext | None:
         # resume context 정보를 계산해 반환한다.
@@ -1389,6 +1427,14 @@ class RobotManualCommandExecutor(Node):
             return '순찰 상태 전환이 실패했습니다.'
         return self._latest_patrol_status.message
 
+    def _handle_command_topic(self, message: RobotCommand) -> None:
+        # Handle a typed backend command published directly onto the ROS graph.
+        self._release_orphaned_active_command_if_needed()
+        self._process_raw_command_payload(
+            robot_command_payload_from_message(message),
+            source='topic',
+        )
+
     def _poll_command_file(self) -> None:
         # poll 명령 file 정보를 계산해 반환한다.
         self._release_orphaned_active_command_if_needed()
@@ -1403,14 +1449,6 @@ class RobotManualCommandExecutor(Node):
 
         try:
             raw_payload = read_json_object(self._command_path)
-            command = parse_manual_command_payload(
-                raw_payload,
-                default_robot_id=self._default_robot_id,
-                default_frame=self._map_frame,
-            )
-        except CommandValidationError as exc:
-            self._handle_invalid_command(exc)
-            return
         except (OSError, ValueError) as exc:
             self._write_status(
                 build_manual_command_status_payload(
@@ -1425,6 +1463,20 @@ class RobotManualCommandExecutor(Node):
                     completed_at=_iso_now(),
                 )
             )
+            return
+
+        self._process_raw_command_payload(raw_payload, source='file')
+
+    def _process_raw_command_payload(self, raw_payload: dict[str, Any], *, source: str) -> None:
+        # Process a command payload from either the legacy file bridge or the direct ROS topic.
+        try:
+            command = parse_manual_command_payload(
+                raw_payload,
+                default_robot_id=self._default_robot_id,
+                default_frame=self._map_frame,
+            )
+        except CommandValidationError as exc:
+            self._handle_invalid_command(exc)
             return
 
         if command.command_id in self._processed_command_ids:
@@ -1476,7 +1528,13 @@ class RobotManualCommandExecutor(Node):
             self._handle_command_while_active(command)
             return
 
+        if source == 'topic':
+            self.get_logger().info(
+                f'직접 ROS 명령을 수신했습니다: command_id={command.command_id}, '
+                f'command_type={command.command_type}'
+            )
         self._start_command(command)
+
 
     def _command_file_signature(self, path: Path) -> tuple[int, int]:
         # 명령 file signature 정보를 계산해 반환한다.
@@ -3732,6 +3790,12 @@ class RobotManualCommandExecutor(Node):
         # 상태를 파일이나 저장소에 기록한다.
         write_json_atomic(self._status_path, payload)
         self._last_status_payload = payload
+        self._command_status_publisher.publish(
+            robot_command_status_message_from_payload(
+                payload,
+                stamp=self.get_clock().now().to_msg(),
+            )
+        )
 
     def _build_pose_stamped(self, pose: Pose2D) -> PoseStamped:
         # 위치 자세 stamped를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.

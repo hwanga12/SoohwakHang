@@ -8,6 +8,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agribot_interfaces.msg import (
+    MissionBridgeStatus as MissionBridgeStatusMsg,
+    MissionRequest as MissionRequestMsg,
+)
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -32,6 +36,11 @@ from .runtime_snapshot_service import (
     runtime_dir_from_env,
     write_json_atomic,
 )
+from .runtime_message_contract import (
+    mission_bridge_status_message_from_payload,
+    mission_request_payload_from_message,
+)
+from .protocol_qos import protocol_qos_profile
 
 TERMINAL_STATUSES = {'succeeded', 'failed', 'canceled'}
 
@@ -67,6 +76,8 @@ class MissionBridgeExecutor(Node):
         self.declare_parameter('robot_id', 'AGR-02')
         self.declare_parameter('command_poll_period_sec', 0.25)
         self.declare_parameter('processed_request_history_size', 64)
+        self.declare_parameter('request_topic', '/mission/requests')
+        self.declare_parameter('bridge_status_topic', '/mission/bridge_status')
         self.declare_parameter('patrol_start_service', '/patrol/start')
         self.declare_parameter('patrol_status_topic', '/patrol/status')
         self.declare_parameter('harvest_request_topic', '/harvest/request')
@@ -78,8 +89,21 @@ class MissionBridgeExecutor(Node):
         self._status_path = mission_status_path(self._runtime_dir)
         self._default_robot_id = str(self.get_parameter('robot_id').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
+        self._request_topic = str(self.get_parameter('request_topic').value)
+        self._bridge_status_topic = str(self.get_parameter('bridge_status_topic').value)
         history_size = max(8, int(self.get_parameter('processed_request_history_size').value))
 
+        self._request_subscription = self.create_subscription(
+            MissionRequestMsg,
+            self._request_topic,
+            self._handle_request_topic,
+            protocol_qos_profile(self._request_topic, default_depth=20),
+        )
+        self._bridge_status_publisher = self.create_publisher(
+            MissionBridgeStatusMsg,
+            self._bridge_status_topic,
+            protocol_qos_profile(self._bridge_status_topic, default_depth=20),
+        )
         self._patrol_start_client = self.create_client(
             Trigger,
             str(self.get_parameter('patrol_start_service').value),
@@ -116,7 +140,9 @@ class MissionBridgeExecutor(Node):
         self.get_logger().info(
             'mission bridge executor started. '
             f'request_path={self._request_path}, '
-            f'status_path={self._status_path}'
+            f'status_path={self._status_path}, '
+            f'request_topic={self._request_topic}, '
+            f'bridge_status_topic={self._bridge_status_topic}'
         )
 
     def _recover_previous_status(self) -> None:
@@ -253,6 +279,12 @@ class MissionBridgeExecutor(Node):
                 payload,
             )
         self._last_status_payload = payload
+        self._bridge_status_publisher.publish(
+            mission_bridge_status_message_from_payload(
+                payload,
+                stamp=self.get_clock().now().to_msg(),
+            )
+        )
 
     def _finish_active_request(
         self,
@@ -280,6 +312,13 @@ class MissionBridgeExecutor(Node):
         self._active_context = None
         self._service_future = None
 
+    def _handle_request_topic(self, message: MissionRequestMsg) -> None:
+        # Handle a typed mission request published directly onto the ROS graph.
+        self._process_raw_request_payload(
+            mission_request_payload_from_message(message),
+            source='topic',
+        )
+
     def _poll_request_file(self) -> None:
         # poll request file 정보를 계산해 반환한다.
         if not self._request_path.exists():
@@ -292,6 +331,25 @@ class MissionBridgeExecutor(Node):
 
         try:
             raw_payload = read_json_object(self._request_path)
+        except (OSError, ValueError) as exc:
+            failed_payload = build_mission_bridge_status_payload(
+                mission_id=None,
+                command_id='unknown-command',
+                request_type='unknown',
+                robot_id=self._default_robot_id,
+                status='failed',
+                message=f'mission request 파일을 해석하지 못했습니다: {exc}',
+                error='invalid_mission_request',
+                completed_at=_iso_now(),
+            )
+            self._write_status(failed_payload)
+            return
+
+        self._process_raw_request_payload(raw_payload, source='file')
+
+    def _process_raw_request_payload(self, raw_payload: dict[str, Any], *, source: str) -> None:
+        # Process a request payload from either the legacy file bridge or the direct ROS topic.
+        try:
             request = parse_mission_request_payload(
                 raw_payload,
                 default_robot_id=self._default_robot_id,
@@ -309,19 +367,6 @@ class MissionBridgeExecutor(Node):
                 requested_by=_extract_string(raw_payload, 'requested_by'),
                 status='failed',
                 message=str(exc),
-                error='invalid_mission_request',
-                completed_at=_iso_now(),
-            )
-            self._write_status(failed_payload)
-            return
-        except (OSError, ValueError) as exc:
-            failed_payload = build_mission_bridge_status_payload(
-                mission_id=None,
-                command_id='unknown-command',
-                request_type='unknown',
-                robot_id=self._default_robot_id,
-                status='failed',
-                message=f'mission request 파일을 해석하지 못했습니다: {exc}',
                 error='invalid_mission_request',
                 completed_at=_iso_now(),
             )
@@ -356,6 +401,11 @@ class MissionBridgeExecutor(Node):
             )
             return
 
+        if source == 'topic':
+            self.get_logger().info(
+                f'직접 ROS 미션 요청을 수신했습니다: mission_id={request.mission_id}, '
+                f'request_type={request.request_type}'
+            )
         if request.request_type == 'start_patrol':
             self._start_patrol_request(request)
             return

@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ros_protocol_bridge import get_ros_protocol_bridge
+
 DEFAULT_RUNTIME_DIR = Path(os.environ.get("AGRIBOT_RUNTIME_DIR", "/tmp/agribot_runtime"))
 MANUAL_COMMAND_FILENAME = "robot_manual_command.json"
 MANUAL_COMMAND_STATUS_FILENAME = "robot_manual_command_status.json"
@@ -262,7 +264,7 @@ def build_control_state_payload(
         resume_context = None
 
     return {
-        "source": "runtime_file",
+        "source": _normalize_optional_string(raw_payload.get("source")) or "runtime_file",
         "available": available,
         "mode": mode,
         "is_latched": bool(raw_payload.get("is_latched", mode != DEFAULT_CONTROL_MODE))
@@ -292,6 +294,10 @@ def build_unavailable_control_state_payload(message: str | None = None) -> dict[
 
 def read_control_state_payload() -> dict[str, Any]:
     # control 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
+    bridge_payload = get_ros_protocol_bridge().get_latest_control_state()
+    if bridge_payload is not None:
+        return build_control_state_payload(bridge_payload, available=True)
+
     path = control_state_file_path()
     if not path.exists():
         return build_unavailable_control_state_payload()
@@ -329,7 +335,7 @@ def build_command_status_payload(
     )
 
     return {
-        "source": "runtime_file",
+        "source": _normalize_optional_string(raw_payload.get("source")) or "runtime_file",
         "available": available,
         "command_id": _normalize_optional_string(raw_payload.get("command_id")),
         "requested_command_type": _normalize_optional_string(raw_payload.get("requested_command_type")),
@@ -411,7 +417,7 @@ def build_mission_status_payload(
     )
 
     return {
-        "source": "runtime_file",
+        "source": _normalize_optional_string(raw_payload.get("source")) or "runtime_file",
         "available": available,
         "mission_id": _normalize_optional_string(raw_payload.get("mission_id")),
         "command_id": _normalize_optional_string(raw_payload.get("command_id")),
@@ -514,6 +520,13 @@ def _attach_control_state(
 def read_latest_command_status_payload() -> dict[str, Any]:
     # latest 명령 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     control_state = read_control_state_payload()
+    bridge_payload = get_ros_protocol_bridge().get_latest_robot_command_status()
+    if bridge_payload is not None:
+        return _attach_control_state(
+            build_command_status_payload(bridge_payload, available=True),
+            control_state,
+        )
+
     status_path = command_status_file_path()
     if not status_path.exists():
         return _attach_control_state(
@@ -542,6 +555,10 @@ def read_latest_command_status_payload() -> dict[str, Any]:
 
 def read_latest_mission_status_payload() -> dict[str, Any]:
     # latest 미션 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
+    bridge_payload = get_ros_protocol_bridge().get_latest_mission_bridge_status()
+    if bridge_payload is not None:
+        return build_mission_status_payload(bridge_payload, available=True)
+
     status_path = mission_status_file_path()
     if not status_path.exists():
         return build_idle_mission_status_payload()
@@ -558,6 +575,10 @@ def read_latest_mission_status_payload() -> dict[str, Any]:
 
 def read_mission_status_payload(mission_id: str) -> dict[str, Any]:
     # 미션 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
+    bridge_payload = get_ros_protocol_bridge().get_mission_bridge_status(mission_id)
+    if bridge_payload is not None:
+        return build_mission_status_payload(bridge_payload, available=True)
+
     path = mission_status_record_file_path(mission_id)
     if path.exists():
         try:
