@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+# 이 스크립트는 시뮬레이션 관련 프로세스를 안전하게 정리하기 위해 사용하는 실행용 쉘 스크립트다.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,6 +14,7 @@ cleanup_scope="user"
 session_id="${AGRIBOT_LAUNCH_SESSION_ID:-}"
 workspace_path="${AGRIBOT_WS}"
 
+# print_usage 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 print_usage() {
     cat <<'EOF'
 Usage: cleanup_sim_processes.sh [--scope user|session] [--session-id <id>] [--workspace-path <path>]

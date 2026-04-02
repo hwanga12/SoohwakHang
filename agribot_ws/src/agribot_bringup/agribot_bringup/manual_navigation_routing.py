@@ -1,3 +1,4 @@
+# 이 모듈은 통합 실행과 런치 조율 패키지에서 manual navigation routing 절차를 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,12 +20,14 @@ ROUTE_EGRESS_MAX_DISTANCE_M = 2.2
 
 @dataclass(frozen=True)
 class ManualNavigationRoute:
+    # manual navigation 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     target_waypoint_id: str | None
     waypoint_ids: tuple[str, ...]
     poses: tuple[Pose2D, ...]
 
 
 def pose_distance_xy(left: Pose2D, right: Pose2D) -> float:
+    # 위치 자세 distance xy 정보를 계산해 반환한다.
     return math.hypot(left.x - right.x, left.y - right.y)
 
 
@@ -35,6 +38,7 @@ def normalize_waypoint_id(
     target_pose: Pose2D | None = None,
     pose_match_tolerance_m: float = POSE_MATCH_TOLERANCE_M,
 ) -> str | None:
+    # waypoint ID를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     if explicit_waypoint_id:
         waypoint_id = explicit_waypoint_id.strip()
         if waypoint_id in plan.waypoints:
@@ -62,6 +66,7 @@ def select_start_waypoint_id(
     *,
     target_waypoint_id: str | None = None,
 ) -> str | None:
+    # start 웨이포인트 id 가운데 필요한 대상을 고른다.
     if current_pose is None:
         return None
 
@@ -152,6 +157,7 @@ def select_route_egress_waypoint_id(
     plan: PatrolPlan,
     current_pose: Pose2D | None,
 ) -> str | None:
+    # 경로 egress 웨이포인트 id 가운데 필요한 대상을 고른다.
     if current_pose is None:
         return None
 
@@ -188,6 +194,7 @@ def build_manual_navigation_route(
     target_pose: Pose2D,
     explicit_waypoint_id: str | None = None,
 ) -> ManualNavigationRoute:
+    # manual navigation 경로를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     target_waypoint_id = normalize_waypoint_id(
         plan,
         explicit_waypoint_id=explicit_waypoint_id,
@@ -243,6 +250,7 @@ def estimate_navigation_route_cost(
     current_pose: Pose2D | None,
     target_waypoint_id: str,
 ) -> float:
+    # estimate 주행 경로 cost 정보를 계산해 반환한다.
     if target_waypoint_id not in plan.waypoints:
         return float('inf')
 
@@ -275,6 +283,7 @@ def select_best_target_waypoint_id(
     candidate_waypoint_ids: tuple[str, ...] | list[str],
     preferred_waypoint_id: str | None = None,
 ) -> str | None:
+    # best 대상 웨이포인트 id 가운데 필요한 대상을 고른다.
     normalized_candidates = tuple(
         dict.fromkeys(
             waypoint_id.strip()
@@ -311,6 +320,7 @@ def shortest_waypoint_path(
     start_waypoint_id: str,
     target_waypoint_id: str,
 ) -> tuple[str, ...]:
+    # shortest 웨이포인트 경로 정보를 계산해 반환한다.
     if start_waypoint_id == target_waypoint_id:
         return (target_waypoint_id,)
 
@@ -347,6 +357,7 @@ def shortest_waypoint_path(
 
 
 def build_waypoint_adjacency(plan: PatrolPlan) -> dict[str, set[str]]:
+    # waypoint adjacency를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     adjacency: dict[str, set[str]] = {
         waypoint_id: set()
         for waypoint_id in plan.waypoints.keys()
@@ -378,6 +389,7 @@ def build_waypoint_adjacency(plan: PatrolPlan) -> dict[str, set[str]]:
 
 
 def _connector_waypoint_ids(plan: PatrolPlan, connector_y: float) -> list[str]:
+    # connector 웨이포인트 ids 정보를 계산해 반환한다.
     connector_waypoint_ids = [
         waypoint_id
         for waypoint_id, waypoint in plan.waypoints.items()
@@ -394,6 +406,7 @@ def _best_connector_candidate(
     current_pose: Pose2D,
     target_waypoint: object | None,
 ) -> str | None:
+    # best connector 후보 정보를 계산해 반환한다.
     if not candidate_ids:
         return None
 
@@ -416,6 +429,7 @@ def _filter_lane_candidates_for_target_direction(
     current_pose: Pose2D,
     target_waypoint: object | None,
 ) -> list[str]:
+    # filter lane 후보 대상 direction 정보를 계산해 반환한다.
     if not candidate_ids or target_waypoint is None:
         return candidate_ids
 
@@ -447,6 +461,7 @@ def _select_target_route_anchor_waypoint_id(
     current_pose: Pose2D,
     target_waypoint_id: str | None,
 ) -> str | None:
+    # 대상 경로 anchor 웨이포인트 id 가운데 필요한 대상을 고른다.
     if not target_waypoint_id:
         return None
 
@@ -465,6 +480,7 @@ def _select_target_route_anchor_waypoint_id(
 
 
 def _find_route_for_waypoint_id(plan: PatrolPlan, waypoint_id: str) -> PatrolRoute | None:
+    # 경로 웨이포인트 id을 찾아 반환한다.
     for route in plan.routes.values():
         if waypoint_id in (
             route.entry_pose_id,
@@ -483,6 +499,7 @@ def _start_waypoint_cost(
     current_pose: Pose2D,
     target_lane_id: str,
 ) -> float:
+    # waypoint cost 실행 흐름을 시작하거나 마무리한다.
     waypoint = plan.waypoints[waypoint_id]
     distance = pose_distance_xy(waypoint.pose, current_pose)
     lane_bonus = -0.45 if target_lane_id and waypoint.lane_id == target_lane_id else 0.0
@@ -491,6 +508,7 @@ def _start_waypoint_cost(
 
 
 def _edge_distance(plan: PatrolPlan, left_waypoint_id: str, right_waypoint_id: str) -> float:
+    # edge distance 정보를 계산해 반환한다.
     return pose_distance_xy(plan.waypoints[left_waypoint_id].pose, plan.waypoints[right_waypoint_id].pose)
 
 
@@ -500,6 +518,7 @@ def _trim_visited_prefix(
     *,
     current_pose: Pose2D,
 ) -> tuple[tuple[Pose2D, ...], tuple[str, ...]]:
+    # trim visited prefix 정보를 계산해 반환한다.
     trimmed_index = 0
     for index, pose in enumerate(poses):
         if pose_distance_xy(pose, current_pose) <= CURRENT_POSE_SKIP_TOLERANCE_M:

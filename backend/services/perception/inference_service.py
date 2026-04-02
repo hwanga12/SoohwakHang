@@ -1,3 +1,4 @@
+# 이 모듈은 인지 서비스 계층에서 추론 결과를 시연 데이터와 함께 구성한다.
 from __future__ import annotations
 
 from functools import lru_cache
@@ -61,6 +62,7 @@ _MODEL_DEVICE_ENV_VARS = (
 
 @lru_cache(maxsize=1)
 def _canonical_plant_positions() -> dict[str, Point3D]:
+    # 기준 작물 위치 목록 정보를 계산해 반환한다.
     crop_instances = _load_crop_instances()
     positions: dict[str, Point3D] = {}
 
@@ -82,6 +84,7 @@ def _treatment_target_position(
     plant_id: str,
     fallback: Point3D | None,
 ) -> Point3D | None:
+    # 처치 대상 위치를 계산해 반환한다.
     canonical = _canonical_plant_positions().get(str(plant_id).strip())
     if canonical is not None:
         return canonical
@@ -89,24 +92,28 @@ def _treatment_target_position(
 
 
 class ModelDependencyError(RuntimeError):
-    """Raised when the runtime inference dependency is not installed."""
+    # 모델 의존성 오류 문제를 구분하기 위한 예외 클래스다.
 
 
+    pass
 class ModelFileMissingError(FileNotFoundError):
-    """Raised when the shared model path does not exist."""
+    # 모델 파일 누락 오류 문제를 구분하기 위한 예외 클래스다.
 
 
+    pass
 @dataclass(frozen=True)
 class Detection:
+    # 탐지 결과 한 건을 명확한 필드 구조로 담기 위한 데이터 클래스다.
     label: str
     confidence: float
     bbox: tuple[float, float, float, float]
 
 
 class MainInferenceService:
-    """Backend confirmation pass that re-runs the shared YOLO weights."""
+    # 메인 추론 서비스 관련 핵심 흐름을 한곳에 모아 제공하는 서비스 클래스다.
 
     def __init__(self) -> None:
+        # MainInferenceService 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         repo_root = Path(__file__).resolve().parents[3]
         contract = _load_label_contract(repo_root)
         default_model_path = repo_root / _DEFAULT_MODEL_RELATIVE_PATH
@@ -143,6 +150,7 @@ class MainInferenceService:
         self,
         request: ThinInferenceConfirmRequest,
     ) -> ThinInferenceConfirmResponse:
+        # 탐지 결과을 확정한다.
         image_bytes = _decode_base64_image(request.image_base64)
         observation_id = request.observation_id or str(uuid.uuid4())
         reviewed_at = datetime.now(timezone.utc)
@@ -291,6 +299,7 @@ class MainInferenceService:
         )
 
     def _infer(self, image_path: Path) -> list[Detection]:
+        # 입력 데이터를 바탕으로 데이터를 추론한다.
         model = self._load_model()
         results = model.predict(
             source=str(image_path),
@@ -334,6 +343,7 @@ class MainInferenceService:
         return detections
 
     def _load_model(self) -> Any:
+        # 모델를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         if self._model is not None:
             return self._model
         if not self._model_path.exists():
@@ -356,6 +366,7 @@ class MainInferenceService:
 
 
 def asdict_detection(detection: Detection) -> dict[str, Any]:
+    # asdict 탐지 결과 정보를 계산해 반환한다.
     return {
         'label': detection.label,
         'confidence': detection.confidence,
@@ -369,6 +380,7 @@ def asdict_detection(detection: Detection) -> dict[str, Any]:
 
 
 def _decode_base64_image(payload: str) -> bytes:
+    # base 64 이미지을 디코딩한다.
     encoded_payload = payload.strip()
     if not encoded_payload:
         raise ValueError('image_base64 is required.')
@@ -381,12 +393,14 @@ def _decode_base64_image(payload: str) -> bytes:
 
 
 def _model_dump(model: Any) -> dict[str, Any]:
+    # 모델 dump 정보를 계산해 반환한다.
     if hasattr(model, 'model_dump'):
         return model.model_dump()
     return model.dict()
 
 
 def _normalize_image_suffix(image_format: str) -> str:
+    # 이미지 suffix를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = image_format.strip().lower().lstrip('.')
     if normalized in {'jpg', 'jpeg', 'png'}:
         return 'jpg' if normalized == 'jpeg' else normalized
@@ -394,6 +408,7 @@ def _normalize_image_suffix(image_format: str) -> str:
 
 
 def _parse_label_list(raw_value: str) -> set[str]:
+    # 라벨 list를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return {
         _normalize_label_key(item)
         for item in raw_value.split(',')
@@ -402,6 +417,7 @@ def _parse_label_list(raw_value: str) -> set[str]:
 
 
 def _resolve_label(names: Any, class_index: int) -> str:
+    # 현재 입력 조건을 바탕으로 라벨를 계산하거나 결정한다.
     if isinstance(names, dict):
         return str(names.get(class_index, class_index))
     if isinstance(names, list) and 0 <= class_index < len(names):
@@ -415,6 +431,7 @@ def _choose_final_detection(
     preliminary_label: str,
     ignored_classes: set[str],
 ) -> Detection | None:
+    # 최종 탐지 결과 가운데 최종 대상을 고른다.
     normalized_preliminary = _normalize_label_key(preliminary_label)
     filtered = [
         item for item in detections
@@ -437,6 +454,7 @@ def normalize_detection_label(
     *,
     label_aliases: dict[str, str] | None = None,
 ) -> str:
+    # detection 라벨를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized_label = raw_label.strip()
     if not normalized_label:
         return ''
@@ -450,6 +468,7 @@ def normalize_detection_label(
 
 
 def resolve_inference_device(raw_device: str) -> str:
+    # 현재 입력 조건을 바탕으로 inference 장치를 계산하거나 결정한다.
     normalized_device = raw_device.strip().lower()
     if not normalized_device or normalized_device == 'auto':
         return 'cuda:0' if _cuda_available() else 'cpu'
@@ -463,6 +482,7 @@ def resolve_inference_device(raw_device: str) -> str:
 
 
 def _load_label_contract(repo_root: Path) -> dict[str, Any]:
+    # 라벨 계약를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     contract_path = repo_root / _DEFAULT_LABEL_CONTRACT_RELATIVE_PATH
     if not contract_path.exists():
         return {}
@@ -473,6 +493,7 @@ def _load_label_contract(repo_root: Path) -> dict[str, Any]:
 
 
 def _read_label_aliases(contract: dict[str, Any]) -> dict[str, str]:
+    # 라벨 별칭 목록를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     contract_aliases = contract.get('canonical_label_aliases')
     if not isinstance(contract_aliases, dict):
         return dict(_DEFAULT_LABEL_ALIASES)
@@ -486,6 +507,7 @@ def _read_label_aliases(contract: dict[str, Any]) -> dict[str, str]:
 
 
 def _read_first_env(names: tuple[str, ...]) -> str | None:
+    # first ENV를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     for name in names:
         value = os.environ.get(name, '').strip()
         if value:
@@ -494,6 +516,7 @@ def _read_first_env(names: tuple[str, ...]) -> str | None:
 
 
 def _normalize_label_key(raw_label: str) -> str:
+    # 라벨 KEY를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = raw_label.strip().lower().replace('-', '_')
     normalized = re.sub(r'\s+', '_', normalized)
     normalized = re.sub(r'_+', '_', normalized)
@@ -501,6 +524,7 @@ def _normalize_label_key(raw_label: str) -> str:
 
 
 def _cuda_available() -> bool:
+    # cuda available 정보를 계산해 반환한다.
     try:
         import torch
     except ImportError:

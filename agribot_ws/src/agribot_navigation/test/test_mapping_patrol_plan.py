@@ -1,9 +1,11 @@
+# 이 테스트는 자율주행과 경로 계획 패키지의 mapping patrol plan 동작을 검증한다.
 from pathlib import Path
 
 from agribot_navigation.patrol_config import load_patrol_plan
 
 
 def test_farm_mapping_patrol_plan_stays_within_rectangular_world_bounds() -> None:
+    # farm mapping patrol 계획 stays within rectangular 월드 bounds 동작과 회귀 여부를 검증한다.
     plan_path = (
         Path(__file__).resolve().parents[1]
         / 'config'
@@ -25,6 +27,7 @@ def test_farm_mapping_patrol_plan_stays_within_rectangular_world_bounds() -> Non
 
 
 def test_farm_mapping_patrol_plan_starts_from_spawn_aligned_center_sweep() -> None:
+    # farm mapping patrol 계획 starts from spawn aligned center sweep 동작과 회귀 여부를 검증한다.
     plan_path = (
         Path(__file__).resolve().parents[1]
         / 'config'

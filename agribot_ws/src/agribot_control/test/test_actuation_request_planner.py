@@ -1,3 +1,4 @@
+# 이 테스트는 상위 제어와 의사결정 패키지의 actuation request planner 동작을 검증한다.
 from agribot_control.actuation_request_planner import (
     RequestRoute,
     plan_actuation_requests,
@@ -7,6 +8,7 @@ from agribot_control.environment_disease_rules import DiseaseSignal, Environment
 
 
 def test_low_soil_moisture_publishes_auto_watering_request() -> None:
+    # LOW soil moisture publishes auto 급수 요청 데이터 동작과 회귀 여부를 검증한다.
     plans = plan_actuation_requests(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -27,6 +29,7 @@ def test_low_soil_moisture_publishes_auto_watering_request() -> None:
 
 
 def test_mid_soil_moisture_creates_review_request() -> None:
+    # MID soil moisture creates review 요청 데이터 동작과 회귀 여부를 검증한다.
     plans = plan_actuation_requests(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -45,6 +48,7 @@ def test_mid_soil_moisture_creates_review_request() -> None:
 
 
 def test_humid_fungal_risk_skips_actionable_requests() -> None:
+    # humid fungal risk skips actionable 요청 데이터 동작과 회귀 여부를 검증한다.
     plans = plan_actuation_requests(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -66,6 +70,7 @@ def test_humid_fungal_risk_skips_actionable_requests() -> None:
 
 
 def test_calcium_disorder_creates_review_nutrient_request_with_payload_in_reason() -> None:
+    # calcium disorder creates review 영양제 요청 데이터 with payload IN reason 동작과 회귀 여부를 검증한다.
     plans = plan_actuation_requests(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -89,6 +94,7 @@ def test_calcium_disorder_creates_review_nutrient_request_with_payload_in_reason
 
 
 def test_request_signature_changes_when_route_changes() -> None:
+    # 요청 데이터 signature changes when 경로 changes 동작과 회귀 여부를 검증한다.
     auto_plan = plan_actuation_requests(
         EnvironmentSnapshot(
             zone_id='farm_01',

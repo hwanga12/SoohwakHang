@@ -1,3 +1,4 @@
+# 이 테스트는 IoT 장치 연동 패키지의 environment sensor profile 동작을 검증한다.
 from pathlib import Path
 
 from agribot_iot.device_mapping import load_iot_device_catalog
@@ -16,6 +17,7 @@ IOT_DEVICES = (
 
 
 def test_environment_sensor_profile_generates_bounded_values() -> None:
+    # environment sensor 프로필 generates bounded values 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     zone = catalog.zones['farm_01']
 

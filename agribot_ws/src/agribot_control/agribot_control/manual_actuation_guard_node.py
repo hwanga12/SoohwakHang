@@ -1,3 +1,4 @@
+# 이 모듈은 상위 제어와 의사결정 패키지에서 manual actuation guard node 판단과 실행 보조 로직을 담당한다.
 from __future__ import annotations
 
 from agribot_interfaces.msg import IoTCommand
@@ -13,6 +14,7 @@ from .manual_actuation_safety import (
 
 
 def _parse_conflict_groups(raw_values: list[str]) -> dict[str, str]:
+    # conflict groups를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parsed: dict[str, str] = {}
     for raw_value in raw_values:
         items = [item.strip().lower() for item in raw_value.split(',') if item.strip()]
@@ -25,9 +27,10 @@ def _parse_conflict_groups(raw_values: list[str]) -> dict[str, str]:
 
 
 class ManualActuationGuardNode(Node):
-    """Accept manual commands first and apply short safety locks before dispatch."""
+    # ROS 2 실행 환경에서 manual actuation guard 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # ManualActuationGuardNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('manual_actuation_guard_node')
         self.declare_parameter('manual_command_topic', '/iot/commands/manual')
         self.declare_parameter('auto_command_topic', '/iot/commands/auto')
@@ -79,6 +82,7 @@ class ManualActuationGuardNode(Node):
         )
 
     def _handle_command(self, msg: IoTCommand, *, source: str) -> None:
+        # handle 명령 정보를 계산해 반환한다.
         command = ActuationCommand(
             command_id=msg.command_id,
             zone_id=msg.zone_id,
@@ -109,6 +113,7 @@ class ManualActuationGuardNode(Node):
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = ManualActuationGuardNode()
     try:

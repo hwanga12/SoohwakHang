@@ -1,5 +1,4 @@
-"""수확 액션 서버가 Gazebo 시각 상태를 올바르게 되돌리고 참조 pose를 고르는지 검증한다."""
-
+# 이 테스트는 자율주행과 경로 계획 패키지의 harvest action server animation 동작을 검증한다.
 from types import SimpleNamespace
 
 from agribot_navigation.harvest_simulation import HarvestAnimationConfig
@@ -9,6 +8,7 @@ from agribot_navigation.patrol_config import Pose2D
 
 
 def _build_route_plan() -> HarvestRoutePlan:
+    # 경로 계획를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     pose = Pose2D(x=-6.75, y=-6.0, z=0.0, yaw=0.0)
     align_pose = Pose2D(x=-7.45, y=-6.0, z=0.0, yaw=0.0)
     return HarvestRoutePlan(
@@ -28,6 +28,7 @@ def _build_route_plan() -> HarvestRoutePlan:
 
 
 def test_resolve_animation_reference_pose_prefers_latest_robot_pose() -> None:
+    # resolve animation reference 위치 자세 prefers latest robot 위치 자세 동작과 회귀 여부를 검증한다.
     node = object.__new__(HarvestActionServerNode)
     node._latest_robot_pose = Pose2D(x=1.0, y=2.0, z=0.0, yaw=0.5)
 
@@ -40,6 +41,7 @@ def test_resolve_animation_reference_pose_prefers_latest_robot_pose() -> None:
 
 
 def test_approach_navigation_pose_prefers_inspect_waypoint_pose() -> None:
+    # approach navigation 위치 자세 prefers inspect waypoint 위치 자세 동작과 회귀 여부를 검증한다.
     node = object.__new__(HarvestActionServerNode)
     inspect_pose = Pose2D(x=-8.0, y=-6.0, z=0.0, yaw=1.5708)
     node._plan = SimpleNamespace(
@@ -57,6 +59,7 @@ def test_approach_navigation_pose_prefers_inspect_waypoint_pose() -> None:
 
 
 def test_reset_visual_harvest_state_restores_arm_and_tomato_pose() -> None:
+    # reset visual harvest 상태 restores ARM AND tomato 위치 자세 동작과 회귀 여부를 검증한다.
     node = object.__new__(HarvestActionServerNode)
     published_positions: list[float] = []
     pose_updates: list[tuple[str, object]] = []
@@ -90,6 +93,7 @@ def test_reset_visual_harvest_state_restores_arm_and_tomato_pose() -> None:
 
 
 def test_hide_harvested_tomato_visual_moves_entity_below_world_floor() -> None:
+    # hide harvested tomato visual moves entity below 월드 floor 동작과 회귀 여부를 검증한다.
     node = object.__new__(HarvestActionServerNode)
     pose_updates: list[tuple[str, object]] = []
     node._catalog = SimpleNamespace(

@@ -1,3 +1,4 @@
+# 이 모듈은 웹 요청을 로봇 명령 형식으로 검증하고 전달한다.
 from __future__ import annotations
 
 import json
@@ -5,6 +6,7 @@ import time
 import uuid
 from typing import Any
 
+from ros_protocol_bridge import get_ros_protocol_bridge
 from robot_runtime_state_service import (
     RobotRuntimeStateError,
     build_idle_command_status_payload,
@@ -77,33 +79,40 @@ COMMAND_RECEIPT_MESSAGES = {
 
 
 class RobotCommandValidationError(ValueError):
+    # 로봇 명령 validation error 문제를 구분하기 위한 예외 클래스다.
     pass
 
 
 class DuplicateCommandIdError(RobotCommandValidationError):
+    # duplicate 명령 id error 문제를 구분하기 위한 예외 클래스다.
     pass
 
 
 class RobotCommandConflictError(RobotCommandValidationError):
+    # 로봇 명령 conflict error 문제를 구분하기 위한 예외 클래스다.
     pass
 
 
 class RobotCommandUnavailableError(RuntimeError):
+    # 로봇 명령 unavailable error 문제를 구분하기 위한 예외 클래스다.
     pass
 
 
 def _generate_command_id() -> str:
+    # 명령 id을 생성한다.
     timestamp = int(time.time() * 1000)
     return f"robot-cmd-{timestamp}-{uuid.uuid4().hex[:8]}"
 
 
 def _sanitize_command_id(command_id: str | None) -> str:
+    # sanitize 명령 id 정보를 계산해 반환한다.
     if command_id is None or not str(command_id).strip():
         return _generate_command_id()
     return str(command_id).strip()
 
 
 def _check_duplicate_command_id(command_id: str) -> None:
+    # duplicate 명령 id 상태를 점검한다.
     for path in (command_file_path(), command_status_file_path()):
         if not path.exists():
             continue
@@ -118,6 +127,7 @@ def _check_duplicate_command_id(command_id: str) -> None:
 
 
 def _validate_command_type(command_type: str) -> str:
+    # 명령 type가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     normalized = str(command_type).strip()
     if normalized not in ALLOWED_COMMAND_TYPES:
         raise RobotCommandValidationError(
@@ -128,6 +138,7 @@ def _validate_command_type(command_type: str) -> str:
 
 
 def _coerce_target_pose(payload: dict[str, Any]) -> dict[str, Any]:
+    # coerce 대상 위치 자세 정보를 계산해 반환한다.
     if not isinstance(payload, dict):
         raise RobotCommandValidationError("payload는 JSON object여야 합니다.")
 
@@ -157,6 +168,7 @@ def _coerce_target_pose(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _coerce_target_pose_object(target_pose: dict[str, Any]) -> dict[str, Any]:
+    # coerce 대상 위치 자세 object 정보를 계산해 반환한다.
     if not isinstance(target_pose, dict):
         raise RobotCommandValidationError("target_pose 는 JSON object여야 합니다.")
     return _coerce_target_pose({"target_pose": target_pose})
@@ -167,6 +179,7 @@ def _coerce_optional_waypoint_id(
     *,
     field_name: str,
 ) -> str | None:
+    # coerce optional 웨이포인트 id 정보를 계산해 반환한다.
     raw_value = payload.get(field_name)
     if raw_value is None:
         return None
@@ -180,6 +193,7 @@ def _coerce_optional_string_list(
     *,
     field_name: str,
 ) -> list[str]:
+    # coerce optional string 목록 정보를 계산해 반환한다.
     raw_value = payload.get(field_name)
     if raw_value is None:
         return []
@@ -201,6 +215,7 @@ def _coerce_optional_observation_candidates(
     field_name: str,
     map_id: str | None,
 ) -> list[dict[str, Any]]:
+    # coerce optional 관측 후보 정보를 계산해 반환한다.
     raw_value = payload.get(field_name)
     if raw_value is None:
         return []
@@ -257,6 +272,7 @@ def _validate_target_pose_bounds(
     target_pose: dict[str, Any],
     map_id: str | None = None,
 ) -> dict[str, Any]:
+    # target 위치 자세 bounds가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     from robot_map_service import read_map_payload
 
     bounds = read_map_payload(map_id)["bounds"]
@@ -276,6 +292,7 @@ def _validate_target_pose_bounds(
 
 
 def _normalize_requested_by(requested_by: str) -> str:
+    # requested BY를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = str(requested_by).strip()
     if not normalized:
         raise RobotCommandValidationError("requested_by 는 비어 있을 수 없습니다.")
@@ -283,6 +300,7 @@ def _normalize_requested_by(requested_by: str) -> str:
 
 
 def _normalize_robot_id(robot_id: str) -> str:
+    # robot ID를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = str(robot_id).strip()
     if not normalized:
         raise RobotCommandValidationError("robot_id 는 비어 있을 수 없습니다.")
@@ -290,6 +308,7 @@ def _normalize_robot_id(robot_id: str) -> str:
 
 
 def _payload_or_empty(payload: dict[str, Any] | None) -> dict[str, Any]:
+    # 페이로드 empty 정보를 계산해 반환한다.
     if payload is None:
         return {}
     if not isinstance(payload, dict):
@@ -298,6 +317,7 @@ def _payload_or_empty(payload: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def _coerce_optional_bool(value: Any, *, field_name: str) -> bool | None:
+    # coerce optional bool 정보를 계산해 반환한다.
     if value is None:
         return None
     if isinstance(value, bool):
@@ -321,6 +341,7 @@ def _resolve_preempt_current_navigation(
     payload: dict[str, Any],
     explicit_value: bool | None,
 ) -> bool:
+    # 현재 입력 조건을 바탕으로 preempt current navigation를 계산하거나 결정한다.
     if explicit_value is not None:
         return explicit_value
 
@@ -335,6 +356,7 @@ def _resolve_preempt_current_navigation(
 
 
 def _normalize_command_for_bridge(command_type: str) -> tuple[str, str]:
+    # 명령 FOR 브리지를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     requested_command_type = _validate_command_type(command_type)
     return requested_command_type, COMMAND_TYPE_ALIASES.get(
         requested_command_type,
@@ -343,6 +365,7 @@ def _normalize_command_for_bridge(command_type: str) -> tuple[str, str]:
 
 
 def _safe_read_control_state_payload() -> dict[str, Any]:
+    # safe 읽기 제어 상태 페이로드 정보를 계산해 반환한다.
     try:
         return read_control_state_payload()
     except RobotRuntimeStateError as exc:
@@ -353,6 +376,7 @@ def _safe_read_latest_command_status_payload(
     *,
     control_state: dict[str, Any],
 ) -> dict[str, Any]:
+    # safe 읽기 최신 명령 상태 페이로드 정보를 계산해 반환한다.
     try:
         return _read_latest_command_status_payload()
     except RobotRuntimeStateError as exc:
@@ -373,6 +397,7 @@ def _effective_active_activity(
     control_state: dict[str, Any],
     latest_status: dict[str, Any],
 ) -> str:
+    # effective active activity 정보를 계산해 반환한다.
     active_activity = str(control_state.get("active_activity") or "").strip() or "idle"
     if active_activity != "idle":
         return active_activity
@@ -391,6 +416,7 @@ def _effective_active_activity(
 
 
 def _resume_context_type(control_state: dict[str, Any]) -> str | None:
+    # resume context type 정보를 계산해 반환한다.
     resume_context = control_state.get("resume_context")
     if not isinstance(resume_context, dict):
         return None
@@ -405,6 +431,7 @@ def _validate_command_for_current_state(
     control_state: dict[str, Any],
     latest_status: dict[str, Any],
 ) -> None:
+    # 명령 FOR current 상태가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     if (
         normalized_command_type in CONTROL_STATE_REQUIRED_COMMAND_TYPES
         and not bool(control_state.get("available"))
@@ -468,6 +495,7 @@ def _build_bridge_payload(
     target_zone_id: str | None = None,
     requested_command_type: str | None = None,
 ) -> dict[str, Any]:
+    # 브리지 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     bridge_payload: dict[str, Any] = {
         "command_id": command_id,
         "command_type": command_type,
@@ -487,6 +515,7 @@ def _build_bridge_payload(
 
 
 def _build_command_receipt_message(requested_command_type: str) -> str:
+    # 명령 receipt message를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return COMMAND_RECEIPT_MESSAGES.get(
         requested_command_type,
         f"{requested_command_type} 요청을 접수했습니다.",
@@ -508,6 +537,7 @@ def _build_publish_response(
     home_waypoint_id: str | None,
     current_control_state: dict[str, Any],
 ) -> dict[str, Any]:
+    # publish 응답 데이터를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     message = _build_command_receipt_message(requested_command_type)
     response = {
         "accepted": True,
@@ -556,6 +586,7 @@ def publish_robot_command(
     map_id: str | None = None,
     preempt_current_navigation: bool | None = None,
 ) -> dict[str, Any]:
+    # robot 명령를 외부 시스템이나 다음 처리 단계로 전달한다.
     from robot_map_service import read_map_payload
 
     requested_command_type, normalized_command_type = _normalize_command_for_bridge(command_type)
@@ -635,7 +666,7 @@ def publish_robot_command(
 
     if file_command_type not in FILE_BRIDGE_COMMAND_TYPES:
         raise RobotCommandValidationError(
-            f"파일 브리지로 내보낼 수 없는 command_type 입니다: {file_command_type!r}"
+            f"런타임 브리지로 내보낼 수 없는 command_type 입니다: {file_command_type!r}"
         )
 
     bridge_payload = _build_bridge_payload(
@@ -649,9 +680,12 @@ def publish_robot_command(
         payload=command_payload,
         preempt_current_navigation=resolved_preempt_current_navigation,
     )
-    write_json_atomic(command_file_path(), bridge_payload)
+    bridge = get_ros_protocol_bridge()
+    published_transport = "ros_topic" if bridge.publish_robot_command(bridge_payload) else "runtime_file"
+    if published_transport != "ros_topic":
+        write_json_atomic(command_file_path(), bridge_payload)
 
-    return _build_publish_response(
+    response = _build_publish_response(
         bridge_payload=bridge_payload,
         requested_command_type=requested_command_type,
         command_type=file_command_type,
@@ -665,7 +699,10 @@ def publish_robot_command(
         home_waypoint_id=command_payload.get("home_waypoint_id"),
         current_control_state=control_state,
     )
+    response["transport"] = published_transport
+    return response
 
 
 def read_latest_command_status_payload() -> dict[str, Any]:
+    # latest 명령 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return _read_latest_command_status_payload()

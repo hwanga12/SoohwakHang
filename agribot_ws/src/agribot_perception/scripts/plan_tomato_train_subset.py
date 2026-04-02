@@ -1,24 +1,6 @@
 #!/usr/bin/env python3
-"""Plan a tomato detection baseline subset from AI Hub 525 label JSON files.
 
-This planner reads raw label JSON files under a user-provided root and emits a
-CSV that later extractor steps can consume directly.
-
-Selection policy:
-- target positives: ``a5``, ``a6``, ``b2``, ``b3``
-- target negatives: ``00`` only
-- positive classes are selected by a documented stable sort order
-- normal samples are sampled with a seeded RNG for reproducibility
-
-The stable order for non-normal classes is:
-``(source_split.lower(), json_rel_path.lower(), image_filename.lower(), json_filename.lower())``
-Rows beyond a class quota are kept in the CSV as ``is_selected=false`` with
-``selected_reason=skipped_over_quota`` so the planning result stays auditable.
-If a requested class has fewer eligible candidates than its quota, the planner
-adds a ``shortfall_summary`` row with
-``selected_reason=skipped_insufficient_candidate``.
-"""
-
+# 이 모듈은 인지와 추론 패키지에서 plan tomato train subset 기능을 담당한다.
 from __future__ import annotations
 
 import argparse
@@ -86,7 +68,7 @@ KNOWN_SPLIT_NAMES = {
 
 @dataclass(frozen=True, slots=True)
 class CandidateRecord:
-    """One eligible target candidate parsed from a raw JSON label file."""
+    # candidate 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     crop_code: str
     crop_name: str
@@ -103,6 +85,7 @@ class CandidateRecord:
 
     @property
     def sort_key(self) -> tuple[str, str, str, str]:
+        # sort key 정보를 계산해 반환한다.
         return (
             self.source_split.lower(),
             self.json_rel_path.lower(),
@@ -112,6 +95,7 @@ class CandidateRecord:
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(
         description="Plan a tomato train subset CSV for the initial detection baseline."
     )
@@ -140,11 +124,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_json(json_path: Path) -> dict[str, Any]:
+    # JSON 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with json_path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
 def extract_annotations(data: dict[str, Any]) -> list[dict[str, Any]]:
+    # 원본 데이터에서 annotations만 골라 추출한다.
     if "annotation" in data:
         raw = data.get("annotation")
     elif "annotations" in data:
@@ -162,6 +148,7 @@ def extract_annotations(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def collect_unique_values(annotations: list[dict[str, Any]], field_name: str) -> list[str]:
+    # unique values를 모아 순회하기 쉬운 형태로 정리한다.
     values = {
         normalize_code(annotation.get(field_name))
         for annotation in annotations
@@ -171,6 +158,7 @@ def collect_unique_values(annotations: list[dict[str, Any]], field_name: str) ->
 
 
 def count_bbox_items(bbox_value: Any) -> int:
+    # 개수 경계 상자 items 정보를 계산해 반환한다.
     if bbox_value is None:
         return 0
     if isinstance(bbox_value, dict):
@@ -181,14 +169,17 @@ def count_bbox_items(bbox_value: Any) -> int:
 
 
 def count_top_level_bbox_items(annotations: list[dict[str, Any]]) -> int:
+    # 개수 top level 경계 상자 items 정보를 계산해 반환한다.
     return sum(count_bbox_items(annotation.get("bbox")) for annotation in annotations)
 
 
 def join_values(values: list[str]) -> str:
+    # join 값 정보를 계산해 반환한다.
     return "|".join(values)
 
 
 def to_relative_string(path: Path, root: Path) -> str:
+    # 현재 값을 relative string 형식으로 변환한다.
     try:
         return str(path.relative_to(root))
     except ValueError:
@@ -196,6 +187,7 @@ def to_relative_string(path: Path, root: Path) -> str:
 
 
 def infer_source_split(path: Path) -> str:
+    # 입력 데이터를 바탕으로 source split를 추론한다.
     for part in path.parts:
         if part.lower() in KNOWN_SPLIT_NAMES:
             return part
@@ -203,6 +195,7 @@ def infer_source_split(path: Path) -> str:
 
 
 def build_quotas(args: argparse.Namespace) -> dict[str, int]:
+    # quotas를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     quotas = {
         "a5": args.quota_a5,
         "a6": args.quota_a6,
@@ -217,6 +210,7 @@ def build_quotas(args: argparse.Namespace) -> dict[str, int]:
 
 
 def extract_candidate_record(json_path: Path, label_root: Path) -> CandidateRecord | None:
+    # 원본 데이터에서 candidate 기록만 골라 추출한다.
     try:
         data = load_json(json_path)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
@@ -270,6 +264,7 @@ def extract_candidate_record(json_path: Path, label_root: Path) -> CandidateReco
 
 
 def gather_candidates(label_root: Path) -> tuple[dict[str, list[CandidateRecord]], Counter[str]]:
+    # candidates를 모아 순회하기 쉬운 형태로 정리한다.
     candidates_by_disease: dict[str, list[CandidateRecord]] = defaultdict(list)
     stats: Counter[str] = Counter()
 
@@ -292,6 +287,7 @@ def select_row_indices(
     quota: int,
     seed: int,
 ) -> set[int]:
+    # row indices 가운데 필요한 대상을 고른다.
     selected_count = min(quota, len(candidates))
     if selected_count <= 0:
         return set()
@@ -305,6 +301,7 @@ def select_row_indices(
 
 
 def bool_to_text(value: bool) -> str:
+    # bool 텍스트 정보를 계산해 반환한다.
     return "true" if value else "false"
 
 
@@ -318,6 +315,7 @@ def build_candidate_row(
     selected_count: int,
     shortfall_count: int,
 ) -> dict[str, str]:
+    # candidate ROW를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return {
         "row_type": "candidate",
         "is_selected": bool_to_text(is_selected),
@@ -349,6 +347,7 @@ def build_shortfall_summary_row(
     selected_count: int,
     shortfall_count: int,
 ) -> dict[str, str]:
+    # shortfall summary ROW를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     crop_entry = get_crop_entry("2")
     disease_entry = get_disease_entry(disease_code)
     return {
@@ -379,6 +378,7 @@ def build_plan_rows(
     quotas: dict[str, int],
     seed: int,
 ) -> tuple[list[dict[str, str]], dict[str, dict[str, int]]]:
+    # 계획 rows를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     rows: list[dict[str, str]] = []
     summary: dict[str, dict[str, int]] = {}
 
@@ -435,6 +435,7 @@ def build_plan_rows(
 
 
 def write_plan_csv(rows: list[dict[str, str]], output_path: Path) -> None:
+    # 계획 CSV를 파일이나 저장소에 기록한다.
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=CSV_FIELDNAMES)
@@ -447,6 +448,7 @@ def print_summary(
     summary: dict[str, dict[str, int]],
     stats: Counter[str],
 ) -> None:
+    # print 요약 정보를 계산해 반환한다.
     print(f"Subset plan CSV: {output_path}")
     print(f"JSON files scanned: {stats.get('json_files_scanned', 0)}")
     print(f"Eligible candidates: {stats.get('eligible_candidates', 0)}")
@@ -476,6 +478,7 @@ def print_summary(
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = parse_args()
     label_root = Path(args.label_root).expanduser().resolve()
     output_path = Path(args.output).expanduser().resolve()

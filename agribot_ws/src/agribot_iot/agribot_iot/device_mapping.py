@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 device mapping 장치 흐름을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ import yaml
 
 @dataclass(frozen=True)
 class SensorWaveSpec:
+    # sensor wave 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     base: float
     amplitude: float
     period_sec: float
@@ -19,6 +21,7 @@ class SensorWaveSpec:
 
 @dataclass(frozen=True)
 class ZoneSensorProfile:
+    # 구역 sensor 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     publish_hz: float
     phase_offset_sec: float
     temperature: SensorWaveSpec
@@ -30,6 +33,7 @@ class ZoneSensorProfile:
 
 @dataclass(frozen=True)
 class IoTDeviceSpec:
+    # IO T 장치 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     device_id: str
     zone_id: str
     device_type: str
@@ -50,6 +54,7 @@ class IoTDeviceSpec:
 
 @dataclass(frozen=True)
 class IoTZoneSpec:
+    # IO T 구역 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     zone_id: str
     display_name: str
     mqtt_namespace: str
@@ -59,6 +64,7 @@ class IoTZoneSpec:
 
 @dataclass(frozen=True)
 class IoTDeviceCatalog:
+    # IO T 장치 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     schema_version: int
     default_zone_id: str
     frame_id: str
@@ -66,10 +72,12 @@ class IoTDeviceCatalog:
     devices: dict[str, IoTDeviceSpec]
 
     def zone_devices(self, zone_id: str) -> tuple[IoTDeviceSpec, ...]:
+        # 구역 장치 정보를 계산해 반환한다.
         zone = self.zones[zone_id]
         return tuple(zone.devices.values())
 
     def primary_device(self, zone_id: str, device_type: str) -> IoTDeviceSpec:
+        # primary 장치 정보를 계산해 반환한다.
         zone = self.zones[zone_id]
         for device in zone.devices.values():
             if device.device_type == device_type:
@@ -78,10 +86,12 @@ class IoTDeviceCatalog:
 
 
 def get_default_iot_devices_path() -> Path:
+    # default IoT 장치 목록 경로를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return Path(get_package_share_directory('agribot_iot')) / 'config' / 'iot_devices.yaml'
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
+    # YAML 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with path.open('r', encoding='utf-8') as stream:
         payload = yaml.safe_load(stream)
     if not isinstance(payload, dict):
@@ -90,6 +100,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def _require_float(payload: dict[str, Any], key: str, context: str) -> float:
+    # require float 정보를 계산해 반환한다.
     try:
         return float(payload[key])
     except (KeyError, TypeError, ValueError) as exc:
@@ -97,6 +108,7 @@ def _require_float(payload: dict[str, Any], key: str, context: str) -> float:
 
 
 def _load_wave_spec(payload: dict[str, Any], *, context: str) -> SensorWaveSpec:
+    # wave spec를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return SensorWaveSpec(
         base=_require_float(payload, 'base', context),
         amplitude=_require_float(payload, 'amplitude', context),
@@ -107,6 +119,7 @@ def _load_wave_spec(payload: dict[str, Any], *, context: str) -> SensorWaveSpec:
 
 
 def _load_sensor_profile(payload: dict[str, Any], *, context: str) -> ZoneSensorProfile:
+    # sensor 프로필를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return ZoneSensorProfile(
         publish_hz=max(0.1, _require_float(payload, 'publish_hz', context)),
         phase_offset_sec=float(payload.get('phase_offset_sec', 0.0)),
@@ -122,6 +135,7 @@ def _load_sensor_profile(payload: dict[str, Any], *, context: str) -> ZoneSensor
 
 
 def _load_device_spec(payload: dict[str, Any], *, zone_id: str, context: str) -> IoTDeviceSpec:
+    # 장치 spec를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     capabilities = payload.get('capabilities', {})
     if not isinstance(capabilities, dict):
         raise ValueError(f'capabilities must be a mapping in {context}.')
@@ -148,6 +162,7 @@ def _load_device_spec(payload: dict[str, Any], *, zone_id: str, context: str) ->
 
 
 def load_iot_device_catalog(path: Path) -> IoTDeviceCatalog:
+    # IoT 장치 카탈로그를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     payload = _load_yaml(path)
     zones: dict[str, IoTZoneSpec] = {}
     devices: dict[str, IoTDeviceSpec] = {}

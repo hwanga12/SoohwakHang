@@ -1,3 +1,4 @@
+# 이 모듈은 백엔드의 환경 API 라우터를 정의하고, 요청을 서비스 계층과 연결한다.
 from fastapi import APIRouter
 
 from services.operations_service import OperationsService
@@ -8,11 +9,11 @@ _service = OperationsService()
 
 @router.get("/latest")
 def get_latest_environment():
-    """구역별 최신 환경값 조회"""
+    # latest environment를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return {"data": _service.get_latest_environment()}
 
 
 @router.get("/history")
 def get_environment_history():
-    """상세 환경 시계열 기록 조회"""
+    # environment 이력를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return {"data": _service.get_environment_history()}

@@ -1,3 +1,6 @@
+/*
+ * 이 컴포넌트는 관제 대시보드의 수확 현황 페이지를 구성한다.
+ */
 import { useQuery } from '@tanstack/react-query'
 import { createGetSignal } from '@/app/dev-inspector'
 import { DevSurface } from '@/components/dev-surface'
@@ -102,6 +105,9 @@ function buildHarvestSequence(page: HarvestPageData) {
   })
 }
 
+/**
+ * 수확 페이지 화면 조각을 렌더링하는 컴포넌트다.
+ */
 export function HarvestPage() {
   const harvestQuery = useQuery({
     queryKey: ['page', 'harvest'],

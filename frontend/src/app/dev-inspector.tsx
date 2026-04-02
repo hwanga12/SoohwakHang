@@ -1,3 +1,6 @@
+/*
+ * 이 모듈은 프론트엔드 앱 골격에서 개발 중 계약과 데이터 흐름을 점검하는 도구를 제공한다.
+ */
 import {
   createContext,
   useContext,
@@ -15,6 +18,9 @@ import {
 } from '@/app/dev-runtime'
 import { env } from '@/config/env'
 
+/**
+ * 개발용 표면 상태를 화면과 로직에서 공통으로 쓰기 위한 타입이다.
+ */
 export type DevSurfaceStatus = 'live' | 'sample' | 'partial' | 'contract' | 'pending'
 
 type OpenApiDocument = {
@@ -45,6 +51,9 @@ type DevActionSignal = {
   matching: 'all' | 'any'
 }
 
+/**
+ * 개발용 표면 contract 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type DevSurfaceContract = {
   title: string
   queries?: DevQuerySignal[]
@@ -80,6 +89,9 @@ const DevInspectorContext = createContext<DevInspectorContextValue>({
   verifiedRoutes: {},
 })
 
+/**
+ * get signal을 생성하는 함수다.
+ */
 export function createGetSignal(
   label: string,
   source: DataSource,
@@ -93,6 +105,9 @@ export function createGetSignal(
   }
 }
 
+/**
+ * post action을 생성하는 함수다.
+ */
 export function createPostAction(
   label: string,
   paths: string[],
@@ -397,6 +412,9 @@ export function DevInspectorProvider({ children }: PropsWithChildren) {
     })
   }, [isDevelopment])
 
+/**
+ * 오버레이 enabled을 설정하는 함수다.
+ */
   const setOverlayEnabled = (enabled: boolean) => {
     if (!isDevelopment) {
       return
@@ -405,6 +423,9 @@ export function DevInspectorProvider({ children }: PropsWithChildren) {
     setOverlayEnabledState(enabled)
   }
 
+/**
+ * 오버레이을 전환하는 함수다.
+ */
   const toggleOverlay = () => {
     if (!isDevelopment) {
       return

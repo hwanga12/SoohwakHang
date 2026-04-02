@@ -1,3 +1,4 @@
+# 이 스크립트는 토마토 질병 진단 E2E 스모크 테스트를 수행하기 위해 사용하는 보조 파이썬 스크립트다.
 from __future__ import annotations
 
 import argparse
@@ -32,13 +33,16 @@ from agribot_navigation.patrol_config import load_patrol_plan
 
 @dataclass(frozen=True)
 class PoseSnapshot:
+    # 위치 자세 시점의 값을 기록하기 위한 스냅샷 클래스를 정의한다.
     x: float
     y: float
     yaw: float
 
 
 class TomatoDiseaseE2ESmoke(Node):
+    # tomato disease E 2 E 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     def __init__(self, *, command_id: str) -> None:
+        # TomatoDiseaseE2ESmoke 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('tomato_disease_e2e_smoke')
         self._bridge = CvBridge()
         self._latest_frame = None
@@ -76,9 +80,11 @@ class TomatoDiseaseE2ESmoke(Node):
         self._cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
 
     def _handle_image(self, msg: Image) -> None:
+        # handle 이미지 정보를 계산해 반환한다.
         self._latest_frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
 
     def _handle_odom(self, msg: Odometry) -> None:
+        # handle odom 정보를 계산해 반환한다.
         position = msg.pose.pose.position
         orientation = msg.pose.pose.orientation
         self._latest_pose = PoseSnapshot(
@@ -93,12 +99,14 @@ class TomatoDiseaseE2ESmoke(Node):
         )
 
     def _handle_device_state(self, msg: IoTDeviceState) -> None:
+        # handle 장치 상태 정보를 계산해 반환한다.
         state = msg.state.strip().upper()
         self._device_states[msg.device_id] = state
         if state == 'SPRAYING':
             self._spraying_device_ids.add(msg.device_id)
 
     def _handle_command_result(self, msg: String) -> None:
+        # handle 명령 결과 정보를 계산해 반환한다.
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
@@ -107,6 +115,7 @@ class TomatoDiseaseE2ESmoke(Node):
             self._command_results.append(payload)
 
     def wait_for_inputs(self, *, timeout_sec: float) -> None:
+        # inputs이 준비될 때까지 기다린다.
         deadline = time.monotonic() + timeout_sec
         while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
@@ -115,6 +124,7 @@ class TomatoDiseaseE2ESmoke(Node):
         raise RuntimeError('Timed out waiting for image and odometry topics.')
 
     def navigate_to(self, *, x: float, y: float, yaw: float, timeout_sec: float) -> None:
+        # navigate 정보를 계산해 반환한다.
         if not self._nav_client.wait_for_server(timeout_sec=timeout_sec):
             raise RuntimeError('navigate_to_pose action server is unavailable.')
 
@@ -143,6 +153,7 @@ class TomatoDiseaseE2ESmoke(Node):
             raise RuntimeError(f'navigate_to_pose failed with status={result.status}.')
 
     def _spin_until_future(self, future, *, timeout_sec: float) -> None:
+        # spin until future 정보를 계산해 반환한다.
         deadline = time.monotonic() + timeout_sec
         while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
@@ -151,11 +162,13 @@ class TomatoDiseaseE2ESmoke(Node):
         raise RuntimeError('Timed out while waiting for a ROS future to complete.')
 
     def wait_for_stable_frame(self, *, duration_sec: float = 1.0) -> None:
+        # 안정 frame이 준비될 때까지 기다린다.
         deadline = time.monotonic() + duration_sec
         while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
 
     def save_latest_frame(self, *, output_path: Path) -> bytes:
+        # latest frame를 파일이나 저장소에 기록한다.
         if self._latest_frame is None:
             raise RuntimeError('No camera frame is available.')
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -173,6 +186,7 @@ class TomatoDiseaseE2ESmoke(Node):
         final_yaw: float,
         timeout_sec: float,
     ) -> None:
+        # drive 경로 정보를 계산해 반환한다.
         if not waypoints:
             self.rotate_to_yaw(final_yaw=final_yaw, timeout_sec=timeout_sec)
             return
@@ -204,6 +218,7 @@ class TomatoDiseaseE2ESmoke(Node):
         raise RuntimeError('Timed out while following the fallback cmd_vel path.')
 
     def rotate_to_yaw(self, *, final_yaw: float, timeout_sec: float) -> None:
+        # rotate yaw 정보를 계산해 반환한다.
         deadline = time.monotonic() + timeout_sec
         while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
@@ -219,12 +234,14 @@ class TomatoDiseaseE2ESmoke(Node):
         raise RuntimeError('Timed out while rotating to the final capture yaw.')
 
     def publish_cmd_vel(self, *, linear_x: float, angular_z: float) -> None:
+        # CMD VEL를 외부 시스템이나 다음 처리 단계로 전달한다.
         message = Twist()
         message.linear.x = float(linear_x)
         message.angular.z = float(angular_z)
         self._cmd_vel_pub.publish(message)
 
     def stop_motion(self) -> None:
+        # motion 실행 흐름을 시작하거나 마무리한다.
         for _ in range(5):
             self.publish_cmd_vel(linear_x=0.0, angular_z=0.0)
             rclpy.spin_once(self, timeout_sec=0.05)
@@ -235,6 +252,7 @@ class TomatoDiseaseE2ESmoke(Node):
         selected_device_id: str,
         timeout_sec: float,
     ) -> dict[str, Any]:
+        # spray 결과이 준비될 때까지 기다린다.
         deadline = time.monotonic() + timeout_sec
         while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
@@ -266,22 +284,26 @@ class TomatoDiseaseE2ESmoke(Node):
 
     @property
     def latest_pose(self) -> PoseSnapshot:
+        # 최신 위치 자세 정보를 계산해 반환한다.
         if self._latest_pose is None:
             raise RuntimeError('No odometry pose is available.')
         return self._latest_pose
 
 
 def _yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:
+    # yaw 쿼터니언 정보를 계산해 반환한다.
     siny_cosp = 2.0 * ((w * z) + (x * y))
     cosy_cosp = 1.0 - 2.0 * ((y * y) + (z * z))
     return math.atan2(siny_cosp, cosy_cosp)
 
 
 def _normalize_angle(angle: float) -> float:
+    # angle를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
 def _build_capture_pose(plant_x: float, plant_y: float) -> tuple[float, float, float]:
+    # capture 위치 자세를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     if plant_x <= 0.0:
         return plant_x - 1.0, plant_y, 0.0
     return plant_x + 1.0, plant_y, math.pi
@@ -296,6 +318,7 @@ def _build_target_position(
     override_y: float | None,
     override_z: float | None,
 ) -> dict[str, float]:
+    # target 위치를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     if source == 'plant':
         base_pose = plant.pose
     else:
@@ -309,6 +332,7 @@ def _build_target_position(
 
 
 def _load_map_metadata(map_yaml_path: Path) -> tuple[Any, float, float, float]:
+    # 지도 metadata를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     payload = yaml.safe_load(map_yaml_path.read_text(encoding='utf-8'))
     image_path = (map_yaml_path.parent / payload['image']).resolve()
     image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
@@ -327,6 +351,7 @@ def _map_to_pixel(
     origin_x: float,
     origin_y: float,
 ) -> tuple[int, int]:
+    # 입력 값을 TO pixel에 대응되도록 매핑한다.
     pixel_x = int(round((x - origin_x) / resolution))
     pixel_y = image_height - 1 - int(round((y - origin_y) / resolution))
     return pixel_x, pixel_y
@@ -341,6 +366,7 @@ def _pixel_to_map(
     origin_x: float,
     origin_y: float,
 ) -> tuple[float, float]:
+    # pixel 지도 정보를 계산해 반환한다.
     return (
         (pixel_x * resolution) + origin_x,
         ((image_height - 1 - pixel_y) * resolution) + origin_y,
@@ -355,6 +381,7 @@ def _nearest_free_pixel(
     free_value_min: int = 250,
     max_radius_px: int = 40,
 ) -> tuple[int, int]:
+    # nearest free pixel 정보를 계산해 반환한다.
     height, width = image.shape[:2]
     if 0 <= pixel_x < width and 0 <= pixel_y < height and int(image[pixel_y, pixel_x]) >= free_value_min:
         return pixel_x, pixel_y
@@ -390,6 +417,7 @@ def _compute_fallback_path(
     goal_x: float,
     goal_y: float,
 ) -> list[tuple[float, float]]:
+    # 현재 입력 조건을 바탕으로 fallback 경로를 계산하거나 결정한다.
     image, resolution, origin_x, origin_y = _load_map_metadata(map_yaml_path)
     height, width = image.shape[:2]
     start_pixel = _map_to_pixel(
@@ -488,6 +516,7 @@ def _build_request_payload(
     disease_label: str,
     image_bytes: bytes,
 ) -> dict[str, Any]:
+    # 요청 데이터 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     encoded = base64.b64encode(image_bytes).decode('ascii')
     return {
         'observation_id': observation_id,
@@ -509,6 +538,7 @@ def _build_request_payload(
 
 
 def _post_backend(url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    # post backend 정보를 계산해 반환한다.
     raw = json.dumps(payload, ensure_ascii=False).encode('utf-8')
     req = request.Request(
         url,
@@ -521,6 +551,7 @@ def _post_backend(url: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     parser = argparse.ArgumentParser(description='Run a Gazebo disease-treatment end-to-end smoke test.')
     parser.add_argument(
         '--backend-url',

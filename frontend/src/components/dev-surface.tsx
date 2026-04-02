@@ -1,3 +1,6 @@
+/*
+ * 이 컴포넌트는 프론트엔드 화면에서 개발 점검용 표면 역할을 맡는다.
+ */
 import type { PropsWithChildren } from 'react'
 import {
   useEvaluatedDevSurface,
@@ -35,6 +38,9 @@ const statusLabels: Record<DevSurfaceStatus, string> = {
   pending: '미구현',
 }
 
+/**
+ * DEV 표면 화면 조각을 렌더링하는 컴포넌트다.
+ */
 export function DevSurface(props: DevSurfaceProps) {
   const {
     as = 'article',

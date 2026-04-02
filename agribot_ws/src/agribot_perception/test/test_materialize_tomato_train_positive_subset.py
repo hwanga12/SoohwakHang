@@ -1,3 +1,4 @@
+# 이 테스트는 인지와 추론 패키지의 materialize tomato train positive subset 동작을 검증한다.
 from __future__ import annotations
 
 import csv
@@ -33,6 +34,7 @@ PLAN_FIELDNAMES = [
 
 
 def write_plan_csv(path: Path, rows: list[dict[str, str]]) -> None:
+    # 계획 CSV를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=PLAN_FIELDNAMES)
@@ -41,6 +43,7 @@ def write_plan_csv(path: Path, rows: list[dict[str, str]]) -> None:
 
 
 def write_json(path: Path) -> None:
+    # JSON 데이터를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"description": {"image": path.stem + ".jpg"}}), encoding="utf-8")
 
@@ -54,6 +57,7 @@ def build_plan_row(
     json_path: Path,
     is_selected: bool = True,
 ) -> dict[str, str]:
+    # 계획 ROW를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return {
         "row_type": "candidate",
         "is_selected": "true" if is_selected else "false",
@@ -84,6 +88,7 @@ def run_materializer(
     out_root: Path,
     *extra_args: str,
 ) -> subprocess.CompletedProcess[str]:
+    # materializer 실행 흐름을 시작하거나 마무리한다.
     script_path = (
         Path(__file__).resolve().parents[1]
         / "scripts"
@@ -109,6 +114,7 @@ def run_materializer(
 
 
 def test_positive_materializer_handles_duplicate_filenames_and_missing_rows(tmp_path: Path) -> None:
+    # positive materializer handles duplicate filenames AND missing rows 동작과 회귀 여부를 검증한다.
     label_root = tmp_path / "labels"
     source_root = tmp_path / "source_zip"
     out_root = tmp_path / "subset_out"
@@ -215,6 +221,7 @@ def test_positive_materializer_handles_duplicate_filenames_and_missing_rows(tmp_
 
 
 def test_positive_materializer_strict_mode_fails_on_missing_files(tmp_path: Path) -> None:
+    # positive materializer strict 모드 fails ON missing files 동작과 회귀 여부를 검증한다.
     label_root = tmp_path / "labels"
     source_root = tmp_path / "source_zip"
     out_root = tmp_path / "subset_out"

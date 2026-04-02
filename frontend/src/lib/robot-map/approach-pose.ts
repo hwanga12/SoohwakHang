@@ -1,3 +1,6 @@
+/*
+ * 이 모듈은 작물 접근 자세를 계산한다.
+ */
 import type { RobotObservationGoalCandidate, RobotTargetPose } from '@/lib/api/agribot'
 import {
   parsePoseLabel,
@@ -9,6 +12,9 @@ import {
 
 const OBSERVATION_CANDIDATE_MATCH_TOLERANCE_M = 0.15
 
+/**
+ * 작물 관측 selection 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type PlantObservationSelection = {
   targetAsset: SemanticAsset | null
   inspectWaypointId: string | null
@@ -20,6 +26,9 @@ export type PlantObservationSelection = {
   observationCandidates: RobotObservationGoalCandidate[]
 }
 
+/**
+ * 작물 관측 selection strategy 구조를 코드 전반에서 같은 방식으로 다루기 위한 타입이다.
+ */
 export type PlantObservationSelectionStrategy = 'nearest' | 'harvest-primary'
 
 function clampToSceneBounds(value: number, minimum: number, maximum: number) {
@@ -286,6 +295,9 @@ function buildInspectionPoseFromScene(
   }
 }
 
+/**
+ * 관측 후보 display 위치 자세을 현재 입력 기준으로 확정하는 함수다.
+ */
 export function resolveObservationCandidateDisplayPose(
   asset: SemanticAsset | null,
   navigationPose: { x: number, y: number } | null | undefined,
@@ -313,6 +325,9 @@ export function resolveObservationCandidateDisplayPose(
   return toRobotTargetPose(candidateDisplayPose(matchedCandidate))
 }
 
+/**
+ * 작물 관측 selection을 현재 입력 기준으로 확정하는 함수다.
+ */
 export function resolvePlantObservationSelection(
   plantId: string,
   preferredScene: SemanticScene,
@@ -407,6 +422,9 @@ function buildPlantPoseWithPreference(
     : observationSelection.approachPose ?? observationSelection.navigationPose
 }
 
+/**
+ * 작물 target 위치 자세을 조합해 만드는 함수다.
+ */
 export function buildPlantTargetPose(
   plantId: string,
   preferredScene: SemanticScene,
@@ -424,6 +442,9 @@ export function buildPlantTargetPose(
   )
 }
 
+/**
+ * 작물 점검 target 위치 자세을 조합해 만드는 함수다.
+ */
 export function buildPlantInspectionTargetPose(
   plantId: string,
   preferredScene: SemanticScene,

@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
-"""Export limited glTF binary models to Gazebo-friendly OBJ/MTL assets.
 
-This converter handles the subset used by the project models:
-- embedded binary buffer
-- triangle meshes with indices
-- node transforms via matrices or TRS
-- embedded JPEG/PNG textures
-- per-primitive average color fallback when only vertex colors exist
-"""
-
+# 이 스크립트는 개발 보조 도구로서 export glb for gazebo 작업을 수행한다.
 from __future__ import annotations
 
 import argparse
@@ -36,6 +28,7 @@ TYPE_COMPONENTS = {
 
 
 def load_glb(path: Path) -> tuple[dict, bytes]:
+    # GLB를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     data = path.read_bytes()
     magic, version, length = struct.unpack_from("<III", data, 0)
     if magic != 0x46546C67:
@@ -62,6 +55,7 @@ def load_glb(path: Path) -> tuple[dict, bytes]:
 
 
 def identity_matrix() -> list[list[float]]:
+    # identity 행렬 정보를 계산해 반환한다.
     return [
         [1.0, 0.0, 0.0, 0.0],
         [0.0, 1.0, 0.0, 0.0],
@@ -71,6 +65,7 @@ def identity_matrix() -> list[list[float]]:
 
 
 def multiply_matrix(a: list[list[float]], b: list[list[float]]) -> list[list[float]]:
+    # multiply 행렬 정보를 계산해 반환한다.
     out = [[0.0] * 4 for _ in range(4)]
     for row in range(4):
         for col in range(4):
@@ -79,10 +74,12 @@ def multiply_matrix(a: list[list[float]], b: list[list[float]]) -> list[list[flo
 
 
 def transpose_matrix(m: list[list[float]]) -> list[list[float]]:
+    # transpose 행렬 정보를 계산해 반환한다.
     return [[m[col][row] for col in range(4)] for row in range(4)]
 
 
 def inverse_matrix(m: list[list[float]]) -> list[list[float]]:
+    # inverse 행렬 정보를 계산해 반환한다.
     n = 4
     aug = [row[:] + identity_row[:] for row, identity_row in zip(m, identity_matrix())]
 
@@ -113,6 +110,7 @@ def matrix_from_trs(
     rotation: Iterable[float] | None,
     scale: Iterable[float] | None,
 ) -> list[list[float]]:
+    # 행렬 trs 정보를 계산해 반환한다.
     tx, ty, tz = translation or (0.0, 0.0, 0.0)
     qx, qy, qz, qw = rotation or (0.0, 0.0, 0.0, 1.0)
     sx, sy, sz = scale or (1.0, 1.0, 1.0)
@@ -151,6 +149,7 @@ def matrix_from_trs(
 
 
 def node_matrix(node: dict) -> list[list[float]]:
+    # 노드 행렬 정보를 계산해 반환한다.
     if "matrix" in node:
         values = node["matrix"]
         return [
@@ -167,6 +166,7 @@ def node_matrix(node: dict) -> list[list[float]]:
 
 
 def apply_transform(matrix: list[list[float]], vector: tuple[float, ...]) -> tuple[float, float, float]:
+    # 변환에 반영한다.
     x, y, z = vector[:3]
     return (
         matrix[0][0] * x + matrix[0][1] * y + matrix[0][2] * z + matrix[0][3],
@@ -176,6 +176,7 @@ def apply_transform(matrix: list[list[float]], vector: tuple[float, ...]) -> tup
 
 
 def apply_normal_transform(matrix: list[list[float]], vector: tuple[float, ...]) -> tuple[float, float, float]:
+    # 법선 변환에 반영한다.
     normal_matrix = transpose_matrix(inverse_matrix(matrix))
     x, y, z = vector[:3]
     tx = normal_matrix[0][0] * x + normal_matrix[0][1] * y + normal_matrix[0][2] * z
@@ -188,6 +189,7 @@ def apply_normal_transform(matrix: list[list[float]], vector: tuple[float, ...])
 
 
 def read_accessor(gltf: dict, binary: bytes, accessor_index: int) -> list[tuple[float, ...]]:
+    # accessor를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     accessor = gltf["accessors"][accessor_index]
     buffer_view = gltf["bufferViews"][accessor["bufferView"]]
     format_char, component_size = COMPONENT_INFO[accessor["componentType"]]
@@ -212,6 +214,7 @@ def extract_image(
     output_dir: Path,
     texture_stem: str,
 ) -> str:
+    # 원본 데이터에서 이미지만 골라 추출한다.
     image = gltf["images"][image_index]
     buffer_view = gltf["bufferViews"][image["bufferView"]]
     start = buffer_view.get("byteOffset", 0)
@@ -230,6 +233,7 @@ def material_texture(
     output_dir: Path,
     texture_stem: str,
 ) -> str | None:
+    # material 텍스처 정보를 계산해 반환한다.
     pbr = material.get("pbrMetallicRoughness", {})
     texture_info = pbr.get("baseColorTexture")
     if texture_info is None:
@@ -244,10 +248,12 @@ def material_texture(
 
 
 def sanitize_name(name: str) -> str:
+    # sanitize name 정보를 계산해 반환한다.
     return "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in name)
 
 
 def average_color(colors: list[tuple[float, ...]] | None) -> tuple[float, float, float]:
+    # average 색상 정보를 계산해 반환한다.
     if not colors:
         return (0.8, 0.8, 0.8)
     channel_count = min(3, len(colors[0]))
@@ -255,6 +261,7 @@ def average_color(colors: list[tuple[float, ...]] | None) -> tuple[float, float,
 
 
 def boost_tomato_red(color: tuple[float, float, float]) -> tuple[float, float, float]:
+    # boost tomato red 정보를 계산해 반환한다.
     r, g, b = color
     if r <= g * 1.5 or r <= b * 2.0:
         return color
@@ -278,12 +285,14 @@ def tune_vertex_color(
     primitive_name: str,
     color: tuple[float, float, float],
 ) -> tuple[float, float, float]:
+    # tune vertex 색상 정보를 계산해 반환한다.
     if "tomato" in glb_path.stem.lower():
         return boost_tomato_red(color)
     return color
 
 
 def export_obj(glb_path: Path, obj_path: Path) -> None:
+    # 내보내기 obj 정보를 계산해 반환한다.
     gltf, binary = load_glb(glb_path)
     output_dir = obj_path.parent
     mtl_path = obj_path.with_suffix(".mtl")
@@ -298,6 +307,7 @@ def export_obj(glb_path: Path, obj_path: Path) -> None:
         colors: list[tuple[float, ...]] | None,
         primitive_name: str,
     ) -> str:
+        # 현재 입력 조건을 바탕으로 material를 계산하거나 결정한다.
         if material_index is not None and material_index in material_cache:
             cached_name = material_cache[material_index]
             material = gltf["materials"][material_index]
@@ -377,6 +387,7 @@ def export_obj(glb_path: Path, obj_path: Path) -> None:
     scene_nodes = gltf["scenes"][scene_index]["nodes"]
 
     def export_node(node_index: int, parent_transform: list[list[float]]) -> None:
+        # 내보내기 노드 정보를 계산해 반환한다.
         nonlocal vertex_offset, texcoord_offset, normal_offset
 
         node = gltf["nodes"][node_index]
@@ -464,6 +475,7 @@ def export_obj(glb_path: Path, obj_path: Path) -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path)
     parser.add_argument("target", type=Path)
@@ -471,6 +483,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = parse_args()
     args.target.parent.mkdir(parents=True, exist_ok=True)
     export_obj(args.source, args.target)

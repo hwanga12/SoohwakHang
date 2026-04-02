@@ -1,3 +1,4 @@
+# 이 모듈은 IoT 장치 연동 패키지에서 sprinkler controller node 장치 흐름을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,14 +8,13 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 
-from agribot_interfaces.msg import IoTCommand, IoTDeviceState
+from agribot_interfaces.msg import IoTCommand, IoTCommandResult, IoTDeviceState
 from ament_index_python.packages import get_package_share_directory
 from rclpy.callback_groups import ReentrantCallbackGroup
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from std_msgs.msg import String
-
+from .command_result_contract import command_result_message_from_payload
 from .device_mapping import IoTDeviceSpec, get_default_iot_devices_path, load_iot_device_catalog
 from .sprinkler_controller_logic import (
     SprinklerExecutionPlan,
@@ -26,6 +26,7 @@ from .sprinkler_controller_logic import (
 
 @dataclass(slots=True)
 class ActiveSprinklerCommand:
+    # active sprinkler 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     plan: SprinklerExecutionPlan
     started_at_monotonic: float
     timer: object
@@ -33,9 +34,10 @@ class ActiveSprinklerCommand:
 
 
 class SprinklerControllerNode(Node):
-    """Execute sprinkler spray commands and mirror them as Gazebo spray effects."""
+    # ROS 2 실행 환경에서 sprinkler controller 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # SprinklerControllerNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('sprinkler_controller_node')
         callback_group = ReentrantCallbackGroup()
         default_world_file = Path(get_package_share_directory('agribot_description')) / 'worlds' / 'farm_world.sdf'
@@ -78,7 +80,7 @@ class SprinklerControllerNode(Node):
             20,
         )
         self._command_result_publisher = self.create_publisher(
-            String,
+            IoTCommandResult,
             self._command_result_topic,
             20,
         )
@@ -109,6 +111,7 @@ class SprinklerControllerNode(Node):
         )
 
     def _handle_command(self, message: IoTCommand) -> None:
+        # handle 명령 정보를 계산해 반환한다.
         if message.device_type.strip().lower() != 'sprinkler':
             return
 
@@ -150,6 +153,7 @@ class SprinklerControllerNode(Node):
         self._start_spray(device, plan)
 
     def _resolve_device(self, message: IoTCommand) -> IoTDeviceSpec | None:
+        # 현재 입력 조건을 바탕으로 장치를 계산하거나 결정한다.
         if message.device_id and message.device_id in self._sprinkler_devices:
             return self._sprinkler_devices[message.device_id]
         zone_id = message.zone_id.strip() or self._catalog.default_zone_id
@@ -160,6 +164,7 @@ class SprinklerControllerNode(Node):
         return self._sprinkler_devices.get(device.device_id)
 
     def _start_spray(self, device: IoTDeviceSpec, plan: SprinklerExecutionPlan) -> None:
+        # spray 실행 흐름을 시작하거나 마무리한다.
         self._stop_active_command(device, reason='Superseded by a newer sprinkler command.')
         effect_entity_name = (
             f'{device.device_id}_spray_effect_'
@@ -201,6 +206,7 @@ class SprinklerControllerNode(Node):
         )
 
     def _complete_spray(self, device_id: str) -> None:
+        # complete spray 정보를 계산해 반환한다.
         active_command = self._active_commands.pop(device_id, None)
         if active_command is None:
             return
@@ -225,6 +231,7 @@ class SprinklerControllerNode(Node):
         )
 
     def _stop_active_command(self, device: IoTDeviceSpec, *, reason: str) -> None:
+        # active 명령 실행 흐름을 시작하거나 마무리한다.
         active_command = self._active_commands.pop(device.device_id, None)
         if active_command is None:
             return
@@ -247,6 +254,7 @@ class SprinklerControllerNode(Node):
         effect_entity_name: str,
         effect_color: str,
     ) -> bool:
+        # spawn effect 정보를 계산해 반환한다.
         position = self._sprinkler_positions.get(device_id)
         if position is None:
             self.get_logger().warning(f'Cannot spawn Gazebo spray effect; no pose mapped for {device_id}.')
@@ -307,6 +315,7 @@ class SprinklerControllerNode(Node):
         return True
 
     def _remove_effect(self, effect_entity_name: str) -> None:
+        # effect를 정리하거나 제거한다.
         try:
             completed = subprocess.run(
                 [
@@ -349,6 +358,7 @@ class SprinklerControllerNode(Node):
         current_value: float,
         detail_message: str,
     ) -> None:
+        # 상태를 외부 시스템이나 다음 처리 단계로 전달한다.
         message = build_sprinkler_state(
             device,
             state=state,
@@ -370,13 +380,16 @@ class SprinklerControllerNode(Node):
         detail_message: str,
         executed_duration_sec: float,
     ) -> None:
-        result = String()
-        result.data = build_sprinkler_result_payload(
-            plan,
-            success=success,
-            state=state,
-            detail_message=detail_message,
-            executed_duration_sec=executed_duration_sec,
+        # 결과를 외부 시스템이나 다음 처리 단계로 전달한다.
+        result = command_result_message_from_payload(
+            build_sprinkler_result_payload(
+                plan,
+                success=success,
+                state=state,
+                detail_message=detail_message,
+                executed_duration_sec=executed_duration_sec,
+            ),
+            stamp=self.get_clock().now().to_msg(),
         )
         self._command_result_publisher.publish(result)
         self.get_logger().info(
@@ -385,6 +398,7 @@ class SprinklerControllerNode(Node):
         )
 
     def destroy_node(self) -> bool:
+        # destroy 노드 정보를 계산해 반환한다.
         for active_command in self._active_commands.values():
             active_command.timer.cancel()
             self.destroy_timer(active_command.timer)
@@ -394,6 +408,7 @@ class SprinklerControllerNode(Node):
 
 
 def _load_sprinkler_positions(world_file: Path) -> dict[str, tuple[float, float, float]]:
+    # sprinkler 위치 목록를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     if not world_file.exists() or world_file.is_dir():
         return {}
 
@@ -415,6 +430,7 @@ def _load_sprinkler_positions(world_file: Path) -> dict[str, tuple[float, float,
 
 
 def _build_effect_sdf(effect_entity_name: str, effect_color: str) -> str:
+    # effect SDF를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     rgba = _resolve_rgba(effect_color)
     nozzle_alpha = max(0.22, min(0.95, rgba[3] + 0.18))
     spray_visuals = '\n'.join(
@@ -488,6 +504,7 @@ def _build_particle_emitter_block(
     min_velocity: float,
     max_velocity: float,
 ) -> str:
+    # particle emitter block를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     start_alpha = min(0.95, max(0.60, rgba[3] + 0.28))
     end_alpha = max(0.08, rgba[3] - 0.18)
     return f"""      <particle_emitter name="{emitter_name}" type="point">
@@ -514,6 +531,7 @@ def _build_spray_visual_block(
     radius: float,
     length: float,
 ) -> str:
+    # spray visual block를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     beam_alpha = min(0.92, max(0.42, rgba[3] + 0.28))
     emissive_alpha = min(0.7, beam_alpha * 0.45)
     return f"""      <visual name="{visual_name}">
@@ -536,6 +554,7 @@ def _build_spray_visual_block(
 
 
 def _resolve_rgba(effect_color: str) -> tuple[float, float, float, float]:
+    # 현재 입력 조건을 바탕으로 rgba를 계산하거나 결정한다.
     normalized = effect_color.strip().lower()
     if normalized == 'blue':
         return (0.15, 0.55, 1.0, 0.42)
@@ -549,6 +568,7 @@ def _resolve_rgba(effect_color: str) -> tuple[float, float, float, float]:
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = SprinklerControllerNode()
     try:

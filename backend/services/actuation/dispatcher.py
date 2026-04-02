@@ -1,3 +1,4 @@
+# 이 모듈은 백엔드 장치 제어 영역에서 장치 제어 요청을 실제 실행 계획으로 분배한다.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -9,11 +10,13 @@ import subprocess
 import tempfile
 import uuid
 
+from ros_protocol_bridge import get_ros_protocol_bridge
 from services.actuation.schemas import ActuationDispatchResult, DiseaseTreatmentPlan
 
 
 @dataclass(frozen=True)
 class _IoTCommandPayload:
+    # IO T 명령 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     command_id: str
     zone_id: str
     device_id: str
@@ -29,9 +32,10 @@ class _IoTCommandPayload:
 
 
 class TreatmentCommandDispatcher:
-    """Publish actionable disease treatment plans onto the ROS IoT command bus."""
+    # 처치 명령 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # TreatmentCommandDispatcher 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         repo_root = Path(__file__).resolve().parents[3]
         self._repo_root = repo_root
         self._ros_setup_script = Path(
@@ -92,6 +96,7 @@ class TreatmentCommandDispatcher:
         requested_by: str = '',
         auto_execute: bool = True,
     ) -> ActuationDispatchResult:
+        # 계획를 외부 시스템이나 다음 처리 단계로 전달한다.
         if not auto_execute:
             return ActuationDispatchResult(
                 dispatched=False,
@@ -159,13 +164,9 @@ class TreatmentCommandDispatcher:
         auto_execute: bool = True,
         requires_approval: bool = False,
     ) -> ActuationDispatchResult:
-        normalized_device_type = device_type.strip().lower()
-        if normalized_device_type == 'sprinkler':
-            topic = self._dispatch_command_topic
-            min_subscribers = self._dispatch_min_subscribers
-        else:
-            topic = self._manual_command_topic
-            min_subscribers = self._manual_min_subscribers
+        # manual 명령를 외부 시스템이나 다음 처리 단계로 전달한다.
+        topic = self._manual_command_topic
+        min_subscribers = self._manual_min_subscribers
 
         validation_error = self._validate_runtime(topic=topic)
         if validation_error is not None:
@@ -191,6 +192,9 @@ class TreatmentCommandDispatcher:
         )
 
     def _validate_runtime(self, *, topic: str) -> ActuationDispatchResult | None:
+        # 런타임 데이터가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
+        if get_ros_protocol_bridge().is_ready():
+            return None
         if not self._env_setup_script.exists():
             return ActuationDispatchResult(
                 dispatched=False,
@@ -232,6 +236,19 @@ class TreatmentCommandDispatcher:
         topic: str,
         min_subscribers: int,
     ) -> ActuationDispatchResult:
+        # 명령를 외부 시스템이나 다음 처리 단계로 전달한다.
+        if get_ros_protocol_bridge().publish_iot_command(asdict(command), topic=topic):
+            return ActuationDispatchResult(
+                dispatched=True,
+                status='dispatched',
+                command_id=command.command_id,
+                topic=topic,
+                device_id=command.device_id,
+                device_type=command.device_type,
+                method='ros_direct_bridge',
+                detail_message='IoT command published to ROS successfully via direct bridge.',
+            )
+
         with tempfile.NamedTemporaryFile(
             mode='w',
             encoding='utf-8',
@@ -305,6 +322,7 @@ def _build_reason_text(
     *,
     observation_id: str,
 ) -> str:
+    # reason text를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     payload_items = {
         'effect_color': treatment_plan.effect_color or '',
         'treatment_type': treatment_plan.treatment_type or '',

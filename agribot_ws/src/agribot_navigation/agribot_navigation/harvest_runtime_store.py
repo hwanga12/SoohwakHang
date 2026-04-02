@@ -1,3 +1,4 @@
+# 이 모듈은 자율주행과 경로 계획 패키지에서 harvest runtime store 기능을 담당한다.
 from __future__ import annotations
 
 import json
@@ -17,12 +18,14 @@ HARVEST_FAILURE_ALERT_FILENAME = 'harvest_failure_alert.json'
 
 
 def runtime_dir_from_env() -> Path:
+    # 런타임 dir env 정보를 계산해 반환한다.
     runtime_dir = Path(os.environ.get('AGRIBOT_RUNTIME_DIR', str(DEFAULT_RUNTIME_DIR)))
     runtime_dir.mkdir(parents=True, exist_ok=True)
     return runtime_dir
 
 
 def _sanitize_runtime_identifier(value: str) -> str:
+    # sanitize 런타임 identifier 정보를 계산해 반환한다.
     normalized = ''.join(
         character if character.isalnum() or character in {'-', '_', '.'} else '_'
         for character in str(value).strip()
@@ -31,14 +34,17 @@ def _sanitize_runtime_identifier(value: str) -> str:
 
 
 def harvest_basket_state_path(runtime_dir: Path | None = None) -> Path:
+    # 수확 basket 상태 경로 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / HARVEST_BASKET_STATE_FILENAME
 
 
 def harvest_latest_event_path(runtime_dir: Path | None = None) -> Path:
+    # 수확 최신 이벤트 경로 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / HARVEST_LATEST_EVENT_FILENAME
 
 
 def harvest_event_record_path(event_id: str, runtime_dir: Path | None = None) -> Path:
+    # 수확 이벤트 record 경로 정보를 계산해 반환한다.
     return (
         (runtime_dir or runtime_dir_from_env())
         / HARVEST_EVENT_DIRNAME
@@ -47,6 +53,7 @@ def harvest_event_record_path(event_id: str, runtime_dir: Path | None = None) ->
 
 
 def harvest_action_status_path(runtime_dir: Path | None = None) -> Path:
+    # 수확 action 상태 경로 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / HARVEST_ACTION_STATUS_FILENAME
 
 
@@ -54,6 +61,7 @@ def harvest_action_status_record_path(
     mission_id: str,
     runtime_dir: Path | None = None,
 ) -> Path:
+    # 수확 action 상태 record 경로 정보를 계산해 반환한다.
     return (
         (runtime_dir or runtime_dir_from_env())
         / HARVEST_ACTION_STATUS_DIRNAME
@@ -62,10 +70,12 @@ def harvest_action_status_record_path(
 
 
 def harvest_failure_alert_path(runtime_dir: Path | None = None) -> Path:
+    # 수확 failure 알림 경로 정보를 계산해 반환한다.
     return (runtime_dir or runtime_dir_from_env()) / HARVEST_FAILURE_ALERT_FILENAME
 
 
 def reset_harvest_runtime_session(runtime_dir: Path | None = None) -> None:
+    # reset 수확 런타임 session 정보를 계산해 반환한다.
     target_runtime_dir = runtime_dir or runtime_dir_from_env()
     removable_paths = (
         harvest_basket_state_path(target_runtime_dir),
@@ -88,6 +98,7 @@ def reset_harvest_runtime_session(runtime_dir: Path | None = None) -> None:
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    # JSON 데이터 atomic를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_suffix(path.suffix + '.tmp')
     temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')

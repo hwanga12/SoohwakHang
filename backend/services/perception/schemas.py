@@ -1,3 +1,4 @@
+# 이 모듈은 인지 서비스 계층에서 인지 서비스에서 쓰는 데이터 계약을 정의한다.
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -6,6 +7,7 @@ from services.actuation.schemas import ActuationDispatchResult, DiseaseTreatment
 
 
 class BoundingBox(BaseModel):
+    # bounding 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     x1: float
     y1: float
     x2: float
@@ -13,6 +15,7 @@ class BoundingBox(BaseModel):
 
 
 class ThinInferenceConfirmRequest(BaseModel):
+    # thin inference confirm 요청 데이터를 구조적으로 다루기 위한 클래스를 정의한다.
     observation_id: str | None = None
     robot_id: str = ''
     zone_id: str = ''
@@ -32,6 +35,7 @@ class ThinInferenceConfirmRequest(BaseModel):
 
 
 class ThinInferenceConfirmResponse(BaseModel):
+    # thin inference confirm 응답 데이터를 구조적으로 다루기 위한 클래스를 정의한다.
     observation_id: str
     preliminary_label: str
     preliminary_confidence: float

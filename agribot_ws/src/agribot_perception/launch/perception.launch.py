@@ -1,3 +1,4 @@
+# 이 런치 파일은 인지와 추론 패키지의 노드와 의존 구성을 한 번에 실행하도록 묶는다.
 from __future__ import annotations
 
 from ament_index_python.packages import get_package_share_directory
@@ -8,6 +9,7 @@ import os
 
 
 def generate_launch_description() -> LaunchDescription:
+    # 실행 description을 생성한다.
     config_file = os.path.join(
         get_package_share_directory('agribot_perception'),
         'config',

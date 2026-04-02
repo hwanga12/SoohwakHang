@@ -1,3 +1,4 @@
+# 이 모듈은 상위 제어와 의사결정 패키지에서 actuation request planner 판단과 실행 보조 로직을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,12 +14,14 @@ from .environment_disease_rules import (
 
 
 class RequestRoute(str, Enum):
+    # 요청 데이터 경로 값을 명확히 구분하기 위한 열거형 클래스를 정의한다.
     AUTO = 'AUTO'
     REVIEW = 'REVIEW'
 
 
 @dataclass(slots=True)
 class ActuationRequestPlan:
+    # actuation 요청 데이터 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     zone_id: str
     device_id: str
     device_type: str
@@ -39,6 +42,7 @@ def plan_actuation_requests(
     *,
     requested_by: str,
 ) -> list[ActuationRequestPlan]:
+    # actuation requests를 어떤 순서와 조건으로 처리할지 계획한다.
     disease_signal = disease_signal or DiseaseSignal()
     decisions = evaluate_environment_disease_rules(environment, disease_signal)
     requests: list[ActuationRequestPlan] = []
@@ -71,6 +75,7 @@ def plan_actuation_requests(
 
 
 def request_signature(plan: ActuationRequestPlan) -> tuple[str, ...]:
+    # request signature 정보를 계산해 반환한다.
     return (
         plan.zone_id,
         plan.device_type,
@@ -86,10 +91,12 @@ def request_signature(plan: ActuationRequestPlan) -> tuple[str, ...]:
 
 
 def _default_device_id(zone_id: str, decision: RuleDecision) -> str:
+    # default 장치 id 정보를 계산해 반환한다.
     return f'{zone_id}_{decision.device_type}'
 
 
 def _build_reason(decision: RuleDecision) -> str:
+    # reason를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     payload_items = [
         f'{key}={value}'
         for key, value in sorted(decision.command_payload.items())

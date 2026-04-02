@@ -1,5 +1,4 @@
-"""Broadcast the odom -> base_link transform from nav_msgs/Odometry."""
-
+# 이 모듈은 로봇 모델과 시뮬레이션 자산 패키지에서 odom tf broadcaster 로직을 담당한다.
 from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 import rclpy
@@ -9,9 +8,10 @@ from tf2_ros import TransformBroadcaster
 
 
 class OdomTfBroadcaster(Node):
-    """Mirror /odom messages onto /tf for RViz2 and tf2 consumers."""
+    # odom TF 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # OdomTfBroadcaster 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('odom_tf_broadcaster')
         self.declare_parameter('reset_on_time_jump_sec', 1.0)
         self.declare_parameter('drop_warning_interval_sec', 2.0)
@@ -33,6 +33,7 @@ class OdomTfBroadcaster(Node):
         )
 
     def _handle_odom(self, msg: Odometry) -> None:
+        # handle odom 정보를 계산해 반환한다.
         if not rclpy.ok():
             return
 
@@ -68,6 +69,7 @@ class OdomTfBroadcaster(Node):
                 raise
 
     def _warn(self, message: str) -> None:
+        # warn 정보를 계산해 반환한다.
         from time import monotonic
 
         now_monotonic = monotonic()
@@ -78,6 +80,7 @@ class OdomTfBroadcaster(Node):
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = OdomTfBroadcaster()
     try:

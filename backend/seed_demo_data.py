@@ -1,3 +1,4 @@
+# 이 모듈은 시연용 초기 데이터를 데이터베이스에 채운다.
 from __future__ import annotations
 
 import argparse
@@ -39,6 +40,7 @@ DEFAULT_ROBOT_NAME = "AGR-02"
 
 @dataclass(frozen=True)
 class DiseaseScenario:
+    # disease 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     finding_label: str
     recommended_action: str
     evidence: str
@@ -90,16 +92,19 @@ HARVESTED_FRUITS = {
 
 
 def _parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(description="새 greenhouse 스키마를 생성하고 데모 데이터를 적재합니다.")
     parser.add_argument("--dry-run", action="store_true", help="DB 변경 없이 요약만 출력합니다.")
     return parser.parse_args()
 
 
 def _serialize_dt(value: datetime | None) -> str:
+    # DT를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return "" if value is None else value.isoformat()
 
 
 def _device_type(raw_type: str) -> str:
+    # 장치 type 정보를 계산해 반환한다.
     mapping = {
         "watering": "WATER_PUMP",
         "nutrient": "NUTRIENT",
@@ -109,6 +114,7 @@ def _device_type(raw_type: str) -> str:
 
 
 def _device_unit(raw_type: str) -> str:
+    # 장치 unit 정보를 계산해 반환한다.
     mapping = {
         "watering": "ml",
         "nutrient": "ml",
@@ -118,19 +124,23 @@ def _device_unit(raw_type: str) -> str:
 
 
 def _device_initial_state(raw_type: str) -> str:
+    # 장치 initial 상태 정보를 계산해 반환한다.
     return "OFF"
 
 
 def _display_name(plant_id: str) -> str:
+    # display name 정보를 계산해 반환한다.
     suffix = plant_id.split("_")[-1]
     return f"토마토 식물 {suffix}"
 
 
 def _uuid5(label: str) -> uuid.UUID:
+    # uuid 5 정보를 계산해 반환한다.
     return uuid.uuid5(uuid.NAMESPACE_URL, f"agribot-demo:{label}")
 
 
 def _fruit_status(fruit_id: str) -> tuple[str, bool]:
+    # fruit 상태 정보를 계산해 반환한다.
     if fruit_id in HARVESTED_FRUITS:
         success = HARVESTED_FRUITS[fruit_id]
         return ("HARVESTED" if success else "LOST", False)
@@ -145,6 +155,7 @@ def _fruit_status(fruit_id: str) -> tuple[str, bool]:
 
 
 def _ripeness_stage(fruit_id: str) -> str:
+    # ripeness stage 정보를 계산해 반환한다.
     if fruit_id in HARVESTED_FRUITS or fruit_id in {
         "farm01_plant_02_tomato_01",
         "farm01_plant_04_tomato_01",
@@ -156,10 +167,12 @@ def _ripeness_stage(fruit_id: str) -> str:
 
 
 def _ripeness_label(*, ready_to_harvest: bool) -> str:
+    # ripeness 라벨 정보를 계산해 반환한다.
     return "ripe" if ready_to_harvest else "turning"
 
 
 def _reset_schema(db: Any) -> None:
+    # reset 스키마 정보를 계산해 반환한다.
     db.execute(
         text(
             """
@@ -186,6 +199,7 @@ def _reset_schema(db: Any) -> None:
 
 
 def _build_dataset() -> dict[str, Any]:
+    # dataset를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     crop_catalog = _load_crop_instances()
     device_catalog = _load_iot_devices()
     map_payload = read_map_payload("farm_map")
@@ -543,6 +557,7 @@ def _build_dataset() -> dict[str, Any]:
 
 
 def _print_summary(dataset: dict[str, Any], *, dry_run: bool) -> None:
+    # print 요약 정보를 계산해 반환한다.
     mode = "DRY RUN" if dry_run else "APPLY"
     print(f"[{mode}] database_url={SQLALCHEMY_DATABASE_URL}")
     print(f"zone={dataset['zone'].id}")
@@ -572,6 +587,7 @@ def _print_summary(dataset: dict[str, Any], *, dry_run: bool) -> None:
 
 
 def _apply_dataset(dataset: dict[str, Any]) -> None:
+    # 데이터셋에 반영한다.
     db = SessionLocal()
     try:
         _reset_schema(db)
@@ -598,6 +614,7 @@ def _apply_dataset(dataset: dict[str, Any]) -> None:
 
 
 def main() -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = _parse_args()
     dataset = _build_dataset()
     _print_summary(dataset, dry_run=args.dry_run)

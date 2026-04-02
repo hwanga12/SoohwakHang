@@ -1,3 +1,4 @@
+# 이 테스트는 인지와 추론 패키지의 extract tomato train normal subset 동작을 검증한다.
 from __future__ import annotations
 
 import csv
@@ -15,6 +16,7 @@ def run_extractor(
     *,
     seed: int,
 ) -> subprocess.CompletedProcess[str]:
+    # extractor 실행 흐름을 시작하거나 마무리한다.
     script_path = (
         Path(__file__).resolve().parents[1]
         / "scripts"
@@ -42,11 +44,13 @@ def run_extractor(
 
 
 def read_manifest_rows(path: Path) -> list[dict[str, str]]:
+    # manifest rows를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         return list(csv.DictReader(handle))
 
 
 def test_normal_extractor_samples_only_jpg_and_is_seeded(tmp_path: Path) -> None:
+    # normal extractor samples only JPG AND IS seeded 동작과 회귀 여부를 검증한다.
     zip_path = tmp_path / "TS25_토마토_정상.zip"
     with ZipFile(zip_path, "w") as zf:
         zf.writestr("토마토/정상/a.jpg", b"a")

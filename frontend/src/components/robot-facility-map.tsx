@@ -1,3 +1,6 @@
+/*
+ * 이 컴포넌트는 프론트엔드 화면에서 농장 지도와 로봇 위치 역할을 맡는다.
+ */
 import {
   type CSSProperties,
   type MouseEvent,
@@ -786,6 +789,9 @@ export const RobotFacilityMap = memo(function RobotFacilityMap({
   )
 }, areRobotFacilityMapPropsEqual)
 
+/**
+ * 선택된 자산을 요약해 표시 문자열로 만드는 함수다.
+ */
 export function summarizeSelectedAsset(asset: SemanticAsset | null) {
   if (!asset) {
     return {

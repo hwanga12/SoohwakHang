@@ -1,3 +1,4 @@
+# 이 모듈은 통합 실행과 런치 조율 패키지에서 mission bridge executor 절차를 담당한다.
 from __future__ import annotations
 
 from collections import deque
@@ -7,6 +8,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agribot_interfaces.msg import (
+    MissionBridgeStatus as MissionBridgeStatusMsg,
+    MissionRequest as MissionRequestMsg,
+)
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -31,12 +36,18 @@ from .runtime_snapshot_service import (
     runtime_dir_from_env,
     write_json_atomic,
 )
+from .runtime_message_contract import (
+    mission_bridge_status_message_from_payload,
+    mission_request_payload_from_message,
+)
+from .protocol_qos import protocol_qos_profile
 
 TERMINAL_STATUSES = {'succeeded', 'failed', 'canceled'}
 
 
 @dataclass
 class ActiveMissionContext:
+    # 진행 중 미션 context 한 건을 명확한 필드 구조로 담기 위한 데이터 클래스다.
     request: MissionRequest
     received_at: str
     started_at: str | None = None
@@ -44,16 +55,20 @@ class ActiveMissionContext:
 
 
 def _iso_now() -> str:
+    # iso now 정보를 계산해 반환한다.
     return datetime.now(timezone.utc).isoformat()
 
 
 def _extract_string(payload: dict[str, Any], key: str, *, default: str = '') -> str:
+    # 원본 데이터에서 string만 골라 추출한다.
     raw_value = payload.get(key, default)
     return str(raw_value).strip() if raw_value is not None else default
 
 
 class MissionBridgeExecutor(Node):
+    # 미션 브리지 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     def __init__(self) -> None:
+        # MissionBridgeExecutor 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('mission_bridge_executor')
 
         if not self.has_parameter('use_sim_time'):
@@ -61,6 +76,8 @@ class MissionBridgeExecutor(Node):
         self.declare_parameter('robot_id', 'AGR-02')
         self.declare_parameter('command_poll_period_sec', 0.25)
         self.declare_parameter('processed_request_history_size', 64)
+        self.declare_parameter('request_topic', '/mission/requests')
+        self.declare_parameter('bridge_status_topic', '/mission/bridge_status')
         self.declare_parameter('patrol_start_service', '/patrol/start')
         self.declare_parameter('patrol_status_topic', '/patrol/status')
         self.declare_parameter('harvest_request_topic', '/harvest/request')
@@ -72,8 +89,21 @@ class MissionBridgeExecutor(Node):
         self._status_path = mission_status_path(self._runtime_dir)
         self._default_robot_id = str(self.get_parameter('robot_id').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
+        self._request_topic = str(self.get_parameter('request_topic').value)
+        self._bridge_status_topic = str(self.get_parameter('bridge_status_topic').value)
         history_size = max(8, int(self.get_parameter('processed_request_history_size').value))
 
+        self._request_subscription = self.create_subscription(
+            MissionRequestMsg,
+            self._request_topic,
+            self._handle_request_topic,
+            protocol_qos_profile(self._request_topic, default_depth=20),
+        )
+        self._bridge_status_publisher = self.create_publisher(
+            MissionBridgeStatusMsg,
+            self._bridge_status_topic,
+            protocol_qos_profile(self._bridge_status_topic, default_depth=20),
+        )
         self._patrol_start_client = self.create_client(
             Trigger,
             str(self.get_parameter('patrol_start_service').value),
@@ -110,10 +140,13 @@ class MissionBridgeExecutor(Node):
         self.get_logger().info(
             'mission bridge executor started. '
             f'request_path={self._request_path}, '
-            f'status_path={self._status_path}'
+            f'status_path={self._status_path}, '
+            f'request_topic={self._request_topic}, '
+            f'bridge_status_topic={self._bridge_status_topic}'
         )
 
     def _recover_previous_status(self) -> None:
+        # recover previous 상태 정보를 계산해 반환한다.
         if not self._status_path.exists():
             return
 
@@ -156,6 +189,7 @@ class MissionBridgeExecutor(Node):
         self._remember_processed_command_id(command_id)
 
     def _remember_processed_command_id(self, command_id: str) -> None:
+        # remember processed 명령 id 정보를 계산해 반환한다.
         if command_id in self._processed_command_ids:
             return
 
@@ -167,6 +201,7 @@ class MissionBridgeExecutor(Node):
         self._processed_command_ids.add(command_id)
 
     def _request_file_signature(self, path: Path) -> tuple[int, int]:
+        # request file signature 정보를 계산해 반환한다.
         stat_result = path.stat()
         return (int(stat_result.st_mtime_ns), int(stat_result.st_size))
 
@@ -180,6 +215,7 @@ class MissionBridgeExecutor(Node):
         result: str | None = None,
         completed_at: str | None = None,
     ) -> dict[str, Any]:
+        # 상태 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         request = context.request
         return build_mission_bridge_status_payload(
             mission_id=request.mission_id,
@@ -212,6 +248,7 @@ class MissionBridgeExecutor(Node):
         result: str | None = None,
         completed_at: str | None = None,
     ) -> dict[str, Any]:
+        # NON active 상태 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         return build_mission_bridge_status_payload(
             mission_id=request.mission_id,
             command_id=request.command_id,
@@ -233,6 +270,7 @@ class MissionBridgeExecutor(Node):
         )
 
     def _write_status(self, payload: dict[str, Any]) -> None:
+        # 상태를 파일이나 저장소에 기록한다.
         write_json_atomic(self._status_path, payload)
         mission_identifier = str(payload.get('mission_id') or payload.get('command_id') or '').strip()
         if mission_identifier:
@@ -241,6 +279,12 @@ class MissionBridgeExecutor(Node):
                 payload,
             )
         self._last_status_payload = payload
+        self._bridge_status_publisher.publish(
+            mission_bridge_status_message_from_payload(
+                payload,
+                stamp=self.get_clock().now().to_msg(),
+            )
+        )
 
     def _finish_active_request(
         self,
@@ -250,6 +294,7 @@ class MissionBridgeExecutor(Node):
         error: str | None = None,
         result: str | None = None,
     ) -> None:
+        # finish active request 정보를 계산해 반환한다.
         context = self._active_context
         if context is None:
             return
@@ -267,7 +312,15 @@ class MissionBridgeExecutor(Node):
         self._active_context = None
         self._service_future = None
 
+    def _handle_request_topic(self, message: MissionRequestMsg) -> None:
+        # Handle a typed mission request published directly onto the ROS graph.
+        self._process_raw_request_payload(
+            mission_request_payload_from_message(message),
+            source='topic',
+        )
+
     def _poll_request_file(self) -> None:
+        # poll request file 정보를 계산해 반환한다.
         if not self._request_path.exists():
             return
 
@@ -278,6 +331,25 @@ class MissionBridgeExecutor(Node):
 
         try:
             raw_payload = read_json_object(self._request_path)
+        except (OSError, ValueError) as exc:
+            failed_payload = build_mission_bridge_status_payload(
+                mission_id=None,
+                command_id='unknown-command',
+                request_type='unknown',
+                robot_id=self._default_robot_id,
+                status='failed',
+                message=f'mission request 파일을 해석하지 못했습니다: {exc}',
+                error='invalid_mission_request',
+                completed_at=_iso_now(),
+            )
+            self._write_status(failed_payload)
+            return
+
+        self._process_raw_request_payload(raw_payload, source='file')
+
+    def _process_raw_request_payload(self, raw_payload: dict[str, Any], *, source: str) -> None:
+        # Process a request payload from either the legacy file bridge or the direct ROS topic.
+        try:
             request = parse_mission_request_payload(
                 raw_payload,
                 default_robot_id=self._default_robot_id,
@@ -295,19 +367,6 @@ class MissionBridgeExecutor(Node):
                 requested_by=_extract_string(raw_payload, 'requested_by'),
                 status='failed',
                 message=str(exc),
-                error='invalid_mission_request',
-                completed_at=_iso_now(),
-            )
-            self._write_status(failed_payload)
-            return
-        except (OSError, ValueError) as exc:
-            failed_payload = build_mission_bridge_status_payload(
-                mission_id=None,
-                command_id='unknown-command',
-                request_type='unknown',
-                robot_id=self._default_robot_id,
-                status='failed',
-                message=f'mission request 파일을 해석하지 못했습니다: {exc}',
                 error='invalid_mission_request',
                 completed_at=_iso_now(),
             )
@@ -342,6 +401,11 @@ class MissionBridgeExecutor(Node):
             )
             return
 
+        if source == 'topic':
+            self.get_logger().info(
+                f'직접 ROS 미션 요청을 수신했습니다: mission_id={request.mission_id}, '
+                f'request_type={request.request_type}'
+            )
         if request.request_type == 'start_patrol':
             self._start_patrol_request(request)
             return
@@ -349,6 +413,7 @@ class MissionBridgeExecutor(Node):
         self._start_harvest_request(request)
 
     def _start_patrol_request(self, request: MissionRequest) -> None:
+        # patrol 요청 데이터 실행 흐름을 시작하거나 마무리한다.
         if not self._patrol_start_client.wait_for_service(timeout_sec=self._patrol_service_wait_sec):
             self._remember_processed_command_id(request.command_id)
             self._write_status(
@@ -380,6 +445,7 @@ class MissionBridgeExecutor(Node):
         self._service_future.add_done_callback(self._handle_patrol_start_response)
 
     def _handle_patrol_start_response(self, future: Any) -> None:
+        # handle patrol start response 정보를 계산해 반환한다.
         context = self._active_context
         if context is None or context.request.request_type != 'start_patrol':
             return
@@ -413,6 +479,7 @@ class MissionBridgeExecutor(Node):
         )
 
     def _start_harvest_request(self, request: MissionRequest) -> None:
+        # harvest 요청 데이터 실행 흐름을 시작하거나 마무리한다.
         context = ActiveMissionContext(
             request=request,
             received_at=_iso_now(),
@@ -443,6 +510,7 @@ class MissionBridgeExecutor(Node):
         )
 
     def _handle_patrol_status(self, msg: String) -> None:
+        # handle patrol 상태 정보를 계산해 반환한다.
         context = self._active_context
         if context is None or context.request.request_type != 'start_patrol':
             return
@@ -480,6 +548,7 @@ class MissionBridgeExecutor(Node):
         )
 
     def _handle_harvest_status(self, msg: String) -> None:
+        # handle 수확 상태 정보를 계산해 반환한다.
         context = self._active_context
         if context is None or context.request.request_type != 'harvest_target':
             return
@@ -524,6 +593,7 @@ class MissionBridgeExecutor(Node):
 
 
 def main(args: list[str] | None = None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = MissionBridgeExecutor()
     try:

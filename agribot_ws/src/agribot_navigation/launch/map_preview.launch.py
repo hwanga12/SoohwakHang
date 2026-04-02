@@ -1,3 +1,4 @@
+# 이 런치 파일은 자율주행과 경로 계획 패키지의 노드와 의존 구성을 한 번에 실행하도록 묶는다.
 import os
 from pathlib import Path
 import sys
@@ -23,6 +24,7 @@ except ModuleNotFoundError:
 
 
 def generate_launch_description():
+    # 실행 description을 생성한다.
     pkg_agribot_navigation = get_package_share_directory('agribot_navigation')
     graphics_env_actions = build_graphics_environment_actions()
     default_map = os.path.join(

@@ -1,3 +1,4 @@
+# 이 테스트는 백엔드의 perception read api 동작과 회귀 여부를 검증한다.
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from routers import alerts, camera, media, plants
 
 @pytest.fixture()
 def runtime_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    # 런타임 dir 정보를 계산해 반환한다.
     monkeypatch.setenv("AGRIBOT_BACKEND_RUNTIME_DIR", str(tmp_path))
     monkeypatch.setenv("AGRIBOT_ROBOT_CAMERA_RUNTIME_DIR", str(tmp_path))
     return tmp_path
@@ -30,6 +32,7 @@ def _write_runtime_observation(
     reviewed_at: str,
     image_format: str = "jpg",
 ) -> Path:
+    # 런타임 데이터 관측 결과를 파일이나 저장소에 기록한다.
     date_dir = runtime_dir / "20260326"
     date_dir.mkdir(parents=True, exist_ok=True)
 
@@ -77,6 +80,7 @@ def _write_live_camera_snapshot(
     observation_id: str = "obs-runtime-01",
     image_format: str = "jpg",
 ) -> Path:
+    # live 카메라 스냅샷를 파일이나 저장소에 기록한다.
     camera_dir = runtime_dir / "camera"
     camera_dir.mkdir(parents=True, exist_ok=True)
 
@@ -109,6 +113,7 @@ def _write_live_camera_snapshot(
 
 
 def test_perception_read_endpoints_return_runtime_observation_data(runtime_dir: Path) -> None:
+    # perception read endpoints return 런타임 데이터 관측 결과 data 동작과 회귀 여부를 검증한다.
     image_path = _write_runtime_observation(
         runtime_dir,
         observation_id="obs-runtime-01",
@@ -159,6 +164,7 @@ def test_perception_read_endpoints_return_runtime_observation_data(runtime_dir: 
 
 
 def test_alert_ack_endpoint_marks_runtime_alert_as_acknowledged(runtime_dir: Path) -> None:
+    # alert ACK endpoint marks 런타임 데이터 alert AS acknowledged 동작과 회귀 여부를 검증한다.
     _write_runtime_observation(
         runtime_dir,
         observation_id="obs-runtime-ack",
@@ -181,6 +187,7 @@ def test_alert_ack_endpoint_marks_runtime_alert_as_acknowledged(runtime_dir: Pat
 
 
 def test_live_camera_snapshot_marks_stale_frames(runtime_dir: Path) -> None:
+    # live 카메라 스냅샷 marks stale frames 동작과 회귀 여부를 검증한다.
     _write_live_camera_snapshot(
         runtime_dir,
         captured_at="2020-01-01T00:00:00+00:00",

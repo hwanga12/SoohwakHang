@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
-# Usage examples:
-#   python tools/ripeness/convert_laboro_to_cls.py --input /path/to/LaboroTomato --output /path/to/output_cls
-#   python tools/ripeness/convert_laboro_to_cls.py --input /path/to/LaboroTomato --output /path/to/output_cls --val-ratio 0.1 --seed 7
-"""Convert LaboroTomato detection annotations into a ripeness classification dataset.
 
-The script reads COCO-style detection annotations from an extracted LaboroTomato
-dataset and materializes bbox crops into this layout:
-
-- train/unripe
-- train/turning
-- train/ripe
-- val/unripe
-- val/turning
-- val/ripe
-- test/unripe
-- test/turning
-- test/ripe
-
-Rules:
-- original test stays as final test
-- validation is sampled only from the original train split
-- splitting happens by source image, never by crop
-- crops from the same source image never appear across both train and val
-"""
+# LaboroTomato 탐지 주석을 익음도 분류 데이터셋 형태로 변환한다.
+#
+# 사용 예시:
+# python tools/ripeness/convert_laboro_to_cls.py --input /path/to/LaboroTomato --output /path/to/output_cls
+# python tools/ripeness/convert_laboro_to_cls.py --input /path/to/LaboroTomato --output /path/to/output_cls --val-ratio 0.1 --seed 7
+#
+# 이 스크립트는 COCO 형식 주석을 읽어 바운딩 박스 단위 crop 이미지를 만들고,
+# 아래와 같은 분류 데이터셋 구조로 정리한다.
+#
+# - train/unripe
+# - train/turning
+# - train/ripe
+# - val/unripe
+# - val/turning
+# - val/ripe
+# - test/unripe
+# - test/turning
+# - test/ripe
+#
+# 적용 규칙:
+# - 원본 test split은 최종 test로 유지한다.
+# - validation은 원본 train split 안에서만 샘플링한다.
+# - 분할은 crop 단위가 아니라 원본 이미지 단위로 수행한다.
+# - 같은 원본 이미지에서 나온 crop은 train과 val에 동시에 들어가지 않는다.
 
 from __future__ import annotations
 
@@ -94,6 +95,7 @@ MANIFEST_FIELDNAMES = [
 
 @dataclass(frozen=True, slots=True)
 class SplitSource:
+    # split 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     input_split: str
     input_root: Path
     split_root: Path
@@ -102,6 +104,7 @@ class SplitSource:
 
 @dataclass(frozen=True, slots=True)
 class ImageRecord:
+    # 이미지 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     source_split: str
     image_id: str
     image_key: str
@@ -112,6 +115,7 @@ class ImageRecord:
 
 @dataclass(frozen=True, slots=True)
 class LoadedSplit:
+    # loaded 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     split_source: SplitSource
     images: list[ImageRecord]
     category_name_by_id: dict[Any, str]
@@ -120,6 +124,7 @@ class LoadedSplit:
 
 @dataclass(slots=True)
 class ImageResolutionStats:
+    # 이미지 resolution 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     indexed_images_total: int
     resolved_images: int = 0
     unresolved_images: int = 0
@@ -129,22 +134,26 @@ class ImageResolutionStats:
     sample_ambiguous_names: list[str] = field(default_factory=list)
 
     def record_resolved(self, image_path: Path) -> None:
+        # resolved를 파일이나 저장소에 기록한다.
         self.resolved_images += 1
         if len(self.sample_resolved_paths) < DEBUG_SAMPLE_LIMIT:
             self.sample_resolved_paths.append(str(image_path))
 
     def record_unresolved(self, file_name: str) -> None:
+        # unresolved를 파일이나 저장소에 기록한다.
         self.unresolved_images += 1
         if file_name and len(self.sample_unresolved_names) < DEBUG_SAMPLE_LIMIT:
             self.sample_unresolved_names.append(file_name)
 
     def record_ambiguous(self, file_name: str) -> None:
+        # ambiguous를 파일이나 저장소에 기록한다.
         self.ambiguous_images += 1
         if file_name and len(self.sample_ambiguous_names) < DEBUG_SAMPLE_LIMIT:
             self.sample_ambiguous_names.append(file_name)
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(
         description="Convert LaboroTomato detection annotations into ripeness classification crops."
     )
@@ -174,6 +183,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = parse_args()
     input_root = Path(args.input).expanduser().resolve()
     output_root = Path(args.output).expanduser().resolve()
@@ -215,6 +225,7 @@ def main() -> int:
 
 
 def validate_val_ratio(value: float) -> None:
+    # VAL ratio가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     if not 0.0 <= value < 1.0:
         raise ValueError("--val-ratio must be in the range [0.0, 1.0).")
 
@@ -226,6 +237,7 @@ def convert_dataset(
     val_ratio: float,
     seed: int,
 ) -> tuple[Counter[tuple[str, str]], Counter[tuple[str, str]], Counter[str], Path]:
+    # dataset를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     if not input_root.exists():
         raise FileNotFoundError(f"Input dataset root does not exist: {input_root}")
     if not input_root.is_dir():
@@ -298,11 +310,13 @@ def convert_dataset(
 
 
 def ensure_output_tree(output_root: Path) -> None:
+    # output tree가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     for subset in OUTPUT_SPLITS:
         for class_name in CLASS_NAMES:
             (output_root / subset / class_name).mkdir(parents=True, exist_ok=True)
 
 def discover_split_source(input_root: Path, source_split: str) -> SplitSource | None:
+    # discover split 출처 정보를 계산해 반환한다.
     print(f"[DEBUG] discover_split_source split={source_split} input_root={input_root}")
 
     direct_candidates = [
@@ -314,6 +328,7 @@ def discover_split_source(input_root: Path, source_split: str) -> SplitSource | 
     seen: set[Path] = set()
 
     def add_candidate(path: Path) -> None:
+        # add 후보 정보를 계산해 반환한다.
         try:
             resolved = path.expanduser().resolve()
         except Exception:
@@ -353,6 +368,7 @@ def discover_split_source(input_root: Path, source_split: str) -> SplitSource | 
     return None
 
 def looks_like_coco_annotation(path: Path) -> bool:
+    # looks like coco annotation 정보를 계산해 반환한다.
     try:
         with path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
@@ -368,6 +384,7 @@ def looks_like_coco_annotation(path: Path) -> bool:
 
 
 def load_json(path: Path) -> dict[str, Any]:
+    # JSON 데이터를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with path.open("r", encoding="utf-8") as handle:
         data = json.load(handle)
     if not isinstance(data, dict):
@@ -382,6 +399,7 @@ def load_split(
     indexed_images_total: int,
     skipped: Counter[str],
 ) -> LoadedSplit:
+    # split를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     data = load_json(split_source.annotation_path)
     raw_category_name_by_id = build_raw_category_name_map(data.get("categories", []), skipped)
     class_name_by_id = build_category_map(data.get("categories", []), skipped)
@@ -437,6 +455,7 @@ def build_raw_category_name_map(
     categories: list[Any],
     skipped: Counter[str],
 ) -> dict[Any, str]:
+    # RAW category 이름 지도를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     mapping: dict[Any, str] = {}
     for category in categories:
         if not isinstance(category, dict):
@@ -454,6 +473,7 @@ def build_category_map(
     categories: list[Any],
     skipped: Counter[str],
 ) -> dict[Any, str]:
+    # category 지도를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     mapped: dict[Any, str] = {}
     for category in categories:
         if not isinstance(category, dict):
@@ -478,6 +498,7 @@ def assign_train_val_subsets(
     val_ratio: float,
     seed: int,
 ) -> dict[str, str]:
+    # assign train val subsets 정보를 계산해 반환한다.
     image_keys = sorted({record.image_key for record in image_records})
     if not image_keys:
         return {}
@@ -493,6 +514,7 @@ def assign_train_val_subsets(
 
 
 def compute_val_image_count(total_images: int, val_ratio: float) -> int:
+    # 현재 입력 조건을 바탕으로 VAL 이미지 count를 계산하거나 결정한다.
     if total_images < 2 or val_ratio <= 0.0:
         return 0
 
@@ -511,6 +533,7 @@ def process_loaded_split(
     crop_counts: Counter[tuple[str, str]],
     skipped: Counter[str],
 ) -> None:
+    # process loaded split 정보를 계산해 반환한다.
     for record in loaded_split.images:
         subset = subset_for_image_key.get(record.image_key)
         if subset is None:
@@ -568,6 +591,7 @@ def process_image_annotations(
     crop_counts: Counter[tuple[str, str]],
     skipped: Counter[str],
 ) -> None:
+    # process 이미지 annotations 정보를 계산해 반환한다.
     for ann_index, annotation in enumerate(record.annotations):
         category_id = annotation.get("category_id")
         category_name = loaded_split.category_name_by_id.get(category_id, "")
@@ -677,6 +701,7 @@ def append_missing_image_rows(
     manifest_rows: list[dict[str, str]],
     skipped: Counter[str],
 ) -> None:
+    # append missing 이미지 rows 정보를 계산해 반환한다.
     if not record.annotations:
         skipped["missing_image"] += 1
         manifest_rows.append(
@@ -722,6 +747,7 @@ def append_image_open_error_rows(
     manifest_rows: list[dict[str, str]],
     skipped: Counter[str],
 ) -> None:
+    # append 이미지 open error rows 정보를 계산해 반환한다.
     if not record.annotations:
         skipped["image_open_error"] += 1
         manifest_rows.append(
@@ -775,6 +801,7 @@ def build_manifest_row(
     crop_height: int | None = None,
     crop_path: Path | None = None,
 ) -> dict[str, str]:
+    # manifest ROW를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return {
         "subset": subset,
         "source_split": record.source_split,
@@ -803,6 +830,7 @@ def build_manifest_row(
 
 
 def format_optional_number(value: float | int | None) -> str:
+    # optional number를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     if value is None:
         return ""
     if isinstance(value, int):
@@ -813,6 +841,7 @@ def format_optional_number(value: float | int | None) -> str:
 
 
 def write_manifest(output_root: Path, rows: list[dict[str, str]]) -> Path:
+    # manifest를 파일이나 저장소에 기록한다.
     manifest_path = output_root / MANIFEST_FILENAME
     with manifest_path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=MANIFEST_FIELDNAMES)
@@ -822,6 +851,7 @@ def write_manifest(output_root: Path, rows: list[dict[str, str]]) -> Path:
 
 
 def annotation_identifier(annotation: dict[str, Any], ann_index: int) -> str:
+    # annotation identifier 정보를 계산해 반환한다.
     annotation_id = annotation.get("id")
     if annotation_id is None:
         return f"ann_{ann_index:06d}"
@@ -829,6 +859,7 @@ def annotation_identifier(annotation: dict[str, Any], ann_index: int) -> str:
 
 
 def map_category_name(raw_name: str) -> str | None:
+    # 입력 값을 category 이름에 대응되도록 매핑한다.
     normalized = raw_name.strip().lower().replace("-", "_").replace(" ", "_")
     for suffix, class_name in CLASS_SUFFIX_MAP.items():
         if normalized.endswith(suffix):
@@ -837,6 +868,7 @@ def map_category_name(raw_name: str) -> str | None:
 
 
 def build_image_index(root: Path) -> tuple[dict[str, list[Path]], int]:
+    # 이미지 index를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     index: dict[str, list[Path]] = defaultdict(list)
     seen_paths: set[Path] = set()
     if root.exists() and root.is_dir():
@@ -858,6 +890,7 @@ def resolve_image_path(
     resolution_stats: ImageResolutionStats,
     skipped: Counter[str],
 ) -> Path | None:
+    # 현재 입력 조건을 바탕으로 이미지 경로를 계산하거나 결정한다.
     file_name = str(image_info.get("file_name", "")).strip()
     if not file_name:
         resolution_stats.record_unresolved("<empty_file_name>")
@@ -905,6 +938,7 @@ def print_image_resolution_debug(
     split_source: SplitSource,
     resolution_stats: ImageResolutionStats,
 ) -> None:
+    # print 이미지 resolution 디버그 정보를 계산해 반환한다.
     print(
         f"\n[DEBUG] Image resolution summary for split '{split_source.input_split}':"
     )
@@ -935,6 +969,7 @@ def normalize_bbox_to_crop_box(
     width: int,
     height: int,
 ) -> tuple[int, int, int, int] | None:
+    # 바운딩 박스 TO 작물 BOX를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     bbox = parse_bbox(raw_bbox)
     if bbox is None:
         return None
@@ -950,6 +985,7 @@ def normalize_bbox_to_crop_box(
 
 
 def parse_bbox(raw_bbox: Any) -> tuple[float, float, float, float] | None:
+    # 바운딩 박스를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     if isinstance(raw_bbox, (list, tuple)) and len(raw_bbox) >= 4:
         try:
             x = float(raw_bbox[0])
@@ -984,6 +1020,7 @@ def parse_bbox(raw_bbox: Any) -> tuple[float, float, float, float] | None:
 
 
 def build_image_key(image_id: str, file_name: str) -> str:
+    # 이미지 KEY를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     normalized_file_name = file_name.strip()
     normalized_image_id = image_id.strip()
     if normalized_image_id and normalized_file_name:
@@ -1002,6 +1039,7 @@ def build_output_path(
     image_id: str,
     annotation_id: str,
 ) -> Path:
+    # output 경로를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     stem = sanitize_stem(image_path.stem)
     annotation_token = sanitize_stem(annotation_id or "ann")
     image_token = sanitize_stem(image_id or image_path.stem)
@@ -1015,6 +1053,7 @@ def build_output_path(
 
 
 def sanitize_stem(value: str) -> str:
+    # sanitize stem 정보를 계산해 반환한다.
     cleaned = "".join(
         char if char.isalnum() or char in {"-", "_"} else "_"
         for char in value

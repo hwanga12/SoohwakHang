@@ -1,5 +1,4 @@
-"""Shared utility helpers for agribot perception."""
-
+# 이 모듈은 인지와 추론 패키지에서 init 기능을 담당한다.
 from .codebook import (
     AREA_CODEBOOK,
     CROP_CODEBOOK,

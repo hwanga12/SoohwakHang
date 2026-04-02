@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Extract a seeded tomato normal-image subset directly from a zip archive."""
 
+# 이 모듈은 인지와 추론 패키지에서 extract tomato train normal subset 기능을 담당한다.
 from __future__ import annotations
 
 import argparse
@@ -27,14 +27,17 @@ MANIFEST_FIELDNAMES = [
 
 @dataclass(frozen=True, slots=True)
 class SampledMember:
+    # sampled 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     member_name: str
 
     @property
     def image_filename(self) -> str:
+        # 이미지 filename 정보를 계산해 반환한다.
         return Path(self.member_name).name
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(
         description="Extract a seeded tomato normal subset from a single zip file."
     )
@@ -47,10 +50,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def configure_logging() -> None:
+    # configure logging 정보를 계산해 반환한다.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
 
 def list_jpg_members(zip_handle: ZipFile) -> list[SampledMember]:
+    # JPG members를 모아 순회하기 쉬운 형태로 정리한다.
     members = [
         SampledMember(info.filename)
         for info in zip_handle.infolist()
@@ -60,6 +65,7 @@ def list_jpg_members(zip_handle: ZipFile) -> list[SampledMember]:
 
 
 def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> None:
+    # CSV를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -68,6 +74,7 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> 
 
 
 def write_stats_json(path: Path, stats: dict[str, Any]) -> None:
+    # stats JSON 데이터를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(stats, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -76,11 +83,13 @@ def write_stats_json(path: Path, stats: dict[str, Any]) -> None:
 
 
 def remove_existing_file(path: Path) -> None:
+    # existing 파일를 정리하거나 제거한다.
     if path.is_symlink() or path.exists():
         path.unlink()
 
 
 def extract_member(zip_handle: ZipFile, member_name: str, destination_path: Path) -> None:
+    # 원본 데이터에서 member만 골라 추출한다.
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     remove_existing_file(destination_path)
     with zip_handle.open(member_name) as source_handle, destination_path.open("wb") as output_handle:
@@ -95,6 +104,7 @@ def extract_normal_subset(
     seed: int,
     manifest_csv_path: Path,
 ) -> int:
+    # 원본 데이터에서 normal subset만 골라 추출한다.
     if num_samples < 0:
         raise SystemExit("--num-samples must be >= 0.")
 
@@ -144,6 +154,7 @@ def extract_normal_subset(
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     configure_logging()
     args = parse_args()
     zip_path = Path(args.zip_path).expanduser().resolve()

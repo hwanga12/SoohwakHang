@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
-"""Materialize the selected tomato train positive subset from planner CSV + source zips.
 
-Images are resolved from train source zip files. Because zip members are not
-filesystem entries, source images are always copied out of the archive into the
-output tree. ``--link-mode`` therefore applies to label JSON materialization,
-with a safe fallback to copy when hardlinking is not possible across devices.
-"""
-
+# 이 모듈은 인지와 추론 패키지에서 materialize tomato train positive subset 기능을 담당한다.
 from __future__ import annotations
 
 import argparse
@@ -48,7 +42,7 @@ MISSING_FIELDNAMES = [
 
 @dataclass(frozen=True, slots=True)
 class PlannedPositiveRecord:
-    """One selected positive row loaded from the planner CSV."""
+    # planned positive 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     line_number: int
     disease_code: str
@@ -60,13 +54,14 @@ class PlannedPositiveRecord:
 
     @property
     def label_category(self) -> str:
+        # 라벨 category 정보를 계산해 반환한다.
         parts = Path(self.json_rel_path).parts
         return parts[0] if parts else ""
 
 
 @dataclass(frozen=True, slots=True)
 class ZipMemberReference:
-    """A zip member candidate indexed by basename."""
+    # ZIP member 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     zip_path: Path
     member_name: str
@@ -74,22 +69,27 @@ class ZipMemberReference:
 
     @property
     def member_parts(self) -> tuple[str, ...]:
+        # member parts 정보를 계산해 반환한다.
         return Path(self.member_name).parts
 
     @property
     def basename(self) -> str:
+        # basename 정보를 계산해 반환한다.
         return Path(self.member_name).name
 
     @property
     def basename_casefold(self) -> str:
+        # basename casefold 정보를 계산해 반환한다.
         return self.basename.casefold()
 
     @property
     def stem_casefold(self) -> str:
+        # stem casefold 정보를 계산해 반환한다.
         return Path(self.member_name).stem.casefold()
 
 
 def parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(
         description="Materialize selected tomato train positive samples from planner CSV and source zips."
     )
@@ -117,14 +117,17 @@ def parse_args() -> argparse.Namespace:
 
 
 def configure_logging() -> None:
+    # configure logging 정보를 계산해 반환한다.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
 
 def parse_bool_text(value: Any) -> bool:
+    # bool text를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return str(value).strip().lower() in {"1", "true", "yes", "y"}
 
 
 def sort_counter(counter: Counter[str]) -> dict[str, int]:
+    # sort counter 정보를 계산해 반환한다.
     return {
         key: value
         for key, value in sorted(counter.items(), key=lambda item: (-item[1], item[0]))
@@ -132,11 +135,13 @@ def sort_counter(counter: Counter[str]) -> dict[str, int]:
 
 
 def image_extension(image_filename: str) -> str:
+    # 이미지 extension 정보를 계산해 반환한다.
     suffix = Path(image_filename).suffix
     return suffix if suffix else "<none>"
 
 
 def load_selected_positive_records(plan_csv_path: Path) -> list[PlannedPositiveRecord]:
+    # selected positive 기록 목록를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     with plan_csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         headers = set(reader.fieldnames or [])
@@ -190,6 +195,7 @@ def index_source_zip_members(
     dict[str, list[ZipMemberReference]],
     int,
 ]:
+    # index 출처 zip members 정보를 계산해 반환한다.
     zip_paths = sorted(train_source_root.rglob("*.zip"))
     if not zip_paths:
         raise SystemExit(f"No zip files found under --train-source-root: {train_source_root}")
@@ -231,6 +237,7 @@ def index_source_zip_members(
 
 
 def dedupe_candidates(candidates: list[ZipMemberReference]) -> list[ZipMemberReference]:
+    # dedupe 후보 정보를 계산해 반환한다.
     unique_candidates: list[ZipMemberReference] = []
     seen: set[tuple[Path, str]] = set()
     for candidate in candidates:
@@ -246,6 +253,7 @@ def filter_candidates_by_category(
     candidates: list[ZipMemberReference],
     category: str,
 ) -> list[ZipMemberReference]:
+    # filter 후보 category 정보를 계산해 반환한다.
     if not category:
         return dedupe_candidates(candidates)
 
@@ -263,6 +271,7 @@ def filter_candidates_by_category(
 def select_unique_candidate(
     candidates: list[ZipMemberReference],
 ) -> tuple[ZipMemberReference | None, str | None]:
+    # unique 후보 가운데 필요한 대상을 고른다.
     if not candidates:
         return None, "image_missing"
     if len(candidates) == 1:
@@ -280,6 +289,7 @@ def resolve_zip_member(
     filename_casefold_index: dict[str, list[ZipMemberReference]],
     stem_casefold_index: dict[str, list[ZipMemberReference]],
 ) -> tuple[ZipMemberReference | None, str | None]:
+    # 현재 입력 조건을 바탕으로 ZIP member를 계산하거나 결정한다.
     search_pools = [
         filename_index.get(record.image_filename, []),
         filename_casefold_index.get(record.image_filename.casefold(), []),
@@ -303,6 +313,7 @@ def resolve_zip_member(
 
 
 def resolve_label_json_path(record: PlannedPositiveRecord, train_label_root: Path) -> Path | None:
+    # 현재 입력 조건을 바탕으로 라벨 JSON 데이터 경로를 계산하거나 결정한다.
     candidate_paths: list[Path] = []
     if str(record.json_path):
         candidate_paths.append(record.json_path.expanduser())
@@ -320,6 +331,7 @@ def resolve_label_json_path(record: PlannedPositiveRecord, train_label_root: Pat
 
 
 def remove_existing_file(path: Path) -> None:
+    # existing 파일를 정리하거나 제거한다.
     if path.is_symlink() or path.exists():
         path.unlink()
 
@@ -330,6 +342,7 @@ def materialize_label_file(
     link_mode: str,
     stats: Counter[str],
 ) -> None:
+    # materialize 라벨 file 정보를 계산해 반환한다.
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     remove_existing_file(destination_path)
 
@@ -361,6 +374,7 @@ def extract_zip_member_to_path(
     member_name: str,
     destination_path: Path,
 ) -> None:
+    # 원본 데이터에서 ZIP member TO 경로만 골라 추출한다.
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     remove_existing_file(destination_path)
     with zip_handle.open(member_name) as source_handle, destination_path.open("wb") as output_handle:
@@ -373,6 +387,7 @@ def build_missing_row(
     issue_type: str,
     detail: str,
 ) -> dict[str, str]:
+    # missing ROW를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return {
         "issue_type": issue_type,
         "disease_code": record.disease_code,
@@ -385,6 +400,7 @@ def build_missing_row(
 
 
 def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> None:
+    # CSV를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -393,6 +409,7 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> 
 
 
 def write_stats_json(path: Path, stats: dict[str, Any]) -> None:
+    # stats JSON 데이터를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(stats, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -401,6 +418,7 @@ def write_stats_json(path: Path, stats: dict[str, Any]) -> None:
 
 
 def validate_counts(stats: Counter[str]) -> list[str]:
+    # counts가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     issues: list[str] = []
     if stats["materialized_source_files"] != stats["materialized_label_files"]:
         issues.append("source/label materialized file counts do not match")
@@ -419,6 +437,7 @@ def materialize_subset(
     strict: bool,
     dry_run: bool,
 ) -> int:
+    # materialize subset 정보를 계산해 반환한다.
     selected_records = load_selected_positive_records(plan_csv_path)
     LOGGER.info("Loaded %d selected positive rows from planner CSV.", len(selected_records))
 
@@ -577,6 +596,7 @@ def materialize_subset(
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     configure_logging()
     args = parse_args()
     plan_csv_path = Path(args.plan_csv).expanduser().resolve()

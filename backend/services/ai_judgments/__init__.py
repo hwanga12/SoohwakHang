@@ -1,1 +1,1 @@
-"""AI judgment persistence and policy helpers."""
+# 이 모듈은 AI 판정 계층에서 AI 판정 서비스 묶음한다.

@@ -1,3 +1,4 @@
+# 이 스크립트는 시뮬레이션 월드 파일을 자동 생성하거나 갱신하는 보조 도구다.
 import sys
 
 x_centers = [-8.0, -6.0, -4.0, -2.0, 2.0, 4.0, 6.0, 8.0]
@@ -40,7 +41,7 @@ world = """<?xml version="1.0" ?>
       </link>
     </model>
 
-    <!-- Invisible boundary walls -> Outer 20x20m mapped border -->
+    <!-- 바깥 20x20m 지도를 벗어나지 않도록 두는 보이지 않는 경계 벽 -->
     <model name="invisible_boundaries">
       <static>true</static>
       <link name="link">
@@ -58,14 +59,14 @@ world = """<?xml version="1.0" ?>
       </link>
     </model>
 
-    <!-- 8 Crop row impassable boundaries (width 0.5m, length 16m) -->
+    <!-- 작물 줄 8개를 충돌 장애물로 두어 통과하지 못하게 하는 구간 -->
     <model name="crop_rows">
       <static>true</static>
       <link name="link">
 """
 
 for x in x_centers:
-    # row width 0.5m, length 16m
+    # 각 작물 줄은 폭 0.5m, 길이 16m의 장애물로 표현한다.
     world += f'        <collision name="row_c_{x}"><pose>{x} 0 0.5 0 0 0</pose><geometry><box><size>0.5 16 1</size></box></geometry></collision>\n'
     world += f'        <visual name="row_v_{x}"><pose>{x} 0 0.5 0 0 0</pose><geometry><box><size>0.5 16 1</size></box></geometry><material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material><transparency>0.8</transparency><cast_shadows>false</cast_shadows></visual>\n'
 
@@ -79,7 +80,7 @@ world += """      </link>
 
     <include>
       <uri>model://agribot</uri>
-      <!-- Starts at exact dead center -->
+      <!-- 로봇은 농장 중앙에서 정확히 시작한다 -->
       <pose>0 0 0.5 0 0 1.5708</pose>
     </include>
 
@@ -96,7 +97,7 @@ for x in x_centers:
 """
         t_id += 1
 
-# Add 4 sprinklers inside the crop rows with perfect symmetry
+# 작물 줄 사이에 스프링클러 4개를 좌우 대칭으로 배치한다.
 sprinkler_poses = [(-4.0, 3.0), (-4.0, -3.0), (4.0, 3.0), (4.0, -3.0)]
 for i, (sx, sy) in enumerate(sprinkler_poses):
     world += f"""    <include>

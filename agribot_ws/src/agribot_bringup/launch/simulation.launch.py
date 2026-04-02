@@ -1,16 +1,4 @@
-"""
-AgriBot Simulation Launch File
-Brings up the complete simulation environment including:
-- Gazebo Harmonic world
-- Robot model spawn
-- ROS-Gazebo bridge
-- Nav2
-- IoT status/result publishing stack
-
-Usage:
-    ros2 launch agribot_bringup simulation.launch.py
-"""
-
+# 이 런치 파일은 통합 실행과 런치 조율 패키지의 노드와 의존 구성을 한 번에 실행하도록 묶는다.
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -56,6 +44,7 @@ except ModuleNotFoundError:
 
 
 def generate_launch_description():
+    # 실행 description을 생성한다.
     default_gz_ip = os.environ.get('GZ_IP', '127.0.0.1')
     default_ign_ip = os.environ.get('IGN_IP', '127.0.0.1')
     runtime_dir = LaunchConfiguration('runtime_dir')
@@ -232,6 +221,33 @@ def generate_launch_description():
         period=10.0,
         actions=[navigation],
     )
+    nav2_activation_helper = Node(
+        package='agribot_bringup',
+        executable='nav2_activation_helper',
+        name='nav2_activation_helper',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            # sim time 환경에서 lifecycle_manager_navigation 이 configure 단계에서
+            # 멈추는 경우가 있어 진단/주행 전 한 번 더 ACTIVE 상태를 보장한다.
+            'node_names': [
+                'controller_server',
+                'planner_server',
+                'smoother_server',
+                'behavior_server',
+                'bt_navigator',
+                'waypoint_follower',
+            ],
+            'service_wait_timeout_sec': 45.0,
+            'state_wait_timeout_sec': 30.0,
+        }],
+    )
+    delayed_nav2_activation_helper = TimerAction(
+        # delayed_navigation 이후 lifecycle 서비스가 모두 뜬 시점에
+        # one-shot helper 를 실행해 남은 inactive 노드를 활성화한다.
+        period=18.0,
+        actions=[nav2_activation_helper],
+    )
     unpause_world = TimerAction(
         # gz sim -r 이어도 GUI 붙는 시점에 world가 paused 상태로 남는 경우가 있어
         # 실제 주행 시작 전 한 번 더 run 상태를 강제한다.
@@ -337,11 +353,13 @@ def generate_launch_description():
         unpause_world,
         unpause_world_retry,
         delayed_navigation,
+        delayed_nav2_activation_helper,
         iot_status_pipeline,
         perception,
     ])
 
 
 def _sanitize_gz_partition_suffix(raw_value: str) -> str:
+    # sanitize gz partition suffix 정보를 계산해 반환한다.
     normalized = re.sub(r'[^A-Za-z0-9_]+', '_', raw_value).strip('_')
     return normalized or 'session'

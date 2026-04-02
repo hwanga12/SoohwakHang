@@ -10,7 +10,8 @@
 - 숙도 및 수확 의사결정(`HARVEST_DECISION`) 조회
 - 개별 수확 / 전체 수확 패트롤 시나리오
 - PostgreSQL 기반 식물, 과실, 미션, 수확, AI 판단 데이터 관리
-- ROS 런타임 파일 브리지 기반 backend-robot 상태 연동
+- Direct ROS topic bridge 기반 backend-robot 상태/제어 연동
+- runtime file bridge fallback 기반 pose/path/runtime artifact 연동
 
 ## 기술 스택
 
@@ -205,10 +206,12 @@ colcon test-result --verbose
 - 실행/문서 인덱스: `docs/README.md`
 - launch 관련 메모: `docs/README_LAUNCH.md`
 - 운영자 검증 체크리스트: `docs/운영자_미션_E2E_검증_체크리스트.md`
+- 프로토콜 연결 감사: `TIL/docs/프로토콜_연결_감사_및_개선안.md`
 
 ## 주의 사항
 
-- Backend와 ROS 노드는 반드시 같은 `AGRIBOT_RUNTIME_DIR`를 사용해야 합니다.
+- Backend는 workspace가 build되어 있으면 direct ROS bridge를 우선 사용하고, 그렇지 않으면 legacy runtime file bridge로 fallback 합니다.
+- Backend와 ROS 노드는 fallback 경로를 위해 같은 `AGRIBOT_RUNTIME_DIR`를 사용해야 합니다.
 - Frontend는 정적 파일 운영 배포 구성이 아니라 Vite dev server 기준입니다.
 - Backend는 Nginx/Apache 없이 Uvicorn으로 실행합니다.
 - 시뮬레이터 GUI/EGL 경고가 있어도 headless 환경에서는 core ROS 노드와 file bridge가 정상 기동할 수 있습니다.

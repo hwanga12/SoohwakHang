@@ -1,3 +1,4 @@
+# 이 모듈은 통합 실행과 런치 조율 패키지에서 shutdown cleanup 절차를 담당한다.
 from __future__ import annotations
 
 # 세션 태그와 안전한 허용 목록을 기준으로 AgriBot 관련 프로세스만 정리한다.
@@ -67,6 +68,7 @@ _SAFE_USER_CLEANUP_ROS_TOPIC_PREFIXES = ('/agribot/',)
 
 @dataclass(frozen=True, slots=True)
 class SessionProcess:
+    # session 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     pid: int
     ppid: int
     state: str
@@ -74,6 +76,7 @@ class SessionProcess:
 
 
 def resolve_launch_session_id(explicit_session_id: str | None = None) -> str:
+    # 현재 입력 조건을 바탕으로 launch session ID를 계산하거나 결정한다.
     value = str(explicit_session_id or os.environ.get(LAUNCH_SESSION_ENV_VAR, '')).strip()
     if value:
         return value
@@ -81,6 +84,7 @@ def resolve_launch_session_id(explicit_session_id: str | None = None) -> str:
 
 
 def ensure_launch_session_id_env(explicit_session_id: str | None = None) -> str:
+    # launch session ID ENV가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
     resolved_session_id = resolve_launch_session_id(explicit_session_id)
     os.environ[LAUNCH_SESSION_ENV_VAR] = resolved_session_id
     return resolved_session_id
@@ -91,9 +95,11 @@ def build_shutdown_cleanup_handler(
     *,
     grace_period_sec: float = 1.0,
 ) -> RegisterEventHandler:
+    # shutdown 정리 작업 handler를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     resolved_session_id = resolve_launch_session_id(session_id)
 
     def _cleanup_on_shutdown(_context, *_args, **_kwargs):
+        # cleanup on shutdown 정보를 계산해 반환한다.
         cleanup_launch_session(
             resolved_session_id,
             grace_period_sec=grace_period_sec,
@@ -114,6 +120,7 @@ def cleanup_launch_session(
     *,
     grace_period_sec: float = 1.0,
 ) -> list[SessionProcess]:
+    # cleanup 실행 session 정보를 계산해 반환한다.
     resolved_session_id = resolve_launch_session_id(session_id)
     if resolved_session_id in _CLEANED_SESSION_IDS:
         return []
@@ -144,6 +151,7 @@ def cleanup_user_simulation_processes(
     user_uid: int | None = None,
     workspace_path: str | os.PathLike[str] | None = None,
 ) -> list[SessionProcess]:
+    # cleanup user 시뮬레이션 processes 정보를 계산해 반환한다.
     resolved_workspace_path = ''
     if workspace_path:
         resolved_workspace_path = str(Path(workspace_path).resolve())
@@ -171,6 +179,7 @@ def cleanup_user_simulation_processes(
 
 
 def _collect_session_processes(session_id: str) -> list[SessionProcess]:
+    # session processes를 모아 순회하기 쉬운 형태로 정리한다.
     session_processes: list[SessionProcess] = []
     excluded_pids = _current_process_lineage()
     ppid_map: dict[int, int] = {}
@@ -211,6 +220,7 @@ def _collect_user_simulation_processes(
     user_uid: int,
     workspace_path: str,
 ) -> list[SessionProcess]:
+    # user 시뮬레이션 processes를 모아 순회하기 쉬운 형태로 정리한다.
     simulation_processes: list[SessionProcess] = []
     excluded_pids = _current_process_lineage()
     ppid_map: dict[int, int] = {}
@@ -255,6 +265,7 @@ def _collect_user_simulation_processes(
 
 
 def _process_has_session_id(pid: int, session_id: str) -> bool:
+    # process has session id 정보를 계산해 반환한다.
     environ_path = Path(f'/proc/{pid}/environ')
     try:
         payload = environ_path.read_bytes()
@@ -265,6 +276,7 @@ def _process_has_session_id(pid: int, session_id: str) -> bool:
 
 
 def _read_process_stat(pid: int) -> dict[str, int | str] | None:
+    # process stat를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     stat_path = Path(f'/proc/{pid}/stat')
     try:
         payload = stat_path.read_text(encoding='utf-8')
@@ -289,6 +301,7 @@ def _read_process_stat(pid: int) -> dict[str, int | str] | None:
 
 
 def _read_process_command(pid: int) -> str:
+    # process 명령를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     cmdline_path = Path(f'/proc/{pid}/cmdline')
     try:
         payload = cmdline_path.read_bytes()
@@ -299,6 +312,7 @@ def _read_process_command(pid: int) -> str:
 
 
 def _read_process_argv(pid: int) -> list[str]:
+    # process argv를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     cmdline_path = Path(f'/proc/{pid}/cmdline')
     try:
         payload = cmdline_path.read_bytes()
@@ -313,6 +327,7 @@ def _read_process_argv(pid: int) -> list[str]:
 
 
 def _process_owner_uid(pid: int) -> int | None:
+    # process owner uid 정보를 계산해 반환한다.
     proc_path = Path(f'/proc/{pid}')
     try:
         return proc_path.stat().st_uid
@@ -321,6 +336,7 @@ def _process_owner_uid(pid: int) -> int | None:
 
 
 def _matches_user_cleanup_target(argv: list[str], workspace_path: str) -> bool:
+    # matches user cleanup 대상 정보를 계산해 반환한다.
     if not argv:
         return False
 
@@ -359,6 +375,7 @@ def _matches_user_cleanup_target(argv: list[str], workspace_path: str) -> bool:
 
 
 def _extract_ros2_cli_arguments(argv: list[str]) -> list[str] | None:
+    # 원본 데이터에서 ros2 CLI arguments만 골라 추출한다.
     executable_name = Path(argv[0]).name
     if executable_name == 'ros2':
         return argv[1:]
@@ -373,6 +390,7 @@ def _extract_ros2_cli_arguments(argv: list[str]) -> list[str] | None:
 
 
 def _matches_ros2_topic_monitor(ros2_cli_arguments: list[str]) -> bool:
+    # matches ROS 2 topic monitor 정보를 계산해 반환한다.
     if len(ros2_cli_arguments) < 3:
         return False
     if ros2_cli_arguments[0] != 'topic':
@@ -391,6 +409,7 @@ def _matches_ros2_topic_monitor(ros2_cli_arguments: list[str]) -> bool:
 
 
 def _extract_ros_topic_name(arguments: list[str]) -> str:
+    # 원본 데이터에서 ROS topic 이름만 골라 추출한다.
     for argument in arguments:
         if argument.startswith('/'):
             return argument
@@ -398,6 +417,7 @@ def _extract_ros_topic_name(arguments: list[str]) -> str:
 
 
 def _matches_ros2_daemon_process(argv: list[str]) -> bool:
+    # matches ROS 2 daemon process 정보를 계산해 반환한다.
     return (
         'ros2-daemon' in argv
         and any('ros2cli.daemon.daemonize' in argument for argument in argv)
@@ -405,6 +425,7 @@ def _matches_ros2_daemon_process(argv: list[str]) -> bool:
 
 
 def _is_workspace_process_argument(argument: str, workspace_path: str) -> bool:
+    # workspace process argument인지 여부를 불리언 값으로 판단한다.
     if not workspace_path or workspace_path not in argument:
         return False
 
@@ -412,6 +433,7 @@ def _is_workspace_process_argument(argument: str, workspace_path: str) -> bool:
 
 
 def _workspace_process_arguments(argv: list[str]) -> list[str]:
+    # workspace process arguments 정보를 계산해 반환한다.
     if not argv:
         return []
 
@@ -425,6 +447,7 @@ def _workspace_process_arguments(argv: list[str]) -> list[str]:
 
 
 def _process_depth(pid: int, ppid_map: dict[int, int]) -> int:
+    # process depth 정보를 계산해 반환한다.
     depth = 0
     current_pid = pid
     seen: set[int] = set()
@@ -436,6 +459,7 @@ def _process_depth(pid: int, ppid_map: dict[int, int]) -> int:
 
 
 def _current_process_lineage() -> set[int]:
+    # 현재 process lineage 정보를 계산해 반환한다.
     lineage: set[int] = set()
     current_pid = os.getpid()
 
@@ -450,6 +474,7 @@ def _current_process_lineage() -> set[int]:
 
 
 def _signal_processes(processes: list[SessionProcess], sig: signal.Signals) -> None:
+    # signal processes 정보를 계산해 반환한다.
     for process in processes:
         try:
             os.kill(process.pid, sig)
@@ -460,6 +485,7 @@ def _signal_processes(processes: list[SessionProcess], sig: signal.Signals) -> N
 
 
 def _remaining_live_processes(processes: list[SessionProcess]) -> list[SessionProcess]:
+    # remaining 실시간 processes 정보를 계산해 반환한다.
     remaining: list[SessionProcess] = []
     for process in processes:
         try:

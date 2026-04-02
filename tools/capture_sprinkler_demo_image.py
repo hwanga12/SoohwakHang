@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# 이 스크립트는 개발 보조 도구로서 capture sprinkler demo image 작업을 수행한다.
+
 from __future__ import annotations
 
 import argparse
@@ -21,7 +23,9 @@ from sensor_msgs.msg import Image
 
 
 class _CaptureNode(Node):
+    # ROS 2 실행 환경에서 capture 흐름을 담당하는 노드 클래스를 정의한다.
     def __init__(self, *, topic: str, output_path: Path, timeout_sec: float) -> None:
+        # _CaptureNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__("sprinkler_demo_capture_once")
         self._bridge = CvBridge()
         self._output_path = output_path
@@ -32,6 +36,7 @@ class _CaptureNode(Node):
         self.create_timer(0.5, self._handle_timeout)
 
     def _handle_image(self, msg: Image) -> None:
+        # handle 이미지 정보를 계산해 반환한다.
         frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         self._output_path.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(self._output_path), frame):
@@ -40,6 +45,7 @@ class _CaptureNode(Node):
         self.get_logger().info(f"Saved sprinkler capture to {self._output_path}")
 
     def _handle_timeout(self) -> None:
+        # handle timeout 정보를 계산해 반환한다.
         if self.saved:
             return
         if time.monotonic() > self._deadline:
@@ -48,10 +54,12 @@ class _CaptureNode(Node):
 
 
 def _repo_root() -> Path:
+    # repo root 정보를 계산해 반환한다.
     return Path(__file__).resolve().parents[1]
 
 
 def _gz_binary() -> str:
+    # gz 바이너리 정보를 계산해 반환한다.
     candidate = Path("/opt/ros/jazzy/opt/gz_tools_vendor/bin/gz")
     if candidate.exists():
         return str(candidate)
@@ -62,6 +70,7 @@ def _gz_binary() -> str:
 
 
 def _ros2_binary() -> str:
+    # ROS 2 바이너리 정보를 계산해 반환한다.
     resolved = shutil.which("ros2")
     if resolved:
         return resolved
@@ -69,6 +78,7 @@ def _ros2_binary() -> str:
 
 
 def _world_text(mesh_uri: str, camera_pose: str, topic: str, width: int, height: int) -> str:
+    # 월드 텍스트 정보를 계산해 반환한다.
     return f"""<?xml version="1.0" ?>
 <sdf version="1.9">
   <world name="sprinkler_capture">
@@ -157,6 +167,7 @@ def _world_text(mesh_uri: str, camera_pose: str, topic: str, width: int, height:
 
 
 def _terminate(process: subprocess.Popen[bytes] | None) -> None:
+    # terminate 정보를 계산해 반환한다.
     if process is None or process.poll() is not None:
         return
     process.terminate()
@@ -177,6 +188,7 @@ def capture_sprinkler_image(
     width: int,
     height: int,
 ) -> None:
+    # capture 스프링클러 이미지 정보를 계산해 반환한다.
     repo_root = _repo_root()
     mesh_path = repo_root / "agribot_ws" / "src" / "agribot_description" / "models" / "sprinkler" / "meshes" / "basic_sprinkler.glb"
     if not mesh_path.exists():
@@ -251,6 +263,7 @@ def capture_sprinkler_image(
 
 
 def _parse_args() -> argparse.Namespace:
+    # args를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     parser = argparse.ArgumentParser(description="Capture a Gazebo-rendered sprinkler image for the frontend demo UI.")
     parser.add_argument(
         "--output",
@@ -271,6 +284,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = _parse_args()
     capture_sprinkler_image(
         output_path=Path(args.output).expanduser().resolve(),

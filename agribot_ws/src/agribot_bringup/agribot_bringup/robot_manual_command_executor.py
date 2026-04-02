@@ -1,3 +1,4 @@
+# 이 모듈은 통합 실행과 런치 조율 패키지에서 robot manual command executor 절차를 담당한다.
 from __future__ import annotations
 
 from collections import deque
@@ -11,6 +12,7 @@ import time
 from typing import Any
 
 from action_msgs.msg import GoalStatus
+from agribot_interfaces.msg import RobotCommand, RobotCommandStatus, RobotControlState
 from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped
 from nav2_msgs.action import BackUp, ComputePathToPose, NavigateThroughPoses, NavigateToPose
 import rclpy
@@ -57,6 +59,12 @@ from .runtime_snapshot_service import (
     runtime_dir_from_env,
     write_json_atomic,
 )
+from .runtime_message_contract import (
+    robot_command_payload_from_message,
+    robot_command_status_message_from_payload,
+    robot_control_state_message_from_payload,
+)
+from .protocol_qos import protocol_qos_profile
 
 TERMINAL_STATUSES = {'succeeded', 'failed', 'canceled'}
 FINAL_OBSERVATION_INTERMEDIATE_TARGET_FRACTIONS = (
@@ -97,6 +105,7 @@ _UNSET = object()
 
 @dataclass(frozen=True)
 class PatrolStatusSnapshot:
+    # patrol 상태 시점의 값을 기록하기 위한 스냅샷 클래스를 정의한다.
     state: str
     message: str
     current_waypoint_id: str
@@ -109,6 +118,7 @@ class PatrolStatusSnapshot:
     segment_target_waypoint_id: str
 
     def as_resume_payload(self) -> dict[str, Any]:
+        # 현재 값을 resume 페이로드 형태로 변환한다.
         return {
             'state': self.state,
             'message': self.message,
@@ -125,6 +135,7 @@ class PatrolStatusSnapshot:
 
 @dataclass(frozen=True)
 class CommandPose:
+    # 명령 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     x: float
     y: float
     z: float
@@ -132,6 +143,7 @@ class CommandPose:
     frame_id: str
 
     def as_status_payload(self) -> dict[str, Any]:
+        # 현재 값을 상태 페이로드 형태로 변환한다.
         return {
             'x': self.x,
             'y': self.y,
@@ -141,11 +153,13 @@ class CommandPose:
         }
 
     def as_pose2d(self) -> Pose2D:
+        # 현재 값을 위치 자세 2 d 형태로 변환한다.
         return Pose2D(x=self.x, y=self.y, z=self.z, yaw=self.yaw)
 
 
 @dataclass(frozen=True)
 class ObservationGoalCandidate:
+    # 관측 결과 목표 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     inspect_waypoint_id: str
     inspect_waypoint_name: str | None
     final_target_pose: CommandPose
@@ -154,6 +168,7 @@ class ObservationGoalCandidate:
 
 @dataclass(frozen=True)
 class ManualCommand:
+    # manual 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     command_id: str
     command_type: str
     robot_id: str
@@ -169,6 +184,7 @@ class ManualCommand:
 
 @dataclass
 class ActiveCommandContext:
+    # 진행 중 명령 context 한 건을 명확한 필드 구조로 담기 위한 데이터 클래스다.
     command: ManualCommand
     received_at: str
     started_at: str | None = None
@@ -182,6 +198,7 @@ class ActiveCommandContext:
 
 
 class CommandValidationError(ValueError):
+    # 명령 validation error 문제를 구분하기 위한 예외 클래스다.
     def __init__(
         self,
         message: str,
@@ -191,6 +208,7 @@ class CommandValidationError(ValueError):
         robot_id: str = 'AGR-02',
         requested_by: str = '',
     ) -> None:
+        # CommandValidationError 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__(message)
         self.command_id = command_id
         self.command_type = command_type
@@ -199,15 +217,18 @@ class CommandValidationError(ValueError):
 
 
 def _iso_now() -> str:
+    # iso now 정보를 계산해 반환한다.
     return iso_now()
 
 
 def _extract_string(payload: dict[str, Any], key: str, *, default: str = '') -> str:
+    # 원본 데이터에서 string만 골라 추출한다.
     raw_value = payload.get(key, default)
     return str(raw_value).strip() if raw_value is not None else default
 
 
 def _extract_optional_bool(payload: dict[str, Any], key: str) -> bool | None:
+    # 원본 데이터에서 optional bool만 골라 추출한다.
     if key not in payload:
         return None
 
@@ -230,6 +251,7 @@ def _extract_optional_bool(payload: dict[str, Any], key: str) -> bool | None:
 
 
 def _extract_string_list(payload: dict[str, Any], key: str) -> tuple[str, ...]:
+    # 원본 데이터에서 string list만 골라 추출한다.
     raw_value = payload.get(key)
     if raw_value is None:
         return ()
@@ -247,6 +269,7 @@ def _extract_observation_candidates(
     payload: dict[str, Any],
     default_frame: str,
 ) -> tuple[ObservationGoalCandidate, ...]:
+    # 원본 데이터에서 관측 결과 candidates만 골라 추출한다.
     raw_value = payload.get('observation_candidates')
     if raw_value is None:
         return ()
@@ -292,6 +315,7 @@ def _extract_observation_candidates(
 
 
 def _coerce_pose(payload: dict[str, Any], default_frame: str) -> CommandPose:
+    # coerce 위치 자세 정보를 계산해 반환한다.
     required_fields = {'x', 'y', 'yaw'}
     missing = sorted(field for field in required_fields if field not in payload)
     if missing:
@@ -308,6 +332,7 @@ def _coerce_pose(payload: dict[str, Any], default_frame: str) -> CommandPose:
 
 
 def _extract_target_pose(raw_payload: dict[str, Any], default_frame: str) -> CommandPose:
+    # 원본 데이터에서 target 위치 자세만 골라 추출한다.
     payload_candidates: list[dict[str, Any]] = []
     nested_payload = raw_payload.get('payload')
     if isinstance(nested_payload, dict):
@@ -326,6 +351,7 @@ def _extract_target_pose(raw_payload: dict[str, Any], default_frame: str) -> Com
 
 
 def describe_manual_navigation_label(command_type: str, home_waypoint_id: str | None = None) -> str:
+    # 수동 주행 라벨을 설명 문자열로 만든다.
     if command_type == 'return_home':
         if home_waypoint_id:
             return f'홈 복귀({home_waypoint_id})'
@@ -334,26 +360,32 @@ def describe_manual_navigation_label(command_type: str, home_waypoint_id: str | 
 
 
 def should_retry_goal_rejection(retry_count: int, retry_limit: int) -> bool:
+    # retry 목표 rejection가 필요한 상황인지 여부를 판단한다.
     return retry_limit > 0 and retry_count < retry_limit
 
 
 def should_retry_start_occupied_recovery(retry_count: int, retry_limit: int) -> bool:
+    # retry start occupied recovery가 필요한 상황인지 여부를 판단한다.
     return retry_limit > 0 and retry_count < retry_limit
 
 
 def is_navigation_command_type(command_type: str) -> bool:
+    # navigation 명령 type인지 여부를 불리언 값으로 판단한다.
     return command_type in NAVIGATION_COMMAND_TYPES
 
 
 def is_pause_command_type(command_type: str) -> bool:
+    # pause 명령 type인지 여부를 불리언 값으로 판단한다.
     return command_type in PAUSE_COMMAND_TYPES
 
 
 def is_resume_command_type(command_type: str) -> bool:
+    # resume 명령 type인지 여부를 불리언 값으로 판단한다.
     return command_type in RESUME_COMMAND_TYPES
 
 
 def parse_patrol_status_payload(raw_data: str) -> PatrolStatusSnapshot | None:
+    # patrol 상태 payload를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     try:
         payload = json.loads(raw_data)
     except json.JSONDecodeError:
@@ -393,6 +425,7 @@ def build_patrol_resume_context(
     *,
     captured_at: str | None = None,
 ) -> ResumeContext | None:
+    # patrol resume context를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     if patrol_status is None or patrol_status.state not in PATROL_RESUMABLE_STATES:
         return None
 
@@ -412,6 +445,7 @@ def build_patrol_resume_context(
 
 
 def describe_resume_context(resume_context: ResumeContext | None) -> str:
+    # resume context을 설명 문자열로 만든다.
     if resume_context is None:
         return '저장된 재개 문맥 없음'
     if resume_context.context_type is ResumeContextType.PATROL:
@@ -428,6 +462,7 @@ def should_block_command_for_control_mode(
     mode: ControlMode,
     command_type: str,
 ) -> bool:
+    # block 명령 FOR control 모드가 필요한 상황인지 여부를 판단한다.
     if not mode.is_latched:
         return False
     return command_type not in {'emergency_stop', 'resume_motion', 'resume_patrol'}
@@ -438,6 +473,7 @@ def resolve_preempt_current_navigation(
     raw_payload: dict[str, Any],
     payload: dict[str, Any],
 ) -> bool:
+    # 현재 입력 조건을 바탕으로 preempt current navigation를 계산하거나 결정한다.
     explicit_value = _extract_optional_bool(raw_payload, 'preempt_current_navigation')
     if explicit_value is not None:
         return explicit_value
@@ -455,6 +491,7 @@ def parse_manual_command_payload(
     default_robot_id: str = 'AGR-02',
     default_frame: str = DEFAULT_FRAME_ID,
 ) -> ManualCommand:
+    # manual 명령 payload를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     robot_id = _extract_string(raw_payload, 'robot_id', default=default_robot_id) or default_robot_id
     requested_by = _extract_string(raw_payload, 'requested_by')
     command_id = _extract_string(raw_payload, 'command_id')
@@ -549,6 +586,7 @@ def resolve_return_home_target(
     command: ManualCommand,
     plan: PatrolPlan,
 ) -> tuple[str, CommandPose]:
+    # 현재 입력 조건을 바탕으로 return home target를 계산하거나 결정한다.
     waypoint_id = command.home_waypoint_id or plan.home_pose_id
     if waypoint_id not in plan.waypoints:
         raise ValueError(f'홈 복귀 waypoint를 찾지 못했습니다: {waypoint_id}')
@@ -571,6 +609,7 @@ def build_manual_resume_context(
     *,
     captured_at: str | None = None,
 ) -> ResumeContext | None:
+    # manual resume context를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     if context.target_pose is None:
         return None
 
@@ -601,6 +640,7 @@ def build_manual_resume_context(
 
 
 def context_has_navigation_target(context: ActiveCommandContext | None) -> bool:
+    # context has 주행 대상 정보를 계산해 반환한다.
     return context is not None and context.target_pose is not None
 
 
@@ -609,6 +649,7 @@ def should_restore_paused_manual_navigation_after_failed_resume(
     *,
     status: str,
 ) -> bool:
+    # restore paused manual navigation after failed resume가 필요한 상황인지 여부를 판단한다.
     return (
         status == 'failed'
         and context is not None
@@ -622,6 +663,7 @@ def should_run_resume_release_recovery(
     *,
     distance_m: float,
 ) -> bool:
+    # RUN resume release recovery가 필요한 상황인지 여부를 판단한다.
     return (
         distance_m > 0.0
         and context is not None
@@ -635,6 +677,7 @@ def should_run_route_egress_release_recovery(
     *,
     distance_m: float,
 ) -> bool:
+    # RUN 경로 egress release recovery가 필요한 상황인지 여부를 판단한다.
     return (
         distance_m > 0.0
         and context is not None
@@ -645,14 +688,17 @@ def should_run_route_egress_release_recovery(
 
 
 def _navigation_error_code(nav_result: Any) -> int:
+    # 주행 error code 정보를 계산해 반환한다.
     return int(getattr(nav_result, 'error_code', NAVIGATE_TO_POSE_NONE_ERROR_CODE) or 0)
 
 
 def _navigation_error_message(nav_result: Any) -> str:
+    # 주행 error 메시지 정보를 계산해 반환한다.
     return str(getattr(nav_result, 'error_msg', '') or '').strip()
 
 
 def _navigation_result_indicates_start_occupied(nav_result: Any) -> bool:
+    # 주행 결과 indicates start occupied 정보를 계산해 반환한다.
     error_code = _navigation_error_code(nav_result)
     if error_code in START_OCCUPIED_ERROR_CODES:
         return True
@@ -661,6 +707,7 @@ def _navigation_result_indicates_start_occupied(nav_result: Any) -> bool:
 
 
 def _navigation_result_indicates_transient_tf_error(nav_result: Any) -> bool:
+    # 주행 결과 indicates transient tf error 정보를 계산해 반환한다.
     error_code = _navigation_error_code(nav_result)
     if error_code in TRANSIENT_NAVIGATION_TF_ERROR_CODES:
         return True
@@ -673,6 +720,7 @@ def _navigation_result_indicates_transient_tf_error(nav_result: Any) -> bool:
 
 
 def _navigation_failure_message(nav_result: Any) -> str:
+    # 주행 failure 메시지 정보를 계산해 반환한다.
     error_msg = _navigation_error_message(nav_result)
     error_code = _navigation_error_code(nav_result)
     if _navigation_result_indicates_start_occupied(nav_result):
@@ -694,6 +742,7 @@ def is_pose_within_xy_tolerance(
     *,
     xy_tolerance_m: float,
 ) -> bool:
+    # 위치 자세 within XY tolerance인지 여부를 불리언 값으로 판단한다.
     if current_pose is None or target_pose is None or xy_tolerance_m <= 0.0:
         return False
 
@@ -707,6 +756,7 @@ def pose_distance_xy(
     left: CommandPose | Pose2D | None,
     right: CommandPose | Pose2D | None,
 ) -> float:
+    # 위치 자세 distance xy 정보를 계산해 반환한다.
     if left is None or right is None:
         return float('inf')
 
@@ -719,6 +769,7 @@ def interpolate_command_pose(
     *,
     fraction: float,
 ) -> CommandPose:
+    # interpolate 명령 위치 자세 정보를 계산해 반환한다.
     clamped_fraction = max(0.0, min(1.0, fraction))
     interpolated_yaw = math.atan2(
         math.sin(start_pose.yaw + (end_pose.yaw - start_pose.yaw) * clamped_fraction),
@@ -740,6 +791,7 @@ def build_intermediate_final_observation_targets(
     fractions: tuple[float, ...] = FINAL_OBSERVATION_INTERMEDIATE_TARGET_FRACTIONS,
     min_spacing_m: float = 0.12,
 ) -> tuple[CommandPose, ...]:
+    # intermediate final 관측 결과 targets를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     if route_target_pose is None or final_target_pose is None:
         return ()
 
@@ -771,6 +823,7 @@ def read_runtime_pose_snapshot(
     expected_frame: str,
     max_age_sec: float | None = None,
 ) -> Pose2D | None:
+    # 런타임 데이터 위치 자세 스냅샷를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         payload = read_json_object(pose_snapshot_path(runtime_dir))
     except (OSError, ValueError):
@@ -811,6 +864,7 @@ def should_treat_failed_navigation_as_success(
     xy_tolerance_m: float,
     max_snapshot_age_sec: float | None = None,
 ) -> bool:
+    # treat failed navigation AS success가 필요한 상황인지 여부를 판단한다.
     if target_pose is None or xy_tolerance_m <= 0.0:
         return False
 
@@ -833,6 +887,7 @@ def should_complete_route_anchor_only(
     final_path_available: bool,
     xy_tolerance_m: float,
 ) -> bool:
+    # complete 경로 anchor only가 필요한 상황인지 여부를 판단한다.
     if final_path_available:
         return False
     return is_pose_within_xy_tolerance(
@@ -845,6 +900,7 @@ def should_complete_route_anchor_only(
 def should_attempt_route_egress_simulation_pose_reset(
     active_context: ActiveCommandContext | None,
 ) -> bool:
+    # attempt 경로 egress 시뮬레이션 위치 자세 reset가 필요한 상황인지 여부를 판단한다.
     return (
         active_context is not None
         and active_context.navigation_phase is ManualNavigationPhase.ROUTE_EGRESS
@@ -858,6 +914,7 @@ def should_release_orphaned_active_command(
     *,
     has_pending_activity: bool,
 ) -> bool:
+    # release orphaned active 명령가 필요한 상황인지 여부를 판단한다.
     if active_context is None or has_pending_activity or not isinstance(last_status_payload, dict):
         return False
 
@@ -871,7 +928,9 @@ def should_release_orphaned_active_command(
 
 
 class RobotManualCommandExecutor(Node):
+    # robot manual 명령 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     def __init__(self) -> None:
+        # RobotManualCommandExecutor 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('robot_manual_command_executor')
 
         if not self.has_parameter('use_sim_time'):
@@ -885,7 +944,10 @@ class RobotManualCommandExecutor(Node):
         self.declare_parameter('patrol_status_topic', '/patrol/status')
         self.declare_parameter('patrol_stop_service', '/patrol/stop')
         self.declare_parameter('patrol_resume_service', '/patrol/resume')
+        self.declare_parameter('command_topic', '/robot/commands/manual')
+        self.declare_parameter('command_status_topic', '/robot/commands/status')
         self.declare_parameter('control_state_topic', '/robot/control_state')
+        self.declare_parameter('typed_control_state_topic', '/robot/control_state/typed')
         self.declare_parameter('nav_server_wait_sec', 5.0)
         self.declare_parameter('patrol_service_wait_sec', 1.0)
         self.declare_parameter('backup_action', 'backup')
@@ -933,8 +995,11 @@ class RobotManualCommandExecutor(Node):
         self._batch_action_name = str(self.get_parameter('navigate_through_poses_action').value)
         self._path_probe_action_name = str(self.get_parameter('compute_path_to_pose_action').value)
         self._backup_action_name = str(self.get_parameter('backup_action').value)
+        self._command_topic = str(self.get_parameter('command_topic').value)
+        self._command_status_topic = str(self.get_parameter('command_status_topic').value)
         self._patrol_status_topic = str(self.get_parameter('patrol_status_topic').value)
         self._control_state_topic = str(self.get_parameter('control_state_topic').value)
+        self._typed_control_state_topic = str(self.get_parameter('typed_control_state_topic').value)
         self._nav_server_wait_sec = float(self.get_parameter('nav_server_wait_sec').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
         self._goal_reject_retry_sec = max(0.0, float(self.get_parameter('goal_reject_retry_sec').value))
@@ -1044,16 +1109,32 @@ class RobotManualCommandExecutor(Node):
             Trigger,
             str(self.get_parameter('patrol_resume_service').value),
         )
+        self._command_subscription = self.create_subscription(
+            RobotCommand,
+            self._command_topic,
+            self._handle_command_topic,
+            protocol_qos_profile(self._command_topic, default_depth=20),
+        )
         self._patrol_status_subscription = self.create_subscription(
             String,
             self._patrol_status_topic,
             self._handle_patrol_status,
             20,
         )
+        self._command_status_publisher = self.create_publisher(
+            RobotCommandStatus,
+            self._command_status_topic,
+            protocol_qos_profile(self._command_status_topic, default_depth=20),
+        )
         self._control_state_publisher = self.create_publisher(
             String,
             self._control_state_topic,
             10,
+        )
+        self._typed_control_state_publisher = self.create_publisher(
+            RobotControlState,
+            self._typed_control_state_topic,
+            protocol_qos_profile(self._typed_control_state_topic, default_depth=20),
         )
         self._initial_pose_publisher = self.create_publisher(
             PoseWithCovarianceStamped,
@@ -1105,16 +1186,21 @@ class RobotManualCommandExecutor(Node):
         self.get_logger().info(
             'robot manual command executor started. '
             f'command_path={self._command_path}, '
-            f'control_state_topic={self._control_state_topic}'
+            f'command_topic={self._command_topic}, '
+            f'command_status_topic={self._command_status_topic}, '
+            f'control_state_topic={self._control_state_topic}, '
+            f'typed_control_state_topic={self._typed_control_state_topic}'
         )
 
     def _load_patrol_plan(self) -> PatrolPlan:
+        # patrol 계획를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         plan_path = Path(str(self.get_parameter('patrol_waypoints_file').value)).expanduser()
         if not plan_path.is_absolute():
             plan_path = get_default_patrol_waypoints_path().parent.parent / plan_path
         return load_patrol_plan(plan_path)
 
     def _recover_previous_control_state(self) -> None:
+        # recover previous 제어 상태 정보를 계산해 반환한다.
         if not self._control_state_path.exists():
             return
 
@@ -1127,6 +1213,7 @@ class RobotManualCommandExecutor(Node):
         self._control_state = ControlStateSnapshot.from_payload(payload)
 
     def _derive_active_activity(self) -> MotionActivity:
+        # derive active activity 정보를 계산해 반환한다.
         if context_has_navigation_target(self._active_context):
             return MotionActivity.MANUAL_NAVIGATION
         if (
@@ -1146,6 +1233,7 @@ class RobotManualCommandExecutor(Node):
         message: str | None = None,
         resume_context: ResumeContext | None | object = _UNSET,
     ) -> None:
+        # control 상태를 최신 상태로 갱신한다.
         if resume_context is _UNSET:
             next_resume_context = self._control_state.resume_context
         else:
@@ -1173,6 +1261,7 @@ class RobotManualCommandExecutor(Node):
         message: str,
         resume_context: ResumeContext | None,
     ) -> None:
+        # 제어 latch을 설정한다.
         self._control_state = ControlStateSnapshot(
             mode=mode,
             active_activity=self._derive_active_activity(),
@@ -1184,6 +1273,7 @@ class RobotManualCommandExecutor(Node):
         self._write_control_state()
 
     def _clear_control_latch(self, *, message: str) -> None:
+        # 제어 latch을 비운다.
         self._control_state = ControlStateSnapshot(
             mode=ControlMode.NORMAL,
             active_activity=self._derive_active_activity(),
@@ -1195,6 +1285,7 @@ class RobotManualCommandExecutor(Node):
         self._write_control_state()
 
     def _write_control_state(self) -> None:
+        # control 상태를 파일이나 저장소에 기록한다.
         payload = build_control_state_payload(
             mode=self._control_state.mode,
             active_activity=self._derive_active_activity(),
@@ -1206,14 +1297,23 @@ class RobotManualCommandExecutor(Node):
         self._control_state = ControlStateSnapshot.from_payload(payload)
         write_json_atomic(self._control_state_path, payload)
         self._control_state_publisher.publish(String(data=json.dumps(payload, sort_keys=True)))
+        self._typed_control_state_publisher.publish(
+            robot_control_state_message_from_payload(
+                payload,
+                stamp=self.get_clock().now().to_msg(),
+            )
+        )
 
     def _resume_context(self) -> ResumeContext | None:
+        # resume context 정보를 계산해 반환한다.
         return self._control_state.resume_context
 
     def _is_patrol_resumable(self) -> bool:
+        # patrol resumable인지 여부를 불리언 값으로 판단한다.
         return build_patrol_resume_context(self._latest_patrol_status) is not None
 
     def _recover_previous_command_status(self) -> None:
+        # recover previous 명령 상태 정보를 계산해 반환한다.
         if not self._status_path.exists():
             return
 
@@ -1254,6 +1354,7 @@ class RobotManualCommandExecutor(Node):
         self._remember_processed_command_id(command_id)
 
     def _remember_processed_command_id(self, command_id: str) -> None:
+        # remember processed 명령 id 정보를 계산해 반환한다.
         if command_id in self._processed_command_ids:
             return
 
@@ -1265,6 +1366,7 @@ class RobotManualCommandExecutor(Node):
         self._processed_command_ids.add(command_id)
 
     def _handle_patrol_status(self, msg: String) -> None:
+        # handle patrol 상태 정보를 계산해 반환한다.
         snapshot = parse_patrol_status_payload(msg.data)
         if snapshot is None:
             self.get_logger().warning('유효하지 않은 patrol status payload를 무시합니다.')
@@ -1283,6 +1385,7 @@ class RobotManualCommandExecutor(Node):
         self._maybe_finish_patrol_state_wait(snapshot)
 
     def _maybe_finish_patrol_state_wait(self, snapshot: PatrolStatusSnapshot) -> None:
+        # maybe finish patrol 상태 wait 정보를 계산해 반환한다.
         if self._patrol_state_wait is None or self._active_context is None:
             return
 
@@ -1319,11 +1422,21 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _patrol_state_wait_failure_message(self) -> str:
+        # patrol 상태 wait failure 메시지 정보를 계산해 반환한다.
         if self._latest_patrol_status is None or not self._latest_patrol_status.message:
             return '순찰 상태 전환이 실패했습니다.'
         return self._latest_patrol_status.message
 
+    def _handle_command_topic(self, message: RobotCommand) -> None:
+        # Handle a typed backend command published directly onto the ROS graph.
+        self._release_orphaned_active_command_if_needed()
+        self._process_raw_command_payload(
+            robot_command_payload_from_message(message),
+            source='topic',
+        )
+
     def _poll_command_file(self) -> None:
+        # poll 명령 file 정보를 계산해 반환한다.
         self._release_orphaned_active_command_if_needed()
 
         if not self._command_path.exists():
@@ -1336,14 +1449,6 @@ class RobotManualCommandExecutor(Node):
 
         try:
             raw_payload = read_json_object(self._command_path)
-            command = parse_manual_command_payload(
-                raw_payload,
-                default_robot_id=self._default_robot_id,
-                default_frame=self._map_frame,
-            )
-        except CommandValidationError as exc:
-            self._handle_invalid_command(exc)
-            return
         except (OSError, ValueError) as exc:
             self._write_status(
                 build_manual_command_status_payload(
@@ -1358,6 +1463,20 @@ class RobotManualCommandExecutor(Node):
                     completed_at=_iso_now(),
                 )
             )
+            return
+
+        self._process_raw_command_payload(raw_payload, source='file')
+
+    def _process_raw_command_payload(self, raw_payload: dict[str, Any], *, source: str) -> None:
+        # Process a command payload from either the legacy file bridge or the direct ROS topic.
+        try:
+            command = parse_manual_command_payload(
+                raw_payload,
+                default_robot_id=self._default_robot_id,
+                default_frame=self._map_frame,
+            )
+        except CommandValidationError as exc:
+            self._handle_invalid_command(exc)
             return
 
         if command.command_id in self._processed_command_ids:
@@ -1409,13 +1528,21 @@ class RobotManualCommandExecutor(Node):
             self._handle_command_while_active(command)
             return
 
+        if source == 'topic':
+            self.get_logger().info(
+                f'직접 ROS 명령을 수신했습니다: command_id={command.command_id}, '
+                f'command_type={command.command_type}'
+            )
         self._start_command(command)
 
+
     def _command_file_signature(self, path: Path) -> tuple[int, int]:
+        # 명령 file signature 정보를 계산해 반환한다.
         stat_result = path.stat()
         return stat_result.st_mtime_ns, stat_result.st_size
 
     def _handle_invalid_command(self, exc: CommandValidationError) -> None:
+        # handle invalid 명령 정보를 계산해 반환한다.
         if exc.command_id:
             self._remember_processed_command_id(exc.command_id)
         self._write_status(
@@ -1434,6 +1561,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _has_pending_executor_activity(self) -> bool:
+        # pending executor 활동 상태가 포함되어 있는지 여부를 판단한다.
         return any(
             value is not None
             for value in (
@@ -1456,6 +1584,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _release_orphaned_active_command_if_needed(self) -> None:
+        # release orphaned active 명령 if needed 정보를 계산해 반환한다.
         if not should_release_orphaned_active_command(
             self._active_context,
             self._last_status_payload,
@@ -1508,6 +1637,7 @@ class RobotManualCommandExecutor(Node):
         started_at: str | None = None,
         completed_at: str | None = None,
     ) -> dict[str, Any]:
+        # NON active 명령 상태 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         frame_id = command.target_pose.frame_id if command.target_pose is not None else self._map_frame
         return build_manual_command_status_payload(
             command_id=command.command_id,
@@ -1533,6 +1663,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _build_pending_context(self, command: ManualCommand) -> ActiveCommandContext:
+        # pending context를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         return ActiveCommandContext(
             command=command,
             received_at=_iso_now(),
@@ -1543,6 +1674,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _handle_command_while_active(self, command: ManualCommand) -> None:
+        # handle 명령 while active 정보를 계산해 반환한다.
         active_context = self._active_context
         if active_context is None:
             self._start_command(command)
@@ -1590,6 +1722,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _request_navigation_preemption(self, command: ManualCommand) -> None:
+        # request 주행 preemption 정보를 계산해 반환한다.
         pending_context = self._build_pending_context(command)
         self._pending_context = pending_context
         self._write_status(
@@ -1645,6 +1778,7 @@ class RobotManualCommandExecutor(Node):
         *,
         captured_at: str | None = None,
     ) -> ResumeContext | None:
+        # resume context FOR interruption를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         if context_has_navigation_target(self._active_context):
             return build_manual_resume_context(
                 self._active_context,
@@ -1666,6 +1800,7 @@ class RobotManualCommandExecutor(Node):
         *,
         mode: ControlMode,
     ) -> None:
+        # request 제어 interruption 정보를 계산해 반환한다.
         pending_context = self._build_pending_context(command)
         self._pending_context = pending_context
         captured_at = _iso_now()
@@ -1744,6 +1879,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _start_pending_command(self) -> None:
+        # pending 명령 실행 흐름을 시작하거나 마무리한다.
         pending_context = self._pending_context
         if pending_context is None:
             return
@@ -1756,6 +1892,7 @@ class RobotManualCommandExecutor(Node):
         *,
         context: ActiveCommandContext | None = None,
     ) -> None:
+        # 명령 실행 흐름을 시작하거나 마무리한다.
         context = context or self._build_pending_context(command)
         self._active_context = context
         self._write_status(self._build_status_payload(context, 'pending', '명령을 수락했습니다.'))
@@ -1803,6 +1940,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _start_emergency_stop_command(self, context: ActiveCommandContext) -> None:
+        # emergency stop 명령 실행 흐름을 시작하거나 마무리한다.
         context.started_at = context.started_at or _iso_now()
         resume_context = self._resume_context() or self._build_resume_context_for_interruption(
             context.command.command_type,
@@ -1833,6 +1971,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _start_pause_command(self, context: ActiveCommandContext) -> None:
+        # pause 명령 실행 흐름을 시작하거나 마무리한다.
         context.started_at = context.started_at or _iso_now()
         if context.command.command_type == 'pause_patrol' and not self._is_patrol_resumable():
             self._finish_active_command(
@@ -1871,6 +2010,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _start_resume_command(self, context: ActiveCommandContext) -> None:
+        # resume 명령 실행 흐름을 시작하거나 마무리한다.
         context.started_at = context.started_at or _iso_now()
         resume_context = self._resume_context()
         if self._control_state.mode is ControlMode.NORMAL and context.command.command_type == 'resume_patrol':
@@ -1978,6 +2118,7 @@ class RobotManualCommandExecutor(Node):
         success_message: str,
         clear_latch: bool = False,
     ) -> None:
+        # call patrol 서비스 wait 정보를 계산해 반환한다.
         if not client.wait_for_service(timeout_sec=self._patrol_service_wait_sec):
             self._finish_active_command(
                 'failed',
@@ -2012,6 +2153,7 @@ class RobotManualCommandExecutor(Node):
         self,
         context: ActiveCommandContext,
     ) -> tuple[str, ...]:
+        # 관측 후보 웨이포인트 ids 정보를 계산해 반환한다.
         candidate_ids = [
             candidate.inspect_waypoint_id
             for candidate in context.command.observation_candidates
@@ -2039,6 +2181,7 @@ class RobotManualCommandExecutor(Node):
         context: ActiveCommandContext,
         selected_waypoint_id: str | None,
     ) -> ObservationGoalCandidate | None:
+        # selected 관측 후보 정보를 계산해 반환한다.
         if not selected_waypoint_id:
             return None
 
@@ -2052,6 +2195,7 @@ class RobotManualCommandExecutor(Node):
         context: ActiveCommandContext,
         requested_target_pose: CommandPose,
     ) -> None:
+        # configure 주행 대상 정보를 계산해 반환한다.
         current_pose = read_runtime_pose_snapshot(
             self._runtime_dir,
             expected_frame=self._map_frame,
@@ -2122,6 +2266,7 @@ class RobotManualCommandExecutor(Node):
         context.target_pose = context.final_target_pose
 
     def _is_two_stage_observation(self, context: ActiveCommandContext) -> bool:
+        # TWO stage 관측 결과인지 여부를 불리언 값으로 판단한다.
         return (
             context.route_target_pose is not None
             and context.final_target_pose is not None
@@ -2136,6 +2281,7 @@ class RobotManualCommandExecutor(Node):
         label: str,
         is_retry: bool,
     ) -> None:
+        # current navigation stage를 외부 시스템이나 다음 처리 단계로 전달한다.
         if (
             context.navigation_phase is ManualNavigationPhase.ROUTE_EGRESS
             and context.target_pose is not None
@@ -2179,6 +2325,7 @@ class RobotManualCommandExecutor(Node):
         label: str,
         preserve_navigation_plan: bool = False,
     ) -> None:
+        # navigation 명령 실행 흐름을 시작하거나 마무리한다.
         if target_pose is None:
             self._finish_active_command(
                 'failed',
@@ -2222,6 +2369,7 @@ class RobotManualCommandExecutor(Node):
         *,
         label: str,
     ) -> None:
+        # prepare 주행 preemption 정보를 계산해 반환한다.
         if not self._patrol_stop_client.wait_for_service(timeout_sec=self._patrol_service_wait_sec):
             self.get_logger().warning(
                 '순찰 중지 서비스를 찾지 못해 stop 확인 없이 새 이동 명령을 실행합니다.'
@@ -2258,6 +2406,7 @@ class RobotManualCommandExecutor(Node):
         command_id: str,
         label: str,
     ) -> None:
+        # handle pre 주행 patrol stop response 정보를 계산해 반환한다.
         self._service_future = None
 
         context = self._active_context
@@ -2297,6 +2446,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _command_pose_from_pose2d(self, pose: Pose2D) -> CommandPose:
+        # 명령 위치 자세 2 d 정보를 계산해 반환한다.
         return CommandPose(
             x=pose.x,
             y=pose.y,
@@ -2310,6 +2460,7 @@ class RobotManualCommandExecutor(Node):
         context: ActiveCommandContext,
         target_pose: CommandPose,
     ) -> ManualNavigationRoute:
+        # 현재 입력 조건을 바탕으로 navigation 경로를 계산하거나 결정한다.
         current_pose = read_runtime_pose_snapshot(
             self._runtime_dir,
             expected_frame=self._map_frame,
@@ -2341,6 +2492,7 @@ class RobotManualCommandExecutor(Node):
         label: str,
         is_retry: bool,
     ) -> None:
+        # navigation batch 목표를 외부 시스템이나 다음 처리 단계로 전달한다.
         if not self._navigate_through_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
             self._finish_active_command(
                 'failed',
@@ -2375,6 +2527,7 @@ class RobotManualCommandExecutor(Node):
         label: str,
         is_retry: bool,
     ) -> None:
+        # probe 최종 관측 경로 정보를 계산해 반환한다.
         if context.final_target_pose is None:
             self._finish_active_command(
                 'failed',
@@ -2416,6 +2569,7 @@ class RobotManualCommandExecutor(Node):
         label: str,
         is_retry: bool,
     ) -> None:
+        # next final 관측 결과 경로 probe를 외부 시스템이나 다음 처리 단계로 전달한다.
         if context is not self._active_context:
             return
 
@@ -2485,6 +2639,7 @@ class RobotManualCommandExecutor(Node):
         label: str,
         is_retry: bool,
     ) -> None:
+        # handle 최종 관측 probe 목표 response 정보를 계산해 반환한다.
         self._path_probe_send_future = None
         try:
             goal_handle = future.result()
@@ -2531,6 +2686,7 @@ class RobotManualCommandExecutor(Node):
         label: str,
         is_retry: bool,
     ) -> None:
+        # handle 최종 관측 probe 결과 정보를 계산해 반환한다.
         self._active_path_probe_handle = None
         self._path_probe_result_future = None
         context = self._active_context
@@ -2580,6 +2736,7 @@ class RobotManualCommandExecutor(Node):
         label: str,
         is_retry: bool,
     ) -> None:
+        # 경로 egress 목표를 외부 시스템이나 다음 처리 단계로 전달한다.
         if not self._navigate_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
             self._finish_active_command(
                 'failed',
@@ -2617,6 +2774,7 @@ class RobotManualCommandExecutor(Node):
         label: str,
         is_retry: bool,
     ) -> None:
+        # final 관측 결과 목표를 외부 시스템이나 다음 처리 단계로 전달한다.
         if not self._navigate_client.wait_for_server(timeout_sec=self._nav_server_wait_sec):
             self._finish_active_command(
                 'failed',
@@ -2656,6 +2814,7 @@ class RobotManualCommandExecutor(Node):
         label: str,
         is_retry: bool,
     ) -> None:
+        # navigation 목표를 외부 시스템이나 다음 처리 단계로 전달한다.
         route = self._resolve_navigation_route(context, target_pose)
         if len(route.poses) > 1:
             self._dispatch_navigation_batch_goal(
@@ -2696,6 +2855,7 @@ class RobotManualCommandExecutor(Node):
         self._goal_send_future.add_done_callback(self._handle_navigation_goal_response)
 
     def _cancel_outcome_for_pending_transition(self) -> tuple[str, str]:
+        # cancel outcome pending transition 정보를 계산해 반환한다.
         if self._navigation_cancel_reason == 'emergency_stopped':
             return (
                 '비상 정지 명령으로 현재 이동을 즉시 중단했습니다.',
@@ -2712,6 +2872,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _handle_navigation_goal_response(self, future: Any) -> None:
+        # handle 주행 목표 response 정보를 계산해 반환한다.
         self._goal_send_future = None
         try:
             goal_handle = future.result()
@@ -2755,6 +2916,7 @@ class RobotManualCommandExecutor(Node):
             self._request_active_goal_cancel_for_preemption()
 
     def _handle_navigation_result(self, future: Any) -> None:
+        # handle 주행 결과 정보를 계산해 반환한다.
         self._active_goal_handle = None
         self._goal_result_future = None
         try:
@@ -2902,6 +3064,7 @@ class RobotManualCommandExecutor(Node):
         self._finish_active_command('failed', message, error='navigate_failed')
 
     def _schedule_start_occupied_recovery(self) -> bool:
+        # start occupied recovery를 어떤 순서와 조건으로 처리할지 계획한다.
         context = self._active_context
         if context is None or context.target_pose is None:
             return False
@@ -2937,6 +3100,7 @@ class RobotManualCommandExecutor(Node):
         return True
 
     def _schedule_resume_release_recovery(self, context: ActiveCommandContext) -> bool:
+        # resume release recovery를 어떤 순서와 조건으로 처리할지 계획한다.
         if not should_run_resume_release_recovery(
             context,
             distance_m=self._resume_release_recovery_distance_m,
@@ -2967,6 +3131,7 @@ class RobotManualCommandExecutor(Node):
         return True
 
     def _schedule_route_egress_release_recovery(self, context: ActiveCommandContext) -> bool:
+        # 경로 egress release recovery를 어떤 순서와 조건으로 처리할지 계획한다.
         if not should_run_route_egress_release_recovery(
             context,
             distance_m=self._route_egress_release_recovery_distance_m,
@@ -2998,6 +3163,7 @@ class RobotManualCommandExecutor(Node):
         return True
 
     def _handle_resume_release_recovery_goal_response(self, future: Any) -> None:
+        # handle resume release recovery 목표 response 정보를 계산해 반환한다.
         self._recovery_send_future = None
         try:
             goal_handle = future.result()
@@ -3028,6 +3194,7 @@ class RobotManualCommandExecutor(Node):
         self._recovery_result_future.add_done_callback(self._handle_resume_release_recovery_result)
 
     def _handle_resume_release_recovery_result(self, future: Any) -> None:
+        # handle resume release recovery 결과 정보를 계산해 반환한다.
         self._active_recovery_handle = None
         self._recovery_result_future = None
 
@@ -3062,6 +3229,7 @@ class RobotManualCommandExecutor(Node):
         self._resume_navigation_after_release_recovery()
 
     def _handle_route_egress_release_recovery_goal_response(self, future: Any) -> None:
+        # handle 경로 egress release recovery 목표 response 정보를 계산해 반환한다.
         self._recovery_send_future = None
         try:
             goal_handle = future.result()
@@ -3092,6 +3260,7 @@ class RobotManualCommandExecutor(Node):
         self._recovery_result_future.add_done_callback(self._handle_route_egress_release_recovery_result)
 
     def _handle_route_egress_release_recovery_result(self, future: Any) -> None:
+        # handle 경로 egress release recovery 결과 정보를 계산해 반환한다.
         self._active_recovery_handle = None
         self._recovery_result_future = None
 
@@ -3126,6 +3295,7 @@ class RobotManualCommandExecutor(Node):
         self._resume_navigation_after_route_egress_release_recovery()
 
     def _resume_navigation_after_release_recovery(self) -> None:
+        # resume 주행 after release recovery 정보를 계산해 반환한다.
         context = self._active_context
         if context is None or context.target_pose is None:
             return
@@ -3136,6 +3306,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _resume_navigation_after_route_egress_release_recovery(self) -> None:
+        # resume 주행 after 경로 egress release recovery 정보를 계산해 반환한다.
         context = self._active_context
         if context is None or context.target_pose is None:
             return
@@ -3149,6 +3320,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _handle_start_occupied_recovery_goal_response(self, future: Any) -> None:
+        # handle start occupied recovery 목표 response 정보를 계산해 반환한다.
         self._recovery_send_future = None
         try:
             goal_handle = future.result()
@@ -3181,6 +3353,7 @@ class RobotManualCommandExecutor(Node):
         self._recovery_result_future.add_done_callback(self._handle_start_occupied_recovery_result)
 
     def _handle_start_occupied_recovery_result(self, future: Any) -> None:
+        # handle start occupied recovery 결과 정보를 계산해 반환한다.
         self._active_recovery_handle = None
         self._recovery_result_future = None
 
@@ -3232,6 +3405,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _build_gazebo_robot_pose_request(self, pose: CommandPose) -> str:
+        # gazebo robot 위치 자세 요청 데이터를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         half_yaw = float(pose.yaw) / 2.0
         orientation_z = math.sin(half_yaw)
         orientation_w = math.cos(half_yaw)
@@ -3244,6 +3418,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _set_gazebo_robot_pose(self, pose: CommandPose) -> bool:
+        # gazebo 로봇 위치 자세을 설정한다.
         command_env = os.environ.copy()
         if self._gazebo_partition:
             command_env['GZ_PARTITION'] = self._gazebo_partition
@@ -3290,6 +3465,7 @@ class RobotManualCommandExecutor(Node):
         return False
 
     def _publish_initial_pose(self, pose: CommandPose) -> None:
+        # initial 위치 자세를 외부 시스템이나 다음 처리 단계로 전달한다.
         message = PoseWithCovarianceStamped()
         message.header.stamp = self.get_clock().now().to_msg()
         message.header.frame_id = pose.frame_id
@@ -3306,6 +3482,7 @@ class RobotManualCommandExecutor(Node):
         self._initial_pose_publisher.publish(message)
 
     def _choose_simulation_pose_reset_target(self, context: ActiveCommandContext) -> CommandPose | None:
+        # 시뮬레이션 위치 자세 reset 대상 가운데 최종 대상을 고른다.
         if context.target_pose is None:
             return None
         if context.navigation_phase is ManualNavigationPhase.ROUTE_EGRESS:
@@ -3317,6 +3494,7 @@ class RobotManualCommandExecutor(Node):
         return context.target_pose
 
     def _schedule_simulation_pose_reset_recovery(self) -> bool:
+        # 시뮬레이션 위치 자세 reset recovery를 어떤 순서와 조건으로 처리할지 계획한다.
         context = self._active_context
         if context is None or context.target_pose is None:
             return False
@@ -3348,6 +3526,7 @@ class RobotManualCommandExecutor(Node):
         return True
 
     def _retry_active_navigation_after_simulation_pose_reset(self) -> None:
+        # retry active 주행 after 시뮬레이션 위치 자세 reset 정보를 계산해 반환한다.
         self._cancel_simulation_pose_reset_retry_timer()
         context = self._active_context
         if context is None or context.target_pose is None:
@@ -3367,6 +3546,7 @@ class RobotManualCommandExecutor(Node):
         *,
         action_label: str,
     ) -> None:
+        # handle patrol 서비스 response 정보를 계산해 반환한다.
         self._service_future = None
         try:
             response = future.result()
@@ -3410,12 +3590,14 @@ class RobotManualCommandExecutor(Node):
             self._maybe_finish_patrol_state_wait(self._latest_patrol_status)
 
     def _request_active_goal_cancel_for_preemption(self) -> None:
+        # request active 목표 cancel preemption 정보를 계산해 반환한다.
         if self._active_goal_handle is None or self._goal_cancel_future is not None:
             return
         self._goal_cancel_future = self._active_goal_handle.cancel_goal_async()
         self._goal_cancel_future.add_done_callback(self._handle_active_goal_cancel_response)
 
     def _handle_active_goal_cancel_response(self, future: Any) -> None:
+        # handle active 목표 cancel response 정보를 계산해 반환한다.
         self._goal_cancel_future = None
         try:
             cancel_response = future.result()
@@ -3447,12 +3629,14 @@ class RobotManualCommandExecutor(Node):
             )
 
     def _request_active_recovery_cancel_for_preemption(self) -> None:
+        # request active recovery cancel preemption 정보를 계산해 반환한다.
         if self._active_recovery_handle is None or self._recovery_cancel_future is not None:
             return
         self._recovery_cancel_future = self._active_recovery_handle.cancel_goal_async()
         self._recovery_cancel_future.add_done_callback(self._handle_active_recovery_cancel_response)
 
     def _handle_active_recovery_cancel_response(self, future: Any) -> None:
+        # handle active recovery cancel response 정보를 계산해 반환한다.
         self._recovery_cancel_future = None
         try:
             cancel_response = future.result()
@@ -3491,6 +3675,7 @@ class RobotManualCommandExecutor(Node):
         error: str | None = None,
         result: str | None = None,
     ) -> None:
+        # finish active 명령 정보를 계산해 반환한다.
         if self._active_context is None:
             return
 
@@ -3564,6 +3749,7 @@ class RobotManualCommandExecutor(Node):
         result: str | None = None,
         completed_at: str | None = None,
     ) -> dict[str, Any]:
+        # 상태 payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         frame_id = context.target_pose.frame_id if context.target_pose is not None else self._plan.frame_id
         return build_manual_command_status_payload(
             command_id=context.command.command_id,
@@ -3601,10 +3787,18 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _write_status(self, payload: dict[str, Any]) -> None:
+        # 상태를 파일이나 저장소에 기록한다.
         write_json_atomic(self._status_path, payload)
         self._last_status_payload = payload
+        self._command_status_publisher.publish(
+            robot_command_status_message_from_payload(
+                payload,
+                stamp=self.get_clock().now().to_msg(),
+            )
+        )
 
     def _build_pose_stamped(self, pose: Pose2D) -> PoseStamped:
+        # 위치 자세 stamped를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         return build_latest_pose_stamped(
             frame_id=self._plan.frame_id,
             x_value=pose.x,
@@ -3614,6 +3808,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _schedule_goal_reject_retry(self) -> bool:
+        # 목표 reject retry를 어떤 순서와 조건으로 처리할지 계획한다.
         context = self._active_context
         if context is None or context.target_pose is None:
             return False
@@ -3641,6 +3836,7 @@ class RobotManualCommandExecutor(Node):
         return True
 
     def _schedule_transient_navigation_retry(self) -> bool:
+        # transient navigation retry를 어떤 순서와 조건으로 처리할지 계획한다.
         context = self._active_context
         if context is None or context.target_pose is None:
             return False
@@ -3668,6 +3864,7 @@ class RobotManualCommandExecutor(Node):
         return True
 
     def _retry_active_navigation_goal(self) -> None:
+        # retry active 주행 목표 정보를 계산해 반환한다.
         self._cancel_goal_retry_timer()
         context = self._active_context
         if context is None or context.target_pose is None:
@@ -3682,6 +3879,7 @@ class RobotManualCommandExecutor(Node):
         )
 
     def _cancel_goal_retry_timer(self) -> None:
+        # cancel 목표 retry timer 정보를 계산해 반환한다.
         if self._goal_retry_timer is None:
             return
         self._goal_retry_timer.cancel()
@@ -3689,6 +3887,7 @@ class RobotManualCommandExecutor(Node):
         self._goal_retry_timer = None
 
     def _cancel_simulation_pose_reset_retry_timer(self) -> None:
+        # cancel 시뮬레이션 위치 자세 reset retry timer 정보를 계산해 반환한다.
         if self._simulation_pose_reset_retry_timer is None:
             return
         self._simulation_pose_reset_retry_timer.cancel()
@@ -3696,6 +3895,7 @@ class RobotManualCommandExecutor(Node):
         self._simulation_pose_reset_retry_timer = None
 
     def destroy_node(self) -> bool:
+        # destroy 노드 정보를 계산해 반환한다.
         self._cancel_goal_retry_timer()
         self._cancel_simulation_pose_reset_retry_timer()
         self._pending_context = None
@@ -3707,6 +3907,7 @@ class RobotManualCommandExecutor(Node):
 
 
 def main(args: list[str] | None = None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = RobotManualCommandExecutor()
     try:

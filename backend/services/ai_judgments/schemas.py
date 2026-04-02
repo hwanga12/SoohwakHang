@@ -1,3 +1,4 @@
+# 이 모듈은 AI 판정 계층에서 AI 판정 서비스에서 쓰는 데이터 계약을 정의한다.
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -10,6 +11,7 @@ HarvestActionScope = Literal["INDIVIDUAL", "BULK"]
 
 
 class AiJudgmentRecordOut(BaseModel):
+    # AI 판정 결과 기록 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     id: str
     plant_id: str | None = None
     fruit_id: str | None = None
@@ -29,6 +31,7 @@ class AiJudgmentRecordOut(BaseModel):
 
 
 class RipenessJudgmentCreateRequest(BaseModel):
+    # ripeness 판정 결과 create 요청 데이터를 구조적으로 다루기 위한 클래스를 정의한다.
     plant_id: str = ""
     fruit_id: str = ""
     zone_id: str = ""
@@ -41,15 +44,18 @@ class RipenessJudgmentCreateRequest(BaseModel):
 
 
 class RipenessJudgmentCreateResponse(BaseModel):
+    # ripeness 판정 결과 create 응답 데이터를 구조적으로 다루기 위한 클래스를 정의한다.
     ripeness_judgment: AiJudgmentRecordOut
     harvest_decision: AiJudgmentRecordOut | None = None
 
 
 class AiJudgmentHistoryOut(BaseModel):
+    # AI 판정 결과 이력 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     items: list[AiJudgmentRecordOut]
 
 
 class HarvestDecisionActionRequest(BaseModel):
+    # harvest decision action 요청 데이터를 구조적으로 다루기 위한 클래스를 정의한다.
     plant_id: str = ""
     fruit_id: str = ""
     zone_id: str = ""
@@ -57,6 +63,7 @@ class HarvestDecisionActionRequest(BaseModel):
 
 
 class HarvestDecisionActionOut(BaseModel):
+    # harvest decision action 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     scope: HarvestActionScope
     plant_id: str | None = None
     fruit_id: str | None = None
@@ -70,9 +77,11 @@ class HarvestDecisionActionOut(BaseModel):
 
 
 class BulkHarvestDecisionRequest(BaseModel):
+    # bulk harvest decision 요청 데이터를 구조적으로 다루기 위한 클래스를 정의한다.
     targets: list[HarvestDecisionActionRequest] = Field(default_factory=list)
     requested_by: str = "frontend"
 
 
 class BulkHarvestDecisionResponse(BaseModel):
+    # bulk harvest decision 응답 데이터를 구조적으로 다루기 위한 클래스를 정의한다.
     items: list[HarvestDecisionActionOut]

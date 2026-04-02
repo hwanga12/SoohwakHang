@@ -1,5 +1,4 @@
-"""Hybrid exploration supervisor for autonomous SLAM mapping sessions."""
-
+# 이 모듈은 자율주행과 경로 계획 패키지에서 frontier explorer 기능을 담당한다.
 from __future__ import annotations
 
 from collections import deque
@@ -45,6 +44,7 @@ MODE_ERROR = 'error'
 
 @dataclass(frozen=True)
 class RobotPose:
+    # robot 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     x: float
     y: float
     yaw: float
@@ -52,6 +52,7 @@ class RobotPose:
 
 @dataclass(frozen=True)
 class FrontierCandidate:
+    # frontier 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     map_x: int
     map_y: int
     world_x: float
@@ -65,6 +66,7 @@ class FrontierCandidate:
 
 @dataclass(frozen=True)
 class RecoveryCommand:
+    # recovery 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     kind: str
     distance_or_yaw: float
     speed: float
@@ -74,6 +76,7 @@ class RecoveryCommand:
 
 @dataclass
 class BlacklistRegion:
+    # 제외 목록 region 한 건을 명확한 필드 구조로 담기 위한 데이터 클래스다.
     x: float
     y: float
     expires_at_ns: int
@@ -81,13 +84,14 @@ class BlacklistRegion:
 
 @dataclass(frozen=True)
 class CoverageGoal:
+    # coverage 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     world_x: float
     world_y: float
     heading: float
 
 
 def frontier_distance_reward(distance_m: float, maximum_distance_score_m: float) -> float:
-    """Favor nearby frontier continuations over long jump goals."""
+    # 프런티어 distance reward 정보를 계산해 반환한다.
     if maximum_distance_score_m <= 0.0:
         return 0.0
     return max(0.0, maximum_distance_score_m - min(distance_m, maximum_distance_score_m))
@@ -105,6 +109,7 @@ def build_recovery_commands(
     recovery_default_spin_rad: float,
     drive_clearance_threshold_m: float = 0.8,
 ) -> list[RecoveryCommand]:
+    # recovery 명령 목록를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     if best_heading is not None:
         spin_angle = best_heading
         if best_clearance <= front_clearance + 0.20 and abs(spin_angle) < 2.2:
@@ -144,30 +149,37 @@ def build_recovery_commands(
 
 
 def map_index(width: int, x: int, y: int) -> int:
+    # 입력 값을 index에 대응되도록 매핑한다.
     return y * width + x
 
 
 def is_free(value: int) -> bool:
+    # free인지 여부를 불리언 값으로 판단한다.
     return 0 <= value <= FREE_THRESHOLD
 
 
 def is_unknown(value: int) -> bool:
+    # unknown인지 여부를 불리언 값으로 판단한다.
     return value == UNKNOWN
 
 
 def is_occupied(value: int) -> bool:
+    # occupied인지 여부를 불리언 값으로 판단한다.
     return value >= OCCUPIED_THRESHOLD
 
 
 def normalize_angle(angle: float) -> float:
+    # angle를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
 def clamp(value: float, lower: float, upper: float) -> float:
+    # 대상 값을 허용 범위로 제한한다.
     return max(lower, min(upper, value))
 
 
 def iter_neighbors(x: int, y: int, width: int, height: int) -> tuple[tuple[int, int], ...]:
+    # iter neighbors 정보를 계산해 반환한다.
     neighbors: list[tuple[int, int]] = []
     for dy in (-1, 0, 1):
         for dx in (-1, 0, 1):
@@ -187,6 +199,7 @@ def is_frontier_cell(
     x: int,
     y: int,
 ) -> bool:
+    # frontier cell인지 여부를 불리언 값으로 판단한다.
     if not is_free(data[map_index(width, x, y)]):
         return False
     return any(
@@ -199,6 +212,7 @@ def frontier_clusters(
     map_msg: OccupancyGrid,
     minimum_cluster_size: int,
 ) -> list[list[tuple[int, int]]]:
+    # 프런티어 clusters 정보를 계산해 반환한다.
     width = int(map_msg.info.width)
     height = int(map_msg.info.height)
     if width <= 0 or height <= 0:
@@ -238,6 +252,7 @@ def frontier_clusters(
 
 
 def map_to_world(map_msg: OccupancyGrid, x: int, y: int) -> tuple[float, float]:
+    # 입력 값을 TO 월드에 대응되도록 매핑한다.
     origin = map_msg.info.origin.position
     resolution = float(map_msg.info.resolution)
     world_x = origin.x + (x + 0.5) * resolution
@@ -246,6 +261,7 @@ def map_to_world(map_msg: OccupancyGrid, x: int, y: int) -> tuple[float, float]:
 
 
 def world_to_map(map_msg: OccupancyGrid, x: float, y: float) -> tuple[int, int] | None:
+    # 월드 지도 정보를 계산해 반환한다.
     resolution = float(map_msg.info.resolution)
     if resolution <= 0.0:
         return None
@@ -263,6 +279,7 @@ def is_blacklisted(
     blacklisted_points: list[tuple[float, float]],
     blacklist_radius_m: float,
 ) -> bool:
+    # blacklisted인지 여부를 불리언 값으로 판단한다.
     radius_sq = blacklist_radius_m * blacklist_radius_m
     return any(
         (world_x - blocked_x) ** 2 + (world_y - blocked_y) ** 2 <= radius_sq
@@ -271,6 +288,7 @@ def is_blacklisted(
 
 
 def boundary_allows(boundary_map: OccupancyGrid | None, world_x: float, world_y: float) -> bool:
+    # boundary allows 정보를 계산해 반환한다.
     if boundary_map is None:
         return True
     coords = world_to_map(boundary_map, world_x, world_y)
@@ -288,6 +306,7 @@ def boundary_ray_clearance(
     max_distance: float,
     step_distance: float = 0.05,
 ) -> float:
+    # boundary ray clearance 정보를 계산해 반환한다.
     if boundary_map is None or robot_pose is None:
         return max_distance
     if max_distance <= 0.0:
@@ -312,6 +331,7 @@ def count_free_support(
     y: int,
     radius_cells: int,
 ) -> int:
+    # 개수 free support 정보를 계산해 반환한다.
     support = 0
     radius_sq = radius_cells * radius_cells
     for ny in range(max(0, y - radius_cells), min(height, y + radius_cells + 1)):
@@ -332,6 +352,7 @@ def find_staging_cell(
     search_radius_cells: int,
     support_radius_cells: int,
 ) -> tuple[tuple[int, int], float] | None:
+    # staging cell을 찾아 반환한다.
     width = int(map_msg.info.width)
     height = int(map_msg.info.height)
     data = map_msg.data
@@ -373,6 +394,7 @@ def find_staging_cell(
 
 
 def scan_ranges(scan_msg: LaserScan) -> list[float]:
+    # scan ranges 정보를 계산해 반환한다.
     valid_ranges: list[float] = []
     range_min = float(scan_msg.range_min)
     range_max = float(scan_msg.range_max)
@@ -391,6 +413,7 @@ def sector_clearance(
     window_angle: float,
     clearance_percentile: float = 0.20,
 ) -> float:
+    # sector clearance 정보를 계산해 반환한다.
     ranges = scan_ranges(scan_msg)
     if not ranges:
         return 0.0
@@ -426,6 +449,7 @@ def choose_open_heading(
     boundary_map: OccupancyGrid | None = None,
     robot_pose: RobotPose | None = None,
 ) -> tuple[float | None, float, float]:
+    # open heading 가운데 최종 대상을 고른다.
     ranges = scan_ranges(scan_msg)
     if not ranges:
         return None, 0.0, float('-inf')
@@ -475,6 +499,7 @@ def wall_follow_command(
     diagonal_gain: float,
     follow_side: str,
 ) -> tuple[float, float]:
+    # wall follow 명령 정보를 계산해 반환한다.
     if follow_side not in {'left', 'right'}:
         follow_side = 'right'
 
@@ -498,6 +523,7 @@ def wall_follow_command(
 
 
 def compute_known_ratio(map_msg: OccupancyGrid | None) -> float:
+    # 현재 입력 조건을 바탕으로 known ratio를 계산하거나 결정한다.
     if map_msg is None or not map_msg.data:
         return 0.0
     known = sum(1 for value in map_msg.data if value != UNKNOWN)
@@ -514,6 +540,7 @@ def bootstrap_ready_for_frontier(
     bootstrap_total_distance_m: float,
     minimum_total_distance_m: float,
 ) -> bool:
+    # bootstrap ready 프런티어 정보를 계산해 반환한다.
     if not has_candidates or known_ratio < known_ratio_threshold:
         return False
     if bootstrap_passes < minimum_passes:
@@ -533,6 +560,7 @@ def boundary_ready_for_frontier(
     known_ratio: float,
     known_ratio_threshold: float,
 ) -> bool:
+    # boundary ready 프런티어 정보를 계산해 반환한다.
     if not has_candidates:
         return False
     if boundary_elapsed_sec < minimum_boundary_duration_sec:
@@ -564,6 +592,7 @@ def build_frontier_candidates(
     recent_goal_radius_m: float = 0.0,
     boundary_map: OccupancyGrid | None = None,
 ) -> list[FrontierCandidate]:
+    # frontier candidates를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     robot_cell = world_to_map(map_msg, robot_pose.x, robot_pose.y)
     if robot_cell is None:
         return []
@@ -654,6 +683,7 @@ def build_coverage_fill_goals(
     minimum_segment_length_m: float,
     boundary_map: OccupancyGrid | None = None,
 ) -> list[CoverageGoal]:
+    # coverage fill 목표 목록를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     width = int(map_msg.info.width)
     height = int(map_msg.info.height)
     if width <= 0 or height <= 0:
@@ -706,9 +736,10 @@ def build_coverage_fill_goals(
 
 
 class FrontierExplorerNode(Node):
-    """Supervise bootstrap, boundary follow, frontier explore, recovery, and fill passes."""
+    # ROS 2 실행 환경에서 frontier explorer 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # FrontierExplorerNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('frontier_explorer')
 
         self.declare_parameter('map_topic', '/map')
@@ -1079,18 +1110,22 @@ class FrontierExplorerNode(Node):
         self._publish_status()
 
     def _handle_map(self, msg: OccupancyGrid) -> None:
+        # handle 지도 정보를 계산해 반환한다.
         self._map = msg
         self._map_frame = msg.header.frame_id or self._goal_frame
 
     def _handle_boundary_map(self, msg: OccupancyGrid) -> None:
+        # handle boundary 지도 정보를 계산해 반환한다.
         self._boundary_map = msg
         self._boundary_map_frame = msg.header.frame_id or self._goal_frame
 
     def _handle_scan(self, msg: LaserScan) -> None:
+        # handle scan 정보를 계산해 반환한다.
         self._latest_scan = msg
         self._latest_scan_time = self.get_clock().now()
 
     def _handle_start(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        # handle start 정보를 계산해 반환한다.
         del request
         if self._active:
             response.success = False
@@ -1111,6 +1146,7 @@ class FrontierExplorerNode(Node):
         return response
 
     def _handle_stop(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        # handle stop 정보를 계산해 반환한다.
         del request
         if not self._active and self._mode in {MODE_IDLE, MODE_STOPPED, MODE_COMPLETED}:
             response.success = False
@@ -1135,6 +1171,7 @@ class FrontierExplorerNode(Node):
         return response
 
     def _handle_resume(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        # handle resume 정보를 계산해 반환한다.
         del request
         if self._active:
             response.success = False
@@ -1157,6 +1194,7 @@ class FrontierExplorerNode(Node):
         return response
 
     def _reset_for_restart(self) -> None:
+        # reset restart 정보를 계산해 반환한다.
         now = self.get_clock().now()
         self._last_error_message = ''
         self._no_frontier_counter = 0
@@ -1177,6 +1215,7 @@ class FrontierExplorerNode(Node):
         self._last_progress_distance_remaining_m = None
 
     def _plan_once(self) -> None:
+        # once를 어떤 순서와 조건으로 처리할지 계획한다.
         self._prune_blacklist()
         self._prune_recent_goals()
         if not self._active:
@@ -1233,6 +1272,7 @@ class FrontierExplorerNode(Node):
             self._step_frontier_explore(robot_pose)
 
     def _fresh_scan(self) -> LaserScan | None:
+        # fresh scan 정보를 계산해 반환한다.
         if self._latest_scan is None:
             return None
         if self.get_clock().now() - self._latest_scan_time > self._scan_timeout:
@@ -1240,6 +1280,7 @@ class FrontierExplorerNode(Node):
         return self._latest_scan
 
     def _lookup_robot_pose(self, *, frame_id: str | None = None) -> RobotPose | None:
+        # lookup 로봇 위치 자세 정보를 계산해 반환한다.
         target_frame = frame_id or self._goal_frame
         try:
             transform = self._tf_buffer.lookup_transform(
@@ -1270,6 +1311,7 @@ class FrontierExplorerNode(Node):
         return pose
 
     def _map_frame_id(self) -> str:
+        # 입력 값을 frame ID에 대응되도록 매핑한다.
         if self._map_frame:
             return self._map_frame
         if self._map is not None and self._map.header.frame_id:
@@ -1278,12 +1320,14 @@ class FrontierExplorerNode(Node):
 
     @staticmethod
     def _yaw_from_quaternion(quaternion: Any) -> float:
+        # yaw 쿼터니언 정보를 계산해 반환한다.
         return math.atan2(
             2.0 * (quaternion.w * quaternion.z + quaternion.x * quaternion.y),
             1.0 - 2.0 * (quaternion.y * quaternion.y + quaternion.z * quaternion.z),
         )
 
     def _lookup_frame_transform(self, *, target_frame: str, source_frame: str):
+        # lookup frame 변환 정보를 계산해 반환한다.
         if not target_frame or not source_frame or target_frame == source_frame:
             return None
         return self._tf_buffer.lookup_transform(
@@ -1301,6 +1345,7 @@ class FrontierExplorerNode(Node):
         source_frame: str,
         target_frame: str,
     ) -> tuple[float, float] | None:
+        # 변환 xy 정보를 계산해 반환한다.
         if not source_frame or not target_frame or source_frame == target_frame:
             return x, y
         try:
@@ -1328,6 +1373,7 @@ class FrontierExplorerNode(Node):
         source_frame: str,
         target_frame: str,
     ) -> float | None:
+        # 변환 heading 정보를 계산해 반환한다.
         if not source_frame or not target_frame or source_frame == target_frame:
             return yaw
         try:
@@ -1348,6 +1394,7 @@ class FrontierExplorerNode(Node):
         source_frame: str,
         target_frame: str,
     ) -> RobotPose | None:
+        # 변환 로봇 위치 자세 정보를 계산해 반환한다.
         transformed_xy = self._transform_xy(
             pose.x,
             pose.y,
@@ -1366,6 +1413,7 @@ class FrontierExplorerNode(Node):
         return RobotPose(x=transformed_xy[0], y=transformed_xy[1], yaw=transformed_yaw)
 
     def _boundary_allows_candidate_point(self, world_x: float, world_y: float) -> bool:
+        # boundary allows 후보 point 정보를 계산해 반환한다.
         if not self._use_boundary_map or self._boundary_map is None:
             return True
         boundary_frame = self._boundary_map_frame or self._goal_frame
@@ -1380,9 +1428,11 @@ class FrontierExplorerNode(Node):
         return boundary_allows(self._boundary_map, point[0], point[1])
 
     def _known_ratio(self) -> float:
+        # known ratio 정보를 계산해 반환한다.
         return compute_known_ratio(self._map)
 
     def _should_start_in_frontier_mode(self) -> bool:
+        # start IN frontier 모드가 필요한 상황인지 여부를 판단한다.
         return (
             self._map is not None
             and self._start_frontier_known_ratio > 0.0
@@ -1390,6 +1440,7 @@ class FrontierExplorerNode(Node):
         )
 
     def _candidate_points(self, robot_pose: RobotPose) -> list[FrontierCandidate]:
+        # 후보 points 정보를 계산해 반환한다.
         if self._map is None:
             return []
         use_boundary_map_directly = (
@@ -1425,12 +1476,15 @@ class FrontierExplorerNode(Node):
         return candidates
 
     def _blacklisted_points(self) -> list[tuple[float, float]]:
+        # blacklisted points 정보를 계산해 반환한다.
         return [(region.x, region.y) for region in self._blacklisted_regions]
 
     def _recent_goal_points(self) -> list[tuple[float, float]]:
+        # recent 목표 points 정보를 계산해 반환한다.
         return [(region.x, region.y) for region in self._recent_goal_regions]
 
     def _step_bootstrap(self, robot_pose: RobotPose) -> None:
+        # step bootstrap 정보를 계산해 반환한다.
         scan = self._fresh_scan()
         if scan is None:
             return
@@ -1525,6 +1579,7 @@ class FrontierExplorerNode(Node):
         )
 
     def _continue_bootstrap_drive(self, robot_pose: RobotPose, scan: LaserScan) -> None:
+        # continue bootstrap drive 정보를 계산해 반환한다.
         front_clearance = sector_clearance(
             scan,
             center_angle=0.0,
@@ -1562,6 +1617,7 @@ class FrontierExplorerNode(Node):
         self._publish_status()
 
     def _stop_bootstrap_drive(self) -> None:
+        # bootstrap drive 실행 흐름을 시작하거나 마무리한다.
         if not self._bootstrap_drive_active:
             return
         self._bootstrap_drive_active = False
@@ -1569,6 +1625,7 @@ class FrontierExplorerNode(Node):
         self._cmd_vel_publisher.publish(Twist())
 
     def _step_boundary_follow(self, robot_pose: RobotPose) -> None:
+        # step boundary follow 정보를 계산해 반환한다.
         scan = self._fresh_scan()
         if scan is None:
             self._queue_recovery('Boundary follow lost LiDAR data.')
@@ -1682,10 +1739,12 @@ class FrontierExplorerNode(Node):
         self._publish_status()
 
     def _stop_boundary_follow(self) -> None:
+        # boundary follow 실행 흐름을 시작하거나 마무리한다.
         self._stop_bootstrap_drive()
         self._cmd_vel_publisher.publish(Twist())
 
     def _step_frontier_explore(self, robot_pose: RobotPose) -> None:
+        # step 프런티어 explore 정보를 계산해 반환한다.
         if not self._navigate_client.wait_for_server(timeout_sec=0.05):
             self._set_mode(MODE_STARTING, 'Waiting for NavigateToPose action server.')
             return
@@ -1717,6 +1776,7 @@ class FrontierExplorerNode(Node):
         self._send_navigation_goal(candidates[0], source='frontier', robot_pose=robot_pose)
 
     def _prepare_coverage_fill(self, robot_pose: RobotPose) -> None:
+        # prepare coverage fill 정보를 계산해 반환한다.
         if not self._enable_coverage_fill or self._map is None:
             self._active = False
             self._set_mode(MODE_COMPLETED, 'Frontier exploration completed without coverage fill.')
@@ -1756,6 +1816,7 @@ class FrontierExplorerNode(Node):
         )
 
     def _step_coverage_fill(self, robot_pose: RobotPose) -> None:
+        # step coverage fill 정보를 계산해 반환한다.
         candidates = self._candidate_points(robot_pose)
         if candidates:
             self._set_mode(MODE_FRONTIER, 'Frontiers reappeared; resuming frontier exploration.')
@@ -1772,6 +1833,7 @@ class FrontierExplorerNode(Node):
         self._send_navigation_goal(goal, source='coverage', robot_pose=robot_pose)
 
     def _step_recovery(self, robot_pose: RobotPose) -> None:
+        # step recovery 정보를 계산해 반환한다.
         del robot_pose
         self._start_next_behavior_command()
 
@@ -1782,6 +1844,7 @@ class FrontierExplorerNode(Node):
         source: str,
         robot_pose: RobotPose,
     ) -> None:
+        # navigation 목표를 외부 시스템이나 다음 처리 단계로 전달한다.
         source_frame = self._map_frame_id()
         if isinstance(target, FrontierCandidate):
             candidate_goal_x = target.world_x
@@ -1867,6 +1930,7 @@ class FrontierExplorerNode(Node):
         )
 
     def _handle_goal_feedback(self, feedback_msg: Any) -> None:
+        # handle 목표 feedback 정보를 계산해 반환한다.
         distance_remaining = float(feedback_msg.feedback.distance_remaining)
         self._last_distance_remaining_m = distance_remaining
         if (
@@ -1879,6 +1943,7 @@ class FrontierExplorerNode(Node):
         self._publish_status()
 
     def _handle_goal_response(self, future: Any) -> None:
+        # handle 목표 response 정보를 계산해 반환한다.
         try:
             goal_handle = future.result()
         except Exception as exc:
@@ -1897,6 +1962,7 @@ class FrontierExplorerNode(Node):
         self._goal_result_future.add_done_callback(self._handle_goal_result)
 
     def _handle_goal_result(self, future: Any) -> None:
+        # handle 목표 결과 정보를 계산해 반환한다.
         self._active_goal_handle = None
         self._goal_result_future = None
         self._last_distance_remaining_m = None
@@ -1941,6 +2007,7 @@ class FrontierExplorerNode(Node):
         self._queue_recovery(error_msg)
 
     def _check_progress_timeout(self) -> None:
+        # progress timeout 상태를 점검한다.
         if self._active_goal_handle is None:
             return
         if self.get_clock().now() - self._last_progress_time <= self._progress_timeout:
@@ -1952,12 +2019,14 @@ class FrontierExplorerNode(Node):
         )
 
     def _request_goal_cancel(self) -> None:
+        # request 목표 cancel 정보를 계산해 반환한다.
         if self._active_goal_handle is None or self._goal_cancel_future is not None:
             return
         self._goal_cancel_future = self._active_goal_handle.cancel_goal_async()
         self._goal_cancel_future.add_done_callback(self._handle_goal_cancel_response)
 
     def _handle_goal_cancel_response(self, future: Any) -> None:
+        # handle 목표 cancel response 정보를 계산해 반환한다.
         try:
             cancel_response = future.result()
         except Exception as exc:
@@ -1971,6 +2040,7 @@ class FrontierExplorerNode(Node):
             self._queue_recovery('Goal cancel request was rejected.')
 
     def _queue_recovery(self, reason: str) -> None:
+        # queue recovery 정보를 계산해 반환한다.
         scan = self._fresh_scan()
         self._stop_boundary_follow()
         boundary_robot_pose = (
@@ -2039,6 +2109,7 @@ class FrontierExplorerNode(Node):
         return_mode: str,
         message: str,
     ) -> None:
+        # queue behavior 명령 정보를 계산해 반환한다.
         if not commands:
             return
         self._behavior_queue = list(commands)
@@ -2050,6 +2121,7 @@ class FrontierExplorerNode(Node):
         )
 
     def _start_next_behavior_command(self) -> None:
+        # next behavior 명령 실행 흐름을 시작하거나 마무리한다.
         if not self._behavior_queue or self._active_behavior_handle is not None:
             return
         if self._behavior_send_future is not None:
@@ -2094,6 +2166,7 @@ class FrontierExplorerNode(Node):
         )
 
     def _handle_behavior_goal_response(self, future: Any) -> None:
+        # handle behavior 목표 response 정보를 계산해 반환한다.
         try:
             goal_handle = future.result()
         except Exception as exc:
@@ -2117,6 +2190,7 @@ class FrontierExplorerNode(Node):
         self._behavior_result_future.add_done_callback(self._handle_behavior_result)
 
     def _handle_behavior_result(self, future: Any) -> None:
+        # handle behavior 결과 정보를 계산해 반환한다.
         self._active_behavior_handle = None
         self._behavior_result_future = None
         command = self._active_behavior_command
@@ -2168,12 +2242,14 @@ class FrontierExplorerNode(Node):
             self._set_mode(MODE_BOOTSTRAP, 'Bootstrap drive finished; re-evaluating exploration mode.')
 
     def _request_behavior_cancel(self) -> None:
+        # request behavior cancel 정보를 계산해 반환한다.
         if self._active_behavior_handle is None or self._behavior_cancel_future is not None:
             return
         self._behavior_cancel_future = self._active_behavior_handle.cancel_goal_async()
         self._behavior_cancel_future.add_done_callback(self._handle_behavior_cancel_response)
 
     def _handle_behavior_cancel_response(self, future: Any) -> None:
+        # handle behavior cancel response 정보를 계산해 반환한다.
         try:
             future.result()
         except Exception as exc:
@@ -2183,6 +2259,7 @@ class FrontierExplorerNode(Node):
         self._behavior_cancel_future = None
 
     def _blacklist_active_goal(self, message: str) -> None:
+        # blacklist active 목표 정보를 계산해 반환한다.
         if self._active_goal_point is not None:
             self._blacklisted_regions.append(
                 BlacklistRegion(
@@ -2200,12 +2277,14 @@ class FrontierExplorerNode(Node):
         self._publish_status()
 
     def _prune_blacklist(self) -> None:
+        # prune blacklist 정보를 계산해 반환한다.
         now_ns = self.get_clock().now().nanoseconds
         self._blacklisted_regions = [
             region for region in self._blacklisted_regions if region.expires_at_ns > now_ns
         ]
 
     def _remember_recent_goal(self, x: float, y: float) -> None:
+        # remember recent 목표 정보를 계산해 반환한다.
         if self._recent_goal_radius_m <= 0.0 or self._recent_goal_ttl.nanoseconds <= 0:
             return
         self._recent_goal_regions.append(
@@ -2217,17 +2296,20 @@ class FrontierExplorerNode(Node):
         )
 
     def _prune_recent_goals(self) -> None:
+        # prune recent 목표 정보를 계산해 반환한다.
         now_ns = self.get_clock().now().nanoseconds
         self._recent_goal_regions = [
             region for region in self._recent_goal_regions if region.expires_at_ns > now_ns
         ]
 
     def _describe_active_goal(self) -> str:
+        # active 목표을 설명 문자열로 만든다.
         if self._active_goal_point is None:
             return 'n/a'
         return f'({self._active_goal_point[0]:.2f}, {self._active_goal_point[1]:.2f})'
 
     def _set_mode(self, mode: str, message: str) -> None:
+        # mode을 설정한다.
         if mode == self._mode and message == self._state_message:
             return
         self._mode = mode
@@ -2236,6 +2318,7 @@ class FrontierExplorerNode(Node):
         self._publish_status()
 
     def _set_error(self, message: str) -> None:
+        # error을 설정한다.
         self._last_error_message = message
         self._mode = MODE_ERROR
         self._state_message = message
@@ -2243,6 +2326,7 @@ class FrontierExplorerNode(Node):
         self._publish_status()
 
     def _publish_status(self) -> None:
+        # 상태를 외부 시스템이나 다음 처리 단계로 전달한다.
         payload = {
             'mode': self._mode,
             'message': self._state_message,
@@ -2279,6 +2363,7 @@ class FrontierExplorerNode(Node):
         self._status_publisher.publish(String(data=json.dumps(payload, sort_keys=True)))
 
     def destroy_node(self) -> bool:
+        # destroy 노드 정보를 계산해 반환한다.
         try:
             if rclpy.ok():
                 self._cmd_vel_publisher.publish(Twist())
@@ -2298,6 +2383,7 @@ class FrontierExplorerNode(Node):
 
 
 def main(args: list[str] | None = None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = FrontierExplorerNode()
     try:

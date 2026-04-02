@@ -1,5 +1,4 @@
-"""Drop stale simulated clock and state messages before they poison TF consumers."""
-
+# 이 모듈은 로봇 모델과 시뮬레이션 자산 패키지에서 sim time guard 로직을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,10 +18,12 @@ from sensor_msgs.msg import JointState, LaserScan
 
 
 def stamp_to_nanoseconds(sec_value: int, nanosec_value: int) -> int:
+    # stamp nanoseconds 정보를 계산해 반환한다.
     return int(sec_value) * 1_000_000_000 + int(nanosec_value)
 
 
 def nanoseconds_to_stamp_fields(stamp_ns: int) -> tuple[int, int]:
+    # nanoseconds stamp fields 정보를 계산해 반환한다.
     normalized_ns = max(0, int(stamp_ns))
     sec_value, nanosec_value = divmod(normalized_ns, 1_000_000_000)
     return int(sec_value), int(nanosec_value)
@@ -34,6 +35,7 @@ def normalized_state_stamp_ns(
     latest_clock_stamp_ns: int | None,
     last_published_stamp_ns: int | None,
 ) -> int:
+    # normalized 상태 stamp ns 정보를 계산해 반환한다.
     normalized_ns = int(source_stamp_ns)
     if latest_clock_stamp_ns is not None:
         normalized_ns = max(normalized_ns, int(latest_clock_stamp_ns))
@@ -43,27 +45,32 @@ def normalized_state_stamp_ns(
 
 
 class SingletonLockError(RuntimeError):
+    # singleton lock error 문제를 구분하기 위한 예외 클래스다.
     pass
 
 
 @dataclass
 class MonotonicStampFilter:
+    # 단조 증가 타임스탬프 filter 한 건을 명확한 필드 구조로 담기 위한 데이터 클래스다.
     last_stamp_ns: int | None = None
 
     def accept(self, stamp_ns: int) -> bool:
+        # accept 정보를 계산해 반환한다.
         if self.last_stamp_ns is None or stamp_ns > self.last_stamp_ns:
             self.last_stamp_ns = stamp_ns
             return True
         return False
 
     def reset(self, stamp_ns: int) -> None:
+        # reset 정보를 계산해 반환한다.
         self.last_stamp_ns = stamp_ns
 
 
 class SimTimeGuard(Node):
-    """Republish only monotonic simulation messages to keep Nav2 TF stable."""
+    # SIM 시간 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # SimTimeGuard 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('sim_time_guard')
 
         self.declare_parameter('clock_input_topic', '/clock_raw')
@@ -121,6 +128,7 @@ class SimTimeGuard(Node):
         )
 
     def _handle_clock(self, message: Clock) -> None:
+        # handle clock 정보를 계산해 반환한다.
         stamp_ns = stamp_to_nanoseconds(message.clock.sec, message.clock.nanosec)
         self._latest_clock_stamp_ns = max(
             stamp_ns,
@@ -135,6 +143,7 @@ class SimTimeGuard(Node):
         )
 
     def _handle_odom(self, message: Odometry) -> None:
+        # handle odom 정보를 계산해 반환한다.
         stamp_ns = stamp_to_nanoseconds(message.header.stamp.sec, message.header.stamp.nanosec)
         normalized_stamp_ns = normalized_state_stamp_ns(
             source_stamp_ns=stamp_ns,
@@ -151,6 +160,7 @@ class SimTimeGuard(Node):
         )
 
     def _handle_joint_states(self, message: JointState) -> None:
+        # handle joint 상태 정보를 계산해 반환한다.
         stamp_ns = stamp_to_nanoseconds(message.header.stamp.sec, message.header.stamp.nanosec)
         normalized_stamp_ns = normalized_state_stamp_ns(
             source_stamp_ns=stamp_ns,
@@ -167,6 +177,7 @@ class SimTimeGuard(Node):
         )
 
     def _handle_lidar(self, message: LaserScan) -> None:
+        # handle lidar 정보를 계산해 반환한다.
         stamp_ns = stamp_to_nanoseconds(message.header.stamp.sec, message.header.stamp.nanosec)
         normalized_stamp_ns = normalized_state_stamp_ns(
             source_stamp_ns=stamp_ns,
@@ -183,6 +194,7 @@ class SimTimeGuard(Node):
         )
 
     def _republish_monotonic(self, stream_label: str, stamp_ns: int, message, stamp_filter: MonotonicStampFilter, publish) -> None:
+        # republish monotonic 정보를 계산해 반환한다.
         if not rclpy.ok():
             return
 
@@ -205,6 +217,7 @@ class SimTimeGuard(Node):
         )
 
     def _safe_publish(self, publish, message) -> None:
+        # safe 발행 정보를 계산해 반환한다.
         if not rclpy.ok():
             return
 
@@ -215,6 +228,7 @@ class SimTimeGuard(Node):
                 raise
 
     def _warn_drop(self, stream_label: str, message: str) -> None:
+        # warn drop 정보를 계산해 반환한다.
         now_monotonic = monotonic()
         last_warning = self._last_warning_monotonic_by_stream.get(stream_label, 0.0)
         if now_monotonic - last_warning < self._warning_interval_sec:
@@ -223,11 +237,13 @@ class SimTimeGuard(Node):
         self.get_logger().warning(message)
 
 def resolve_lock_path() -> Path:
+    # 현재 입력 조건을 바탕으로 lock 경로를 계산하거나 결정한다.
     raw_path = os.environ.get('AGRIBOT_SIM_TIME_GUARD_LOCK', '').strip()
     return Path(raw_path) if raw_path else Path(gettempdir()) / 'agribot_sim_time_guard.lock'
 
 
 def acquire_singleton_lock(lock_path: Path | None = None) -> int:
+    # acquire singleton lock 정보를 계산해 반환한다.
     resolved_lock_path = lock_path or resolve_lock_path()
     resolved_lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock_fd = os.open(str(resolved_lock_path), os.O_CREAT | os.O_RDWR, 0o644)
@@ -246,6 +262,7 @@ def acquire_singleton_lock(lock_path: Path | None = None) -> int:
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     try:
         lock_fd = acquire_singleton_lock()
     except SingletonLockError as exc:

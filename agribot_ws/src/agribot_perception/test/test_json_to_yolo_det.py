@@ -1,3 +1,4 @@
+# 이 테스트는 인지와 추론 패키지의 json to yolo det 동작을 검증한다.
 from __future__ import annotations
 
 import csv
@@ -23,10 +24,12 @@ MANIFEST_FIELDNAMES = [
 
 
 def write_png(path: Path, width: int, height: int) -> None:
+    # PNG를 파일이나 저장소에 기록한다.
     raw_rows = [b"\x00" + (b"\xff\xff\xff" * width) for _ in range(height)]
     raw_image = b"".join(raw_rows)
 
     def chunk(tag: bytes, data: bytes) -> bytes:
+        # chunk 정보를 계산해 반환한다.
         checksum = zlib.crc32(tag + data) & 0xFFFFFFFF
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", checksum)
 
@@ -39,6 +42,7 @@ def write_png(path: Path, width: int, height: int) -> None:
 
 
 def write_json(path: Path, payload: dict[str, object]) -> None:
+    # JSON 데이터를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
@@ -55,6 +59,7 @@ def manifest_row(
     top_level_bbox_count: int,
     source_split: str,
 ) -> dict[str, str]:
+    # manifest row 정보를 계산해 반환한다.
     return {
         "image_path": str(image_path),
         "image_rel_path": image_rel_path,
@@ -71,6 +76,7 @@ def manifest_row(
 def test_manifest_to_yolo_conversion_handles_negative_rows_and_bbox_clipping(
     tmp_path: Path,
 ) -> None:
+    # manifest TO yolo conversion handles negative rows AND 바운딩 박스 clipping 동작과 회귀 여부를 검증한다.
     dataset_root = tmp_path / "dataset"
     positive_train_image = (
         dataset_root / "train_positive" / "source" / "토마토" / "병해" / "positive_train.png"

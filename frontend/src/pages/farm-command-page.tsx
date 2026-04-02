@@ -1,3 +1,6 @@
+/*
+ * 이 컴포넌트는 관제 대시보드의 농장 명령 페이지를 구성한다.
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createGetSignal, createPostAction } from '@/app/dev-inspector'
@@ -929,6 +932,9 @@ function buildDiagnoseUiState(
   }
 }
 
+/**
+ * 농장 명령 페이지 화면 조각을 렌더링하는 컴포넌트다.
+ */
 export function FarmCommandPage() {
   const queryClient = useQueryClient()
   const [activeStopRequest, setActiveStopRequest] = useState<
@@ -938,7 +944,7 @@ export function FarmCommandPage() {
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null)
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false)
   const [activityState, setActivityState] = useState<string | null>(null)
-  const [, setUiMessage] = useState<string | null>(null)
+  const [uiMessage, setUiMessage] = useState<string | null>(null)
   const [actionRecords, setActionRecords] = useState<Record<string, AssetActionRecord>>({})
   const [activeHarvestMission, setActiveHarvestMission] = useState<PendingMissionRequest | null>(null)
   const [activePatrolMission, setActivePatrolMission] = useState<PendingMissionRequest | null>(null)
@@ -1118,12 +1124,12 @@ export function FarmCommandPage() {
       setActivityState('AI 진단 완료')
       rememberAction(
         variables.plantId,
-        'AI 진단 저장',
-        `${variables.plantName} 진단 결과 ${result.displayLabel} 이 DB에 저장되었습니다.`,
+        result.displayLabel,
+        `${variables.plantName} 진단 결과가 반영되었습니다.`,
         result.diagnosisNeeded ? 'danger' : 'healthy',
       )
       setUiMessage(
-        `${variables.plantName} 시연용 AI 진단이 완료되었습니다. ${result.displayLabel} 결과가 저장되었습니다.`,
+        `${variables.plantName} 결과가 반영되었습니다. 현재 상태는 ${result.displayLabel}입니다.`,
       )
 
       queryClient.setQueryData<PlantsPageData>(
@@ -1721,17 +1727,23 @@ export function FarmCommandPage() {
       : selectedPlantObservation?.displayLabel
         || selectedPlantDetail?.latestDisplayLabel
         || (selectedPlantLiveCameraImage ? '실시간 로봇 카메라' : '발표용 이미지')
-  const selectedPlantPreviewNote =
-    selectedPlantMatchedObservationImage
-      ? '선택한 식물에 대해 가장 최근에 저장된 자동 관측 이미지입니다.'
-      : selectedPlantObservation !== null
-        ? '최근 자동 관측으로 저장된 식물 스냅샷입니다.'
-        : selectedPlantDetail?.latestImageUrl
-          ? '최근 저장된 식물 이미지입니다.'
-          : selectedPlantLiveCameraImage
-            ? '현재 로봇이 보는 Gazebo 카메라 전체 화면입니다. 식물별 관측 이미지가 생기면 그 사진을 먼저 보여줍니다.'
-            : '백엔드 live 이미지가 없으면 시연용 기본 이미지를 표시합니다.'
   const currentActivity = currentMissionActivity ?? activityState ?? robot.missionState
+  const selectedPlantFeedbackTitle =
+    selectedActionRecord?.label
+    || (
+      selectedPlantDetail
+      && activeDiagnoseCommand?.plantId === selectedPlantDetail.id
+        ? currentActivity
+        : null
+    )
+  const selectedPlantFeedbackDetail = selectedActionRecord?.detail || uiMessage
+  const selectedPlantFeedbackTime =
+    selectedPlantObservation?.reviewedAt
+    || selectedPlantDetail?.lastObserved
+    || ''
+  const showSelectedPlantFeedback =
+    Boolean(selectedPlantFeedbackTitle)
+    || Boolean(selectedPlantFeedbackDetail)
   const selectedPlantNavigationPlan = useMemo(() => {
     if (!selectedPlantDetail) {
       return null
@@ -2676,7 +2688,6 @@ export function FarmCommandPage() {
               </div>
 
               <div className="farm-plant-modal__body">
-                <p className="farm-plant-modal__media-note">{selectedPlantPreviewNote}</p>
                 <div className="farm-plant-modal__actions">
                   <button
                     className="action-button"
@@ -2715,6 +2726,19 @@ export function FarmCommandPage() {
                     {harvestButtonLabel}
                   </button>
                 </div>
+                {showSelectedPlantFeedback ? (
+                  <div className="farm-plant-modal__feedback">
+                    <div className="farm-plant-modal__feedback-head">
+                      <strong>{selectedPlantFeedbackTitle || '최근 작업 결과'}</strong>
+                      {selectedPlantFeedbackTime ? (
+                        <span className="muted">{selectedPlantFeedbackTime}</span>
+                      ) : null}
+                    </div>
+                    <p className="muted">
+                      {selectedPlantFeedbackDetail || '최근 작업 피드백이 여기에 표시됩니다.'}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

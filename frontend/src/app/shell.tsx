@@ -1,3 +1,6 @@
+/*
+ * 이 모듈은 프론트엔드 앱 골격에서 공통 앱 셸 레이아웃을 구성한다.
+ */
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AppIcon } from '@/components/app-icon'
@@ -26,6 +29,9 @@ function formatModeLabel(mode: string) {
   return mode
 }
 
+/**
+ * APP 앱 셸 화면 조각을 렌더링하는 컴포넌트다.
+ */
 export default function AppShell() {
   const [showDevInfo, setShowDevInfo] = useState(false)
   const location = useLocation()

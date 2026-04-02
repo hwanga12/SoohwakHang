@@ -1,0 +1,141 @@
+@startuml
+title AgriBot System Architecture
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultTextAlignment center
+skinparam ArrowColor #444444
+skinparam PackageBorderColor #666666
+skinparam PackageBackgroundColor #FBFBFB
+skinparam ComponentBorderColor #666666
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam DatabaseBorderColor #666666
+skinparam DatabaseBackgroundColor #FFFFFF
+skinparam NodeBorderColor #666666
+skinparam NodeBackgroundColor #FFFFFF
+
+actor "Operator" as operator
+
+node "User Device" as user_device {
+  component "Web Browser" as browser
+
+  package "Frontend" as frontend_pkg {
+    component "React 18\nVite 6\nTypeScript" as frontend
+    component "TanStack Query\nAxios" as frontend_http
+    component "WebSocket Client" as frontend_ws
+  }
+}
+
+node "Backend Host" as backend_host {
+  package "FastAPI Backend" as backend_pkg {
+    component "FastAPI\nUvicorn" as backend
+    component "REST API Routers\n/dashboard /robot /missions\n/plants /environment /actuations ..." as api_router
+    component "Realtime Router\n/ws/live" as realtime_router
+    component "SQLAlchemy ORM\npsycopg2" as orm
+    component "MainInferenceService\nUltralytics YOLO" as backend_ai
+    component "Actuation Dispatcher\nDirect ROS publish\nsubprocess fallback" as actuation_dispatcher
+    component "Backend ROS Protocol Bridge\nrclpy topic pub/sub" as backend_ros_bridge
+    component "Runtime Bridge Services\nrobot_command_bridge_service\nmission_bridge_service\nrobot_runtime_state_service" as runtime_bridge
+    component "Perception Read Service\nruntime metadata + DB merge" as perception_read
+  }
+
+  database "PostgreSQL 16\nagribot_db" as postgres
+  component "pgAdmin4" as pgadmin
+  queue "Eclipse Mosquitto\nMQTT Broker" as mosquitto
+  folder "Shared Runtime Dir\nAGRIBOT_RUNTIME_DIR\n/tmp/agribot_runtime" as runtime_dir
+  folder "Backend Runtime Artifacts\nartifacts/runtime/backend" as backend_runtime
+}
+
+node "ROS 2 / Simulation Host" as ros_host {
+  package "ROS 2 Jazzy Graph" as ros_graph {
+    component "agribot_bringup\nsimulation.launch.py" as bringup
+    component "Gazebo Harmonic\nfarm_world.sdf" as gazebo
+    component "Nav2 + AMCL + SLAM Toolbox" as nav2
+    component "runtime_snapshot_exporter" as snapshot_exporter
+    component "robot_manual_command_executor" as manual_executor
+    component "mission_bridge_executor" as mission_executor
+    component "thin_inference_node\nYOLO thin inference" as thin_inference
+    component "patrol_node / harvest nodes\nmission_manager" as mission_nodes
+    component "IoT Controllers\nwatering / nutrient\nsprinkler / sensor nodes" as iot_nodes
+    component "mqtt_bridge_node\npaho-mqtt" as mqtt_bridge
+  }
+
+  folder "Robot Runtime Artifacts\nartifacts/runtime/robot/thin_inference" as robot_runtime
+}
+
+cloud "Physical / Simulated IoT Devices" as iot_devices
+
+operator --> browser : UI access
+browser --> frontend
+frontend --> frontend_http
+frontend --> frontend_ws
+
+frontend_http --> api_router : HTTP/JSON
+frontend_ws --> realtime_router : WebSocket
+
+api_router --> backend
+realtime_router --> backend
+backend --> orm
+orm --> postgres : SQL over TCP 5432
+pgadmin --> postgres : Admin over TCP 5432
+
+backend --> backend_ai : inference confirm
+backend --> perception_read
+backend --> backend_ros_bridge
+backend --> runtime_bridge
+backend --> actuation_dispatcher
+backend_ai --> backend_runtime : image + metadata write
+perception_read --> backend_runtime : JSON/image read
+
+backend_ros_bridge <--> ros_graph : Direct ROS topics\ncommand/status/control/iot
+runtime_bridge <--> runtime_dir : Legacy JSON file bridge\nfallback command/status/mission/pose/path
+snapshot_exporter <--> runtime_dir : pose/path/semantic snapshots
+manual_executor <--> runtime_dir : manual command + status
+mission_executor <--> runtime_dir : mission request + status
+
+bringup --> gazebo : launch
+bringup --> nav2 : launch
+bringup --> snapshot_exporter : launch
+bringup --> manual_executor : launch
+bringup --> mission_executor : launch
+bringup --> thin_inference : optional launch
+bringup --> mqtt_bridge : optional launch
+bringup --> iot_nodes : optional launch
+
+manual_executor --> nav2 : ROS 2 Action / Topic\nNavigateToPose, ComputePathToPose
+mission_executor --> mission_nodes : ROS 2 Service / Topic\n/patrol/start, /harvest/request
+mission_nodes --> nav2 : ROS 2 topics/actions
+
+thin_inference --> backend_ai : HTTP POST\n/api/v1/inference/confirm
+thin_inference --> robot_runtime : snapshot + latest_frame metadata
+perception_read --> robot_runtime : runtime image/metadata read
+
+actuation_dispatcher --> iot_nodes : Direct ROS publish\n/iot/commands/manual\n/iot/commands/auto
+
+iot_nodes --> mqtt_bridge : ROS 2 topics\n/environment_data\n/iot/device_state\n/iot/command_result
+mqtt_bridge --> mosquitto : MQTT publish\n1883/TCP + retry/offline queue
+mosquitto --> mqtt_bridge : MQTT subscribe\nagribot/commands/manual\nlegacy actuation alias
+mqtt_bridge --> iot_nodes : ROS 2 topic\n/iot/commands/manual
+
+iot_nodes --> iot_devices : device control / sensor sync
+gazebo --> iot_nodes : simulated environment data
+gazebo --> nav2 : simulated robot + world state
+
+legend right
+  == Frameworks ==
+  Frontend: React 18, Vite 6, TypeScript
+  Backend: FastAPI, Uvicorn, SQLAlchemy
+  Robot: ROS 2 Jazzy, Gazebo Harmonic, Nav2, SLAM Toolbox
+  AI: Ultralytics YOLO
+
+  == Protocols ==
+  Frontend <-> Backend: HTTP/JSON, WebSocket
+  Backend <-> PostgreSQL: TCP 5432 / SQL
+  Backend <-> ROS: Direct ROS topics (primary), shared JSON file bridge (fallback)
+  Backend -> ROS IoT control: Direct ROS publish, subprocess fallback
+  ROS <-> MQTT Broker: MQTT over TCP 1883
+  ROS internal: ROS 2 topics / services / actions
+endlegend
+
+@enduml

@@ -1,5 +1,4 @@
-"""Helpers for building Nav2 goals that stay robust under simulated time jitter."""
-
+# 이 모듈은 자율주행과 경로 계획 패키지에서 nav goal utils 기능을 담당한다.
 from __future__ import annotations
 
 import math
@@ -16,13 +15,7 @@ def build_latest_pose_stamped(
     z_value: float = 0.0,
     yaw_value: float,
 ) -> PoseStamped:
-    """Build a PoseStamped that asks TF consumers to use the latest available transform.
-
-    Nav2 goal poses are map-frame targets. In simulation, TF producers can briefly lag or
-    reorder timestamps while Gazebo, AMCL, and bridges settle. Using a zero timestamp keeps
-    the goal anchored to the latest transform instead of a stale sim-time instant that may
-    already have fallen out of the TF buffer by the time Nav2 evaluates the goal.
-    """
+    # latest 위치 자세 stamped를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
 
     stamped = PoseStamped()
     stamped.header.stamp = TimeMsg()

@@ -1,3 +1,4 @@
+# 이 테스트는 백엔드의 harvest runtime api 동작과 회귀 여부를 검증한다.
 from __future__ import annotations
 
 import json
@@ -23,16 +24,19 @@ from routers import harvests, missions  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def runtime_dir_isolation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # 런타임 dir isolation 정보를 계산해 반환한다.
     monkeypatch.setenv("AGRIBOT_RUNTIME_DIR", str(tmp_path))
     yield
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
+    # JSON 데이터를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def test_harvest_routes_return_runtime_event_and_basket_state() -> None:
+    # harvest 경로 목록 return 런타임 데이터 이벤트 AND basket 상태 동작과 회귀 여부를 검증한다.
     event_payload = {
         "event_id": "harvest-event-001",
         "mission_id": "mission-harvest-001",
@@ -104,6 +108,7 @@ def test_harvest_routes_return_runtime_event_and_basket_state() -> None:
 
 
 def test_mission_status_endpoint_overlays_harvest_action_phase() -> None:
+    # 미션 상태 endpoint overlays harvest action 단계 동작과 회귀 여부를 검증한다.
     _write_json(
         mission_status_record_file_path("mission-harvest-002"),
         {
@@ -151,6 +156,7 @@ def test_mission_status_endpoint_overlays_harvest_action_phase() -> None:
 
 
 def test_harvest_stats_ignore_failed_latest_event_for_last_harvested_fruit() -> None:
+    # harvest stats ignore failed latest 이벤트 FOR last harvested fruit 동작과 회귀 여부를 검증한다.
     failed_event_payload = {
         "event_id": "harvest-event-failed-001",
         "mission_id": "mission-harvest-failed-001",

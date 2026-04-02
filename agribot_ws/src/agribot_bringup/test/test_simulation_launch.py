@@ -1,3 +1,4 @@
+# 이 테스트는 통합 실행과 런치 조율 패키지의 simulation launch 동작을 검증한다.
 from importlib.util import module_from_spec, spec_from_file_location
 import os
 from pathlib import Path
@@ -25,6 +26,7 @@ LAUNCH_FILE = (
 
 
 def _load_launch_module():
+    # launch module를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     spec = spec_from_file_location('agribot_bringup_simulation_launch', LAUNCH_FILE)
     module = module_from_spec(spec)
     assert spec.loader is not None
@@ -33,6 +35,7 @@ def _load_launch_module():
 
 
 def _patch_package_lookup(monkeypatch, module) -> None:
+    # patch package lookup 정보를 계산해 반환한다.
     share_dirs = {
         'agribot_description': REPO_ROOT / 'agribot_ws' / 'src' / 'agribot_description',
         'agribot_navigation': REPO_ROOT / 'agribot_ws' / 'src' / 'agribot_navigation',
@@ -52,14 +55,17 @@ def _patch_package_lookup(monkeypatch, module) -> None:
 
 
 def _declared_node_name(node: Node) -> str:
+    # declared 노드 name 정보를 계산해 반환한다.
     return str(getattr(node, '_Node__node_name', ''))
 
 
 def _declared_node_executable(node: Node) -> str:
+    # declared 노드 executable 정보를 계산해 반환한다.
     return str(getattr(node, '_Node__node_executable', ''))
 
 
 def _has_shutdown_handler(launch_description) -> bool:
+    # shutdown handler가 포함되어 있는지 여부를 판단한다.
     for entity in launch_description.entities:
         if not isinstance(entity, RegisterEventHandler):
             continue
@@ -70,6 +76,7 @@ def _has_shutdown_handler(launch_description) -> bool:
 
 
 def _has_launch_session_env(launch_description) -> bool:
+    # launch session ENV가 포함되어 있는지 여부를 판단한다.
     for entity in launch_description.entities:
         if not isinstance(entity, SetEnvironmentVariable):
             continue
@@ -80,6 +87,7 @@ def _has_launch_session_env(launch_description) -> bool:
 
 
 def _launch_env_value(launch_description, target_name: str) -> str | None:
+    # ENV value 실행 흐름을 시작하거나 마무리한다.
     for entity in launch_description.entities:
         if not isinstance(entity, SetEnvironmentVariable):
             continue
@@ -93,6 +101,7 @@ def _launch_env_value(launch_description, target_name: str) -> str | None:
 
 
 def test_simulation_launch_declares_iot_arguments_and_includes_iot_pipeline(monkeypatch) -> None:
+    # 시뮬레이션 launch declares IoT arguments AND includes IoT pipeline 동작과 회귀 여부를 검증한다.
     monkeypatch.delenv(GRAPHICS_PROFILE_ENV_VAR, raising=False)
     monkeypatch.delenv(PERFORMANCE_MODE_ENV_VAR, raising=False)
     monkeypatch.delenv(LAUNCH_SESSION_ENV_VAR, raising=False)

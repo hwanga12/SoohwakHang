@@ -1,3 +1,4 @@
+# 이 모듈은 상위 제어와 의사결정 패키지에서 mission manager 판단과 실행 보조 로직을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from .observation_priority import (
 
 
 class RobotMode(str, Enum):
+    # robot 모드 값을 명확히 구분하기 위한 열거형 클래스를 정의한다.
     IDLE = 'IDLE'
     PATROL = 'PATROL'
     OBSERVE = 'OBSERVE'
@@ -34,6 +36,7 @@ class RobotMode(str, Enum):
 
 
 class MissionState(str, Enum):
+    # 미션 상태 값을 명확히 구분하기 위한 열거형 클래스를 정의한다.
     PENDING = 'PENDING'
     RUNNING = 'RUNNING'
     PAUSED = 'PAUSED'
@@ -43,6 +46,7 @@ class MissionState(str, Enum):
 
 
 class MissionType(str, Enum):
+    # 미션 type 값을 명확히 구분하기 위한 열거형 클래스를 정의한다.
     PATROL = 'PATROL'
     OBSERVE = 'OBSERVE'
     HARVEST = 'HARVEST'
@@ -52,6 +56,7 @@ class MissionType(str, Enum):
 
 @dataclass(slots=True)
 class MissionSnapshot:
+    # 미션 시점의 값을 기록하기 위한 스냅샷 클래스를 정의한다.
     mission_id: str
     mission_type: str
     state: str
@@ -65,6 +70,7 @@ class MissionSnapshot:
 
 @dataclass(slots=True)
 class PatrolStatusSnapshot:
+    # patrol 상태 시점의 값을 기록하기 위한 스냅샷 클래스를 정의한다.
     state: str
     message: str
     current_waypoint_id: str
@@ -77,6 +83,7 @@ class PatrolStatusSnapshot:
 
 @dataclass(slots=True)
 class ControlStateSnapshot:
+    # control 상태 시점의 값을 기록하기 위한 스냅샷 클래스를 정의한다.
     mode: str
     message: str
     active_activity: str
@@ -87,6 +94,7 @@ class ControlStateSnapshot:
 
 @dataclass(slots=True)
 class StatusTelemetry:
+    # 상태 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     mission_type: str
     mission_state: str
     current_phase: str
@@ -101,6 +109,7 @@ class StatusTelemetry:
 
 
 def parse_patrol_status(raw_data: str) -> PatrolStatusSnapshot | None:
+    # patrol 상태를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     try:
         payload = json.loads(raw_data)
     except json.JSONDecodeError:
@@ -143,6 +152,7 @@ def parse_patrol_status(raw_data: str) -> PatrolStatusSnapshot | None:
 
 
 def parse_control_state(raw_data: str) -> ControlStateSnapshot | None:
+    # control 상태를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     try:
         payload = json.loads(raw_data)
     except json.JSONDecodeError:
@@ -176,6 +186,7 @@ def build_status_telemetry(
     pending_observation_activation_requested: bool,
     control_state: ControlStateSnapshot | None = None,
 ) -> StatusTelemetry:
+    # 상태 telemetry를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     mission_type = mission_snapshot.mission_type
     mission_state = mission_snapshot.state
     current_phase = mission_snapshot.current_phase or robot_mode or 'IDLE'
@@ -304,15 +315,17 @@ def build_status_telemetry(
 
 
 class MissionStateMachine:
-    """Pure-Python mission state machine so transitions stay testable."""
+    # 미션 상태 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
 
     def __init__(self, zone_id: str) -> None:
+        # MissionStateMachine 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         self._zone_id = zone_id
         self._last_completed_mission_type = ''
         self._last_completed_target_id = ''
         self.reset()
 
     def reset(self) -> None:
+        # reset 정보를 계산해 반환한다.
         self.robot_mode = RobotMode.IDLE.value
         self.mission_state = MissionState.COMPLETED.value
         self.mission_id = ''
@@ -332,6 +345,7 @@ class MissionStateMachine:
         target_id: str = '',
         detail_message: str = '',
     ) -> None:
+        # 미션 실행 흐름을 시작하거나 마무리한다.
         normalized_type = mission_type.upper()
         if normalized_type not in {item.value for item in MissionType}:
             raise ValueError(f'Unsupported mission type: {mission_type}')
@@ -349,6 +363,7 @@ class MissionStateMachine:
         self._paused_phase = ''
 
     def transition_phase(self, robot_mode: str, *, detail_message: str = '') -> None:
+        # transition phase 정보를 계산해 반환한다.
         normalized_mode = robot_mode.upper()
         if normalized_mode not in {item.value for item in RobotMode}:
             raise ValueError(f'Unsupported robot mode: {robot_mode}')
@@ -360,16 +375,19 @@ class MissionStateMachine:
             self.detail_message = detail_message
 
     def update_progress(self, progress_pct: float, *, detail_message: str = '') -> None:
+        # progress를 최신 상태로 갱신한다.
         self.progress_pct = max(0.0, min(100.0, progress_pct))
         if detail_message:
             self.detail_message = detail_message
 
     def note(self, detail_message: str, *, target_id: str | None = None) -> None:
+        # note 정보를 계산해 반환한다.
         self.detail_message = detail_message
         if target_id is not None:
             self.target_id = target_id
 
     def pause(self, *, detail_message: str = 'Mission paused by operator.') -> None:
+        # pause 정보를 계산해 반환한다.
         if self.mission_state != MissionState.RUNNING.value:
             return
         self._paused_mode = self.robot_mode
@@ -380,6 +398,7 @@ class MissionStateMachine:
         self.detail_message = detail_message
 
     def resume(self, *, detail_message: str = 'Mission resumed.') -> None:
+        # resume 정보를 계산해 반환한다.
         if self.mission_state != MissionState.PAUSED.value:
             return
         self.mission_state = MissionState.RUNNING.value
@@ -388,6 +407,7 @@ class MissionStateMachine:
         self.detail_message = detail_message
 
     def mark_complete(self, *, detail_message: str = 'Mission completed.') -> None:
+        # complete 상태를 기록한다.
         if self.mission_id:
             self._last_completed_mission_type = self.mission_type
             self._last_completed_target_id = self.target_id
@@ -399,12 +419,14 @@ class MissionStateMachine:
         self.detail_message = detail_message
 
     def cancel(self, *, detail_message: str = 'Mission canceled.') -> None:
+        # cancel 정보를 계산해 반환한다.
         self.mission_state = MissionState.CANCELED.value
         self.robot_mode = RobotMode.IDLE.value
         self.current_phase = 'IDLE'
         self.detail_message = detail_message
 
     def fail(self, *, detail_message: str = 'Mission failed.') -> None:
+        # fail 정보를 계산해 반환한다.
         self.mission_state = MissionState.FAILED.value
         self.robot_mode = RobotMode.ERROR.value
         self.current_phase = 'ERROR'
@@ -412,6 +434,7 @@ class MissionStateMachine:
         self.detail_message = detail_message
 
     def snapshot(self) -> MissionSnapshot:
+        # 스냅샷 정보를 계산해 반환한다.
         return MissionSnapshot(
             mission_id=self.mission_id,
             mission_type=self.mission_type,
@@ -429,6 +452,7 @@ def apply_patrol_status_snapshot(
     machine: MissionStateMachine,
     patrol_status: PatrolStatusSnapshot,
 ) -> None:
+    # patrol 상태 스냅샷에 반영한다.
     patrol_active = machine.mission_type == MissionType.PATROL.value
     mission_terminal = machine.mission_state in {
         MissionState.COMPLETED.value,
@@ -487,9 +511,10 @@ def apply_patrol_status_snapshot(
 
 
 class MissionManagerNode(Node):
-    """Mission manager skeleton for state, phase, and command handling."""
+    # ROS 2 실행 환경에서 미션 manager 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # MissionManagerNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('mission_manager')
         self.declare_parameter('robot_id', 'agribot_01')
         self.declare_parameter('zone_id', 'farm_01')
@@ -608,6 +633,7 @@ class MissionManagerNode(Node):
         self._publish_status()
 
     def _handle_odometry(self, msg: Odometry) -> None:
+        # handle odometry 정보를 계산해 반환한다.
         self._last_pose = msg.pose.pose
         self._last_linear_velocity.x = float(msg.twist.twist.linear.x)
         self._last_linear_velocity.y = float(msg.twist.twist.linear.y)
@@ -617,6 +643,7 @@ class MissionManagerNode(Node):
         self._last_angular_velocity.z = float(msg.twist.twist.angular.z)
 
     def _handle_command(self, msg: String) -> None:
+        # handle 명령 정보를 계산해 반환한다.
         raw_command = msg.data.strip()
         if not raw_command:
             return
@@ -734,6 +761,7 @@ class MissionManagerNode(Node):
         self._publish_status()
 
     def _handle_patrol_status(self, msg: String) -> None:
+        # handle patrol 상태 정보를 계산해 반환한다.
         snapshot = parse_patrol_status(msg.data)
         if snapshot is None:
             self.get_logger().warning('Ignored invalid patrol status payload.')
@@ -748,6 +776,7 @@ class MissionManagerNode(Node):
         self._publish_status()
 
     def _handle_control_state(self, msg: String) -> None:
+        # handle 제어 상태 정보를 계산해 반환한다.
         snapshot = parse_control_state(msg.data)
         if snapshot is None:
             self.get_logger().warning('Ignored invalid control state payload.')
@@ -757,6 +786,7 @@ class MissionManagerNode(Node):
         self._publish_status()
 
     def _handle_plant_observation(self, msg: PlantObservation) -> None:
+        # handle 작물 관측 정보를 계산해 반환한다.
         observation = ObservationInput(
             observation_id=msg.observation_id,
             zone_id=msg.zone_id,
@@ -803,6 +833,7 @@ class MissionManagerNode(Node):
         self,
         candidate: ObservationTaskCandidate,
     ) -> None:
+        # maybe activate 관측 후보 정보를 계산해 반환한다.
         active_candidate = self._observation_arbiter.active_candidate
         if (
             active_candidate is not None
@@ -852,6 +883,7 @@ class MissionManagerNode(Node):
         )
 
     def _activate_best_pending_observation(self, detail_message: str) -> bool:
+        # activate best pending 관측 정보를 계산해 반환한다.
         candidate = self._observation_arbiter.peek_best_candidate()
         if candidate is None:
             self._pending_observation_activation_requested = False
@@ -879,6 +911,7 @@ class MissionManagerNode(Node):
         return True
 
     def _finish_active_observation_candidate(self) -> None:
+        # finish active 관측 후보 정보를 계산해 반환한다.
         candidate = self._observation_arbiter.complete_active_candidate(
             now_ns=self.get_clock().now().nanoseconds,
         )
@@ -890,6 +923,7 @@ class MissionManagerNode(Node):
         )
 
     def _request_patrol_control(self, operation: str, *, target_id: str = '') -> bool:
+        # request patrol 제어 정보를 계산해 반환한다.
         operation = operation.lower()
         client: Client
         if operation == 'start':
@@ -926,6 +960,7 @@ class MissionManagerNode(Node):
         return True
 
     def _handle_patrol_control_response(self, future, operation: str, target_id: str) -> None:
+        # handle patrol 제어 response 정보를 계산해 반환한다.
         try:
             response = future.result()
         except Exception as exc:
@@ -990,6 +1025,7 @@ class MissionManagerNode(Node):
         self._publish_status()
 
     def _publish_status(self) -> None:
+        # 상태를 외부 시스템이나 다음 처리 단계로 전달한다.
         mission_snapshot = self._mission_machine.snapshot()
         now = self.get_clock().now().to_msg()
         telemetry = build_status_telemetry(
@@ -1035,6 +1071,7 @@ class MissionManagerNode(Node):
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = MissionManagerNode()
     try:

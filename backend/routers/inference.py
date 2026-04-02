@@ -1,3 +1,4 @@
+# 이 모듈은 백엔드의 추론 API 라우터를 정의하고, 요청을 서비스 계층과 연결한다.
 import base64
 import json
 from pathlib import Path
@@ -38,6 +39,7 @@ _DEMO_MANIFEST_PATH = _DEMO_INPUT_ROOT / "diagnosis_demo_manifest.json"
 
 
 class DemoDiagnosisRequest(BaseModel):
+    # demo diagnosis 요청 데이터를 구조적으로 다루기 위한 클래스를 정의한다.
     plant_id: str = Field(..., description="시연용 기준 이미지를 덮어쓸 대상 plant id")
     fruit_id: str = Field(default="", description="대상 fruit id. 비우면 manifest 기본값을 사용합니다.")
     robot_id: str = Field(default="AGR-02", description="시연 대상 로봇 ID")
@@ -57,7 +59,7 @@ class DemoDiagnosisRequest(BaseModel):
 def confirm_thin_inference(
     request: ThinInferenceConfirmRequest,
 ) -> ThinInferenceConfirmResponse:
-    """Run the backend-grade confirmation pass for a thin robot detection."""
+    # 경량 추론을 확정한다.
     try:
         return _service.confirm_detection(request)
     except ModelFileMissingError as exc:
@@ -72,7 +74,7 @@ def confirm_thin_inference(
 def confirm_demo_diagnosis(
     request: DemoDiagnosisRequest,
 ) -> ThinInferenceConfirmResponse:
-    """Run backend confirmation using a demo input image mapped to the selected plant."""
+    # demo 진단을 확정한다.
     try:
         demo_input = _resolve_demo_input(request.plant_id)
         image_path = demo_input["image_path"]
@@ -106,7 +108,7 @@ def confirm_demo_diagnosis(
 def store_ripeness_judgment(
     request: RipenessJudgmentCreateRequest,
 ) -> RipenessJudgmentCreateResponse:
-    """Persist ripeness classification output and create a harvest decision if possible."""
+    # ripeness judgment을 저장한다.
     try:
         return _ai_judgment_service.create_ripeness_and_fuse(request)
     except ValueError as exc:
@@ -119,7 +121,7 @@ def get_latest_ai_judgment(
     fruit_id: str = Query(default=""),
     judgment_type: JudgmentTypeParam | None = Query(default=None),
 ) -> AiJudgmentRecordOut | None:
-    """Return the latest AI judgment for a plant/fruit target."""
+    # latest AI 판정 결과를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         return _ai_judgment_service.get_latest_judgment(
             plant_id=plant_id,
@@ -137,7 +139,7 @@ def get_ai_judgment_history(
     judgment_type: JudgmentTypeParam | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=200),
 ) -> AiJudgmentHistoryOut:
-    """Return recent AI judgments for frontend and debugging."""
+    # AI 판정 결과 이력를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     try:
         return _ai_judgment_service.get_judgment_history(
             plant_id=plant_id,
@@ -153,7 +155,7 @@ def get_ai_judgment_history(
 def create_individual_harvest_action(
     request: HarvestDecisionActionRequest,
 ) -> HarvestDecisionActionOut:
-    """Run validity-aware harvest fusion for one plant/fruit target."""
+    # individual harvest action를 새로 만들어 다음 처리 단계로 넘긴다.
     try:
         return _ai_judgment_service.create_individual_harvest_action(request)
     except ValueError as exc:
@@ -164,7 +166,7 @@ def create_individual_harvest_action(
 def create_bulk_harvest_action(
     request: BulkHarvestDecisionRequest,
 ) -> BulkHarvestDecisionResponse:
-    """Run validity-aware harvest fusion sequentially for multiple targets."""
+    # bulk harvest action를 새로 만들어 다음 처리 단계로 넘긴다.
     try:
         return _ai_judgment_service.create_bulk_harvest_action(request)
     except ValueError as exc:
@@ -172,6 +174,7 @@ def create_bulk_harvest_action(
 
 
 def _resolve_demo_input(plant_id: str) -> dict[str, object]:
+    # 현재 입력 조건을 바탕으로 demo input를 계산하거나 결정한다.
     manifest = _load_demo_manifest()
     key = plant_id.strip()
     entry = manifest.get(key)
@@ -205,6 +208,7 @@ def _resolve_demo_input(plant_id: str) -> dict[str, object]:
 
 
 def _load_demo_manifest() -> dict[str, object]:
+    # demo manifest를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     if not _DEMO_MANIFEST_PATH.exists():
         raise FileNotFoundError(
             f"시연용 demo manifest 파일이 없습니다: {_DEMO_MANIFEST_PATH}"

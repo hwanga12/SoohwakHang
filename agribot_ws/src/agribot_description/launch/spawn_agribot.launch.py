@@ -1,12 +1,4 @@
-"""
-AgriBot Spawn Launch File
-Launches the AgriBot robot model in a Gazebo Harmonic simulation world
-with ros_gz_bridge for sensor data and command topics.
-
-Usage:
-    ros2 launch agribot_description spawn_agribot.launch.py
-"""
-
+# 이 런치 파일은 로봇 모델과 시뮬레이션 자산 패키지의 노드와 의존 구성을 한 번에 실행하도록 묶는다.
 import os
 from pathlib import Path
 import sys
@@ -33,6 +25,7 @@ except ModuleNotFoundError:
 
 
 def load_file(package_name, file_path):
+    # 파일를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     package_path = get_package_share_directory(package_name)
     absolute_file_path = os.path.join(package_path, file_path)
     try:
@@ -44,6 +37,7 @@ def load_file(package_name, file_path):
 
 def generate_launch_description():
     # Package paths
+    # 실행 description을 생성한다.
     pkg_agribot_description = get_package_share_directory('agribot_description')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
     default_gz_partition = (

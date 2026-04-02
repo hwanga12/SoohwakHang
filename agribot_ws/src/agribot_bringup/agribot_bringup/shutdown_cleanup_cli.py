@@ -1,3 +1,4 @@
+# 이 모듈은 통합 실행과 런치 조율 패키지에서 shutdown cleanup cli 절차를 담당한다.
 from __future__ import annotations
 
 # 스크립트와 launch 종료 훅에서 같은 정리 로직을 재사용할 수 있게 CLI로 노출한다.
@@ -11,6 +12,7 @@ from agribot_bringup.shutdown_cleanup import (
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
+    # argument parser를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     parser = argparse.ArgumentParser(
         description='Safely clean up AgriBot simulation processes.',
     )
@@ -40,6 +42,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     args = build_argument_parser().parse_args(argv)
 
     if args.scope == 'session':

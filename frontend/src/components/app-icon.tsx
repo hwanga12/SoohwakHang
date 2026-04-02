@@ -1,3 +1,6 @@
+/*
+ * 이 컴포넌트는 프론트엔드 화면에서 앱 아이콘 역할을 맡는다.
+ */
 import {
   AlertTriangle,
   CheckCircle,
@@ -28,6 +31,9 @@ import {
   LucideProps
 } from 'lucide-react';
 
+/**
+ * furniture leaf 화면 조각을 렌더링하는 컴포넌트다.
+ */
 const FurnitureLeaf = ({ size = 24, fill = "none", ...props }: LucideProps) => (
   <svg
     width={size}
@@ -81,6 +87,9 @@ const iconMap: Record<string, LucideIcon> = {
   'router': Router
 };
 
+/**
+ * APP 아이콘 화면 조각을 렌더링하는 컴포넌트다.
+ */
 export function AppIcon({
   name,
   className,

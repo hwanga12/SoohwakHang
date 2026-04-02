@@ -1,3 +1,4 @@
+# 이 테스트는 자율주행과 경로 계획 패키지의 harvest routing 동작을 검증한다.
 import math
 from pathlib import Path
 
@@ -26,6 +27,7 @@ CROP_INSTANCES = (
 
 
 def test_farm_harvest_metadata_covers_all_grid_targets() -> None:
+    # farm harvest metadata covers ALL grid targets 동작과 회귀 여부를 검증한다.
     patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
@@ -43,6 +45,7 @@ def test_farm_harvest_metadata_covers_all_grid_targets() -> None:
 
 
 def test_all_tomatoes_have_two_observation_candidates() -> None:
+    # ALL tomatoes have TWO 관측 결과 candidates 동작과 회귀 여부를 검증한다.
     patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
@@ -62,6 +65,7 @@ def test_all_tomatoes_have_two_observation_candidates() -> None:
 
 
 def test_compute_harvest_route_uses_generic_approach_pose_for_rectangular_farm() -> None:
+    # compute harvest 경로 uses generic approach 위치 자세 FOR rectangular farm 동작과 회귀 여부를 검증한다.
     patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
@@ -86,6 +90,7 @@ def test_compute_harvest_route_uses_generic_approach_pose_for_rectangular_farm()
 
 
 def test_compute_harvest_route_can_force_home_return() -> None:
+    # compute harvest 경로 CAN force home return 동작과 회귀 여부를 검증한다.
     patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
@@ -108,6 +113,7 @@ def test_compute_harvest_route_can_force_home_return() -> None:
 
 
 def test_compute_harvest_route_prefers_current_inspect_waypoint_when_available() -> None:
+    # compute harvest 경로 prefers current inspect waypoint when 사용 가능 상태 동작과 회귀 여부를 검증한다.
     patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
@@ -131,6 +137,7 @@ def test_compute_harvest_route_prefers_current_inspect_waypoint_when_available()
 
 
 def test_compute_harvest_route_prefers_explicit_inspect_waypoint_override() -> None:
+    # compute harvest 경로 prefers explicit inspect waypoint override 동작과 회귀 여부를 검증한다.
     patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
@@ -149,6 +156,7 @@ def test_compute_harvest_route_prefers_explicit_inspect_waypoint_override() -> N
 
 
 def test_compute_harvest_route_prefers_observation_candidate_closest_to_current_pose() -> None:
+    # compute harvest 경로 prefers 관측 결과 candidate closest TO current 위치 자세 동작과 회귀 여부를 검증한다.
     patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
@@ -170,6 +178,7 @@ def test_compute_harvest_route_prefers_observation_candidate_closest_to_current_
 
 
 def test_compute_harvest_route_keeps_center_lane_targets_on_safe_inspect_corridor() -> None:
+    # compute harvest 경로 keeps center lane targets ON safe inspect corridor 동작과 회귀 여부를 검증한다.
     patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
@@ -189,6 +198,7 @@ def test_compute_harvest_route_keeps_center_lane_targets_on_safe_inspect_corrido
 
 
 def test_compute_harvest_route_switches_to_left_edge_candidate_when_robot_starts_left() -> None:
+    # compute harvest 경로 switches TO left edge candidate when robot starts left 동작과 회귀 여부를 검증한다.
     patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 
@@ -204,6 +214,7 @@ def test_compute_harvest_route_switches_to_left_edge_candidate_when_robot_starts
 
 
 def test_compute_harvest_route_switches_to_right_edge_candidate_when_robot_starts_right() -> None:
+    # compute harvest 경로 switches TO right edge candidate when robot starts right 동작과 회귀 여부를 검증한다.
     patrol_plan = load_patrol_plan(PATROL_WAYPOINTS)
     crop_catalog = load_crop_catalog(CROP_INSTANCES)
 

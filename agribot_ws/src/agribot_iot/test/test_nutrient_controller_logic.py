@@ -1,3 +1,4 @@
+# 이 테스트는 IoT 장치 연동 패키지의 nutrient controller logic 동작을 검증한다.
 from pathlib import Path
 import json
 
@@ -22,6 +23,7 @@ IOT_DEVICES = (
 
 
 def test_apply_nutrient_recipe_extracts_payload_and_duration() -> None:
+    # apply 영양제 recipe extracts payload AND duration 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['farm_01_nutrient']
 
@@ -45,6 +47,7 @@ def test_apply_nutrient_recipe_extracts_payload_and_duration() -> None:
 
 
 def test_apply_nutrient_recipe_rejects_non_positive_target() -> None:
+    # apply 영양제 recipe rejects NON positive target 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['farm_01_nutrient']
 
@@ -64,6 +67,7 @@ def test_apply_nutrient_recipe_rejects_non_positive_target() -> None:
 
 
 def test_nutrient_result_payload_contains_recipe_and_requester() -> None:
+    # 영양제 결과 payload contains recipe AND requester 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['farm_01_nutrient']
 

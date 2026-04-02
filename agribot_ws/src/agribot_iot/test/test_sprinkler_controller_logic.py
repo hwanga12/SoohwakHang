@@ -1,3 +1,4 @@
+# 이 테스트는 IoT 장치 연동 패키지의 sprinkler controller logic 동작을 검증한다.
 from pathlib import Path
 import json
 
@@ -22,6 +23,7 @@ IOT_DEVICES = (
 
 
 def test_spray_pesticide_command_maps_to_red_effect() -> None:
+    # spray pesticide 명령 지도 목록 TO RED effect 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['sprinkler_2']
 
@@ -44,6 +46,7 @@ def test_spray_pesticide_command_maps_to_red_effect() -> None:
 
 
 def test_spray_calcium_command_maps_to_yellow_effect() -> None:
+    # spray calcium 명령 지도 목록 TO yellow effect 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['sprinkler_1']
 
@@ -64,6 +67,7 @@ def test_spray_calcium_command_maps_to_yellow_effect() -> None:
 
 
 def test_spray_water_command_maps_to_blue_effect() -> None:
+    # spray water 명령 지도 목록 TO blue effect 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['sprinkler_0']
 
@@ -84,6 +88,7 @@ def test_spray_water_command_maps_to_blue_effect() -> None:
 
 
 def test_spray_nutrient_command_maps_to_green_effect() -> None:
+    # spray 영양제 명령 지도 목록 TO green effect 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['sprinkler_3']
 
@@ -104,6 +109,7 @@ def test_spray_nutrient_command_maps_to_green_effect() -> None:
 
 
 def test_stop_spray_completes_immediately_and_reports_payload() -> None:
+    # stop spray completes immediately AND reports payload 동작과 회귀 여부를 검증한다.
     catalog = load_iot_device_catalog(IOT_DEVICES)
     device = catalog.devices['sprinkler_0']
 

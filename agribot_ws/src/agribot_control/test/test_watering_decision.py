@@ -1,3 +1,4 @@
+# 이 테스트는 상위 제어와 의사결정 패키지의 watering decision 동작을 검증한다.
 from agribot_control.environment_disease_rules import DiseaseSignal, EnvironmentSnapshot
 from agribot_control.watering_decision import (
     WateringDecisionState,
@@ -7,6 +8,7 @@ from agribot_control.watering_decision import (
 
 
 def test_low_soil_moisture_maps_to_auto_execute() -> None:
+    # LOW soil moisture 지도 목록 TO auto execute 동작과 회귀 여부를 검증한다.
     decision = evaluate_watering_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -24,6 +26,7 @@ def test_low_soil_moisture_maps_to_auto_execute() -> None:
 
 
 def test_mid_soil_moisture_requires_approval() -> None:
+    # MID soil moisture requires approval 동작과 회귀 여부를 검증한다.
     decision = evaluate_watering_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -41,6 +44,7 @@ def test_mid_soil_moisture_requires_approval() -> None:
 
 
 def test_humid_fungal_repeat_holds_watering() -> None:
+    # humid fungal repeat holds 급수 동작과 회귀 여부를 검증한다.
     decision = evaluate_watering_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -63,6 +67,7 @@ def test_humid_fungal_repeat_holds_watering() -> None:
 
 
 def test_normal_soil_creates_no_watering_action() -> None:
+    # normal soil creates NO 급수 action 동작과 회귀 여부를 검증한다.
     decision = evaluate_watering_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -79,6 +84,7 @@ def test_normal_soil_creates_no_watering_action() -> None:
 
 
 def test_log_formatter_exposes_reason_and_context() -> None:
+    # LOG formatter exposes reason AND context 동작과 회귀 여부를 검증한다.
     decision = evaluate_watering_decision(
         EnvironmentSnapshot(
             zone_id='farm_01',

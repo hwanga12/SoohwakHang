@@ -1,3 +1,4 @@
+# 이 모듈은 인지와 추론 패키지에서 thin inference node 기능을 담당한다.
 from __future__ import annotations
 
 import base64
@@ -32,9 +33,10 @@ _DEFAULT_IGNORED_CLASSES = 'healthy,normal,normal_leaf,healthy_leaf'
 
 
 class ThinInferenceNode(Node):
-    """Run fast local inference, then ask the backend to confirm the disease label."""
+    # ROS 2 실행 환경에서 thin inference 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # ThinInferenceNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('thin_inference_node')
 
         repo_root = Path(__file__).resolve().parents[4]
@@ -182,6 +184,7 @@ class ThinInferenceNode(Node):
         )
 
     def _handle_odometry(self, msg: Odometry) -> None:
+        # handle odometry 정보를 계산해 반환한다.
         position = msg.pose.pose.position
         orientation = msg.pose.pose.orientation
         self._latest_robot_pose = (
@@ -196,6 +199,7 @@ class ThinInferenceNode(Node):
         )
 
     def _handle_image(self, msg: Image) -> None:
+        # handle 이미지 정보를 계산해 반환한다.
         self._frame_counter += 1
         if self._busy or self._frame_counter % self._frame_stride != 0:
             return
@@ -213,6 +217,7 @@ class ThinInferenceNode(Node):
             self._busy = False
 
     def _process_frame(self, msg: Image) -> None:
+        # process frame 정보를 계산해 반환한다.
         frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         detections = self._runner.infer(frame)
         detection = choose_detection(
@@ -326,6 +331,7 @@ class ThinInferenceNode(Node):
         )
 
     def _persist_snapshot(self, observation_id: str, encoded_bytes: bytes) -> Path:
+        # 스냅샷을 저장한다.
         date_dir = self._runtime_dir / datetime.now().strftime('%Y%m%d')
         date_dir.mkdir(parents=True, exist_ok=True)
         file_path = date_dir / f'{observation_id}.{self._snapshot_format}'
@@ -342,6 +348,7 @@ class ThinInferenceNode(Node):
         observation_id: str = '',
         observation_image_path: str = '',
     ) -> None:
+        # 실시간 카메라 frame을 저장한다.
         camera_dir = self._runtime_dir / 'camera'
         camera_dir.mkdir(parents=True, exist_ok=True)
         frame_path = camera_dir / f'latest_frame.{self._snapshot_format}'
@@ -387,6 +394,7 @@ class ThinInferenceNode(Node):
         )
 
     def _resolve_target(self) -> CropTarget | None:
+        # 현재 입력 조건을 바탕으로 target를 계산하거나 결정한다.
         if self._target_resolver is None:
             return None
 
@@ -410,6 +418,7 @@ class ThinInferenceNode(Node):
 
 
 def _normalize_snapshot_format(image_format: str) -> str:
+    # 스냅샷 format를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     normalized = image_format.strip().lower().lstrip('.')
     if normalized in {'jpg', 'jpeg', 'png'}:
         return 'jpg' if normalized == 'jpeg' else normalized
@@ -422,6 +431,7 @@ def _crop_detection(
     *,
     padding_ratio: float,
 ):
+    # 작물 탐지 결과 정보를 계산해 반환한다.
     image_height, image_width = image.shape[:2]
     x1, y1, x2, y2 = detection.bbox
     box_width = max(1.0, x2 - x1)
@@ -440,6 +450,7 @@ def _crop_detection(
 
 
 def _build_pose(target: CropTarget | None) -> Pose:
+    # 위치 자세를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     pose = Pose()
     pose.orientation.w = 1.0
     if target is None:
@@ -452,6 +463,7 @@ def _build_pose(target: CropTarget | None) -> Pose:
 
 
 def _yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:
+    # yaw 쿼터니언 정보를 계산해 반환한다.
     siny_cosp = 2.0 * ((w * z) + (x * y))
     cosy_cosp = 1.0 - 2.0 * ((y * y) + (z * z))
     return math.atan2(siny_cosp, cosy_cosp)
@@ -463,6 +475,7 @@ def _encode_image(
     image_format: str,
     jpeg_quality: int,
 ) -> bytes:
+    # 이미지을 인코딩한다.
     extension = f'.{image_format}'
     encode_args = []
     if image_format == 'jpg':
@@ -474,6 +487,7 @@ def _encode_image(
 
 
 def _estimate_health_score(label: str) -> float:
+    # estimate 건강도 score 정보를 계산해 반환한다.
     normalized = label.strip().lower()
     if not normalized:
         return 0.5
@@ -485,11 +499,13 @@ def _estimate_health_score(label: str) -> float:
 
 
 def _is_ready_to_harvest(label: str) -> bool:
+    # ready TO harvest인지 여부를 불리언 값으로 판단한다.
     normalized = label.strip().lower()
     return 'ripe' in normalized and 'tomato' in normalized and 'unripe' not in normalized
 
 
 def main(args=None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = ThinInferenceNode()
     try:

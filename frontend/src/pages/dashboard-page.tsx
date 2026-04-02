@@ -1,3 +1,6 @@
+/*
+ * 이 컴포넌트는 관제 대시보드의 메인 대시보드 페이지를 구성한다.
+ */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createGetSignal, createPostAction } from '@/app/dev-inspector'
 import { AppIcon } from '@/components/app-icon'
@@ -10,6 +13,9 @@ import {
 } from '@/lib/api/agribot'
 import { MockupImage } from '@/components/mockup-image'
 
+/**
+ * 대시보드 페이지 화면 조각을 렌더링하는 컴포넌트다.
+ */
 export function DashboardPage() {
   const queryClient = useQueryClient()
   const dashboardQuery = useQuery({

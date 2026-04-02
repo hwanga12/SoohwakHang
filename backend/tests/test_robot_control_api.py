@@ -1,3 +1,4 @@
+# 이 테스트는 백엔드의 robot control api 동작과 회귀 여부를 검증한다.
 from __future__ import annotations
 
 import json
@@ -36,11 +37,13 @@ from routers import missions, robots  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def runtime_dir_isolation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # 런타임 dir isolation 정보를 계산해 반환한다.
     monkeypatch.setenv("AGRIBOT_RUNTIME_DIR", str(tmp_path))
     yield
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
+    # JSON 데이터를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -54,6 +57,7 @@ def _control_state_payload(
     resume_available: bool = False,
     resume_context: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    # 제어 상태 페이로드 정보를 계산해 반환한다.
     return {
         "mode": mode,
         "is_latched": mode != "normal",
@@ -67,6 +71,7 @@ def _control_state_payload(
 
 
 def test_publish_pause_alias_canonicalizes_and_separates_request_from_current_state() -> None:
+    # publish pause 별칭 canonicalizes AND separates 요청 데이터 from current 상태 동작과 회귀 여부를 검증한다.
     _write_json(
         control_state_file_path(),
         _control_state_payload(
@@ -94,6 +99,7 @@ def test_publish_pause_alias_canonicalizes_and_separates_request_from_current_st
 
 
 def test_publish_emergency_stop_rejects_when_already_latched() -> None:
+    # publish emergency stop rejects when already latched 동작과 회귀 여부를 검증한다.
     _write_json(
         control_state_file_path(),
         _control_state_payload(
@@ -113,6 +119,7 @@ def test_publish_emergency_stop_rejects_when_already_latched() -> None:
 
 
 def test_publish_resume_motion_rejects_without_latch() -> None:
+    # publish resume motion rejects without latch 동작과 회귀 여부를 검증한다.
     _write_json(
         control_state_file_path(),
         _control_state_payload(
@@ -131,6 +138,7 @@ def test_publish_resume_motion_rejects_without_latch() -> None:
 
 
 def test_latest_command_status_includes_control_state_fields() -> None:
+    # latest 명령 상태 includes control 상태 fields 동작과 회귀 여부를 검증한다.
     _write_json(
         control_state_file_path(),
         _control_state_payload(
@@ -187,6 +195,7 @@ def test_latest_command_status_includes_control_state_fields() -> None:
 
 
 def test_read_status_payload_prefers_authoritative_control_state() -> None:
+    # read 상태 payload prefers authoritative control 상태 동작과 회귀 여부를 검증한다.
     _write_json(
         control_state_file_path(),
         _control_state_payload(
@@ -207,6 +216,7 @@ def test_read_status_payload_prefers_authoritative_control_state() -> None:
 
 
 def test_read_pose_payload_keeps_last_map_pose_when_snapshot_is_stale() -> None:
+    # read 위치 자세 payload keeps last 지도 위치 자세 when 스냅샷 IS stale 동작과 회귀 여부를 검증한다.
     pose_snapshot_path = Path(os.environ["AGRIBOT_RUNTIME_DIR"]) / "robot_pose_snapshot.json"
     _write_json(
         pose_snapshot_path,
@@ -235,6 +245,7 @@ def test_read_pose_payload_keeps_last_map_pose_when_snapshot_is_stale() -> None:
 
 
 def test_read_pose_payload_falls_back_when_only_non_map_frame_exists() -> None:
+    # read 위치 자세 payload falls back when only NON 지도 frame exists 동작과 회귀 여부를 검증한다.
     pose_snapshot_path = Path(os.environ["AGRIBOT_RUNTIME_DIR"]) / "robot_pose_snapshot.json"
     _write_json(
         pose_snapshot_path,
@@ -263,6 +274,7 @@ def test_read_pose_payload_falls_back_when_only_non_map_frame_exists() -> None:
 
 
 def test_read_navigation_preview_payload_returns_live_local_plan_points() -> None:
+    # read navigation 미리보기 데이터 payload returns live local 계획 points 동작과 회귀 여부를 검증한다.
     _write_json(
         navigation_path_snapshot_file_path(),
         {
@@ -292,6 +304,7 @@ def test_read_navigation_preview_payload_returns_live_local_plan_points() -> Non
 
 
 def test_read_navigation_preview_payload_hides_preview_when_points_are_missing() -> None:
+    # read navigation 미리보기 데이터 payload hides 미리보기 데이터 when points ARE missing 동작과 회귀 여부를 검증한다.
     _write_json(
         navigation_path_snapshot_file_path(),
         {
@@ -313,6 +326,7 @@ def test_read_navigation_preview_payload_hides_preview_when_points_are_missing()
 
 
 def test_robot_control_pause_endpoint_publishes_pause_motion() -> None:
+    # robot control pause endpoint publishes pause motion 동작과 회귀 여부를 검증한다.
     _write_json(
         control_state_file_path(),
         _control_state_payload(
@@ -334,6 +348,7 @@ def test_robot_control_pause_endpoint_publishes_pause_motion() -> None:
 
 
 def test_read_layers_payload_exposes_safe_approach_pose_for_plants() -> None:
+    # read layers payload exposes safe approach 위치 자세 FOR 작물 개체 목록 동작과 회귀 여부를 검증한다.
     payload = read_layers_payload()
 
     plant_asset = next(
@@ -366,6 +381,7 @@ def test_read_layers_payload_exposes_safe_approach_pose_for_plants() -> None:
 
 
 def test_read_layers_payload_exposes_dual_observation_candidates_for_center_tomato_plants() -> None:
+    # read layers payload exposes dual 관측 결과 candidates FOR center tomato 작물 개체 목록 동작과 회귀 여부를 검증한다.
     payload = read_layers_payload()
 
     plant_asset = next(
@@ -394,6 +410,7 @@ def test_read_layers_payload_exposes_dual_observation_candidates_for_center_toma
 
 
 def test_read_layers_payload_keeps_dual_observation_candidates_for_all_tomato_plants() -> None:
+    # read layers payload keeps dual 관측 결과 candidates FOR ALL tomato 작물 개체 목록 동작과 회귀 여부를 검증한다.
     payload = read_layers_payload()
 
     plant_assets = [
@@ -406,6 +423,7 @@ def test_read_layers_payload_keeps_dual_observation_candidates_for_all_tomato_pl
 
 
 def test_read_layers_payload_spreads_center_lane_display_markers_toward_each_crop() -> None:
+    # read layers payload spreads center lane display markers toward each 작물 동작과 회귀 여부를 검증한다.
     payload = read_layers_payload()
 
     plant_14 = next(
@@ -435,6 +453,7 @@ def test_read_layers_payload_spreads_center_lane_display_markers_toward_each_cro
 
 
 def test_publish_navigate_command_keeps_all_observation_candidates_in_bridge_payload() -> None:
+    # publish navigate 명령 keeps ALL 관측 결과 candidates IN 브리지 payload 동작과 회귀 여부를 검증한다.
     response = publish_robot_command(
         robot_id="AGR-02",
         command_type="navigate_to_pose",
@@ -544,6 +563,7 @@ def test_publish_navigate_command_keeps_all_observation_candidates_in_bridge_pay
 
 
 def test_missions_patrol_stop_endpoint_publishes_pause_patrol() -> None:
+    # 미션 목록 patrol stop endpoint publishes pause patrol 동작과 회귀 여부를 검증한다.
     _write_json(
         control_state_file_path(),
         _control_state_payload(
@@ -567,6 +587,7 @@ def test_missions_patrol_stop_endpoint_publishes_pause_patrol() -> None:
 
 
 def test_missions_return_home_endpoint_publishes_return_home() -> None:
+    # 미션 목록 return home endpoint publishes return home 동작과 회귀 여부를 검증한다.
     response = missions.return_home(
         missions.ReturnHomeReq(
             robot_id="AGR-02",
@@ -580,6 +601,7 @@ def test_missions_return_home_endpoint_publishes_return_home() -> None:
 
 
 def test_missions_patrol_start_endpoint_writes_runtime_bridge_request() -> None:
+    # 미션 목록 patrol start endpoint writes 런타임 데이터 브리지 요청 데이터 동작과 회귀 여부를 검증한다.
     response = missions.start_patrol(
         missions.PatrolStartReq(
             mission_id="mission-patrol-router-001",
@@ -602,6 +624,7 @@ def test_missions_patrol_start_endpoint_writes_runtime_bridge_request() -> None:
 
 
 def test_missions_harvest_endpoint_writes_runtime_bridge_request() -> None:
+    # 미션 목록 harvest endpoint writes 런타임 데이터 브리지 요청 데이터 동작과 회귀 여부를 검증한다.
     response = missions.harvest_mission(
         missions.HarvestReq(
             mission_id="mission-harvest-router-001",
@@ -632,6 +655,7 @@ def test_missions_harvest_endpoint_writes_runtime_bridge_request() -> None:
 
 
 def test_get_mission_status_endpoint_reads_record_file() -> None:
+    # GET 미션 상태 endpoint reads 기록 파일 동작과 회귀 여부를 검증한다.
     _write_json(
         mission_status_record_file_path("mission-harvest-router-002"),
         {
@@ -657,6 +681,7 @@ def test_get_mission_status_endpoint_reads_record_file() -> None:
 
 
 def test_robot_commands_resume_returns_409_for_invalid_transition() -> None:
+    # robot 명령 목록 resume returns 409 FOR invalid transition 동작과 회귀 여부를 검증한다.
     _write_json(
         control_state_file_path(),
         _control_state_payload(

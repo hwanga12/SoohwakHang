@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+# 이 스크립트는 운영자 런타임 상태를 점검하기 위해 사용하는 실행용 쉘 스크립트다.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,6 +19,7 @@ MODE="check"
 FAIL_COUNT=0
 WARN_COUNT=0
 
+# usage 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 usage() {
     cat <<'EOF'
 Usage: operator_runtime_health.sh [options]
@@ -37,28 +39,34 @@ Examples:
 EOF
 }
 
+# section 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 section() {
     printf '\n== %s ==\n' "$1"
 }
 
+# ok 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 ok() {
     printf '[ok] %s\n' "$1"
 }
 
+# warn 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 warn() {
     WARN_COUNT=$((WARN_COUNT + 1))
     printf '[warn] %s\n' "$1"
 }
 
+# fail 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 fail() {
     FAIL_COUNT=$((FAIL_COUNT + 1))
     printf '[fail] %s\n' "$1"
 }
 
+# note 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 note() {
     printf ' - %s\n' "$1"
 }
 
+# extract_port 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 extract_port() {
     local url="$1"
     local host_port="${url#*://}"
@@ -77,6 +85,7 @@ extract_port() {
     printf '80\n'
 }
 
+# print_env 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 print_env() {
     cat <<EOF
 export REPO_ROOT="${REPO_ROOT}"
@@ -87,12 +96,14 @@ export AGRIBOT_GRAPHICS_PROFILE="${EXPECTED_GRAPHICS_PROFILE}"
 EOF
 }
 
+# reset_runtime_dir 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 reset_runtime_dir() {
     rm -rf "${EXPECTED_RUNTIME_DIR}"
     mkdir -p "${EXPECTED_RUNTIME_DIR}"
     printf 'reset runtime dir: %s\n' "${EXPECTED_RUNTIME_DIR}"
 }
 
+# read_process_env_value 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 read_process_env_value() {
     local pid="$1"
     local key="$2"
@@ -104,26 +115,31 @@ read_process_env_value() {
     tr '\0' '\n' <"/proc/${pid}/environ" | sed -n "s/^${key}=//p" | head -n 1
 }
 
+# read_process_runtime_dir 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 read_process_runtime_dir() {
     local pid="$1"
     read_process_env_value "${pid}" "AGRIBOT_RUNTIME_DIR"
 }
 
+# read_process_graphics_profile 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 read_process_graphics_profile() {
     local pid="$1"
     read_process_env_value "${pid}" "AGRIBOT_GRAPHICS_PROFILE"
 }
 
+# read_process_cmdline 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 read_process_cmdline() {
     local pid="$1"
     ps -p "${pid}" -o args= 2>/dev/null | sed 's/^ *//'
 }
 
+# list_listen_pids 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 list_listen_pids() {
     local port="$1"
     lsof -t -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null | sort -u || true
 }
 
+# check_port_process 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 check_port_process() {
     local label="$1"
     local port="$2"
@@ -171,6 +187,7 @@ check_port_process() {
     done
 }
 
+# check_named_processes 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 check_named_processes() {
     local label="$1"
     local pattern="$2"
@@ -211,6 +228,7 @@ check_named_processes() {
     done
 }
 
+# check_backend_api 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 check_backend_api() {
     local control_json
     local latest_json
@@ -268,6 +286,7 @@ check_backend_api() {
     rm -f "${control_json}" "${latest_json}" "${status_json}"
 }
 
+# check_ros_nodes 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 check_ros_nodes() {
     local ros2_output
     local ros2_error
@@ -354,6 +373,7 @@ check_ros_nodes() {
     rm -f "${ros2_output}" "${ros2_error}"
 }
 
+# check_runtime_dir_files 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 check_runtime_dir_files() {
     local runtime_dir="$1"
     local label="$2"
@@ -387,6 +407,7 @@ check_runtime_dir_files() {
     done
 }
 
+# check_runtime_files 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 check_runtime_files() {
     local command_request="${EXPECTED_RUNTIME_DIR}/robot_manual_command.json"
     local command_status="${EXPECTED_RUNTIME_DIR}/robot_manual_command_status.json"
@@ -437,6 +458,7 @@ check_runtime_files() {
     fi
 }
 
+# print_summary 함수가 맡는 단계별 처리를 분리해 스크립트 흐름을 읽기 쉽게 만든다.
 print_summary() {
     section "Summary"
     note "expected AGRIBOT_RUNTIME_DIR=${EXPECTED_RUNTIME_DIR}"

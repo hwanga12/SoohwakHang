@@ -1,5 +1,4 @@
-"""월드, 작물 카탈로그, 로봇팔/바구니 자산이 서로 어긋나지 않는지 검증한다."""
-
+# 이 테스트는 로봇 모델과 시뮬레이션 자산 패키지의 world assets 동작을 검증한다.
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -15,10 +14,12 @@ AGRIBOT_URDF_PATH = DESCRIPTION_ROOT / 'urdf' / 'agribot.urdf'
 
 
 def _parse_xml(path: Path) -> ET.Element:
+    # XML를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     return ET.parse(path).getroot()
 
 
 def test_world_physics_and_tomato_catalog_stay_in_sync() -> None:
+    # 월드 physics AND tomato 카탈로그 stay IN sync 동작과 회귀 여부를 검증한다.
     world_root = _parse_xml(WORLD_PATH)
     crop_instances = yaml.safe_load(CROP_INSTANCES_PATH.read_text(encoding='utf-8'))
 
@@ -40,6 +41,7 @@ def test_world_physics_and_tomato_catalog_stay_in_sync() -> None:
 
 
 def test_world_declares_frontend_aligned_gazebo_camera() -> None:
+    # 월드 declares frontend aligned gazebo 카메라 동작과 회귀 여부를 검증한다.
     world_root = _parse_xml(WORLD_PATH)
 
     camera = world_root.find('./world/gui/camera')
@@ -51,6 +53,7 @@ def test_world_declares_frontend_aligned_gazebo_camera() -> None:
 
 
 def test_tomato_model_uses_gazebo_mesh_and_half_scale_collision_volume() -> None:
+    # tomato 모델 uses gazebo mesh AND half scale collision volume 동작과 회귀 여부를 검증한다.
     tomato_root = _parse_xml(TOMATO_MODEL_PATH)
 
     assert tomato_root.findtext('./model/link/visual/geometry/mesh/uri') == 'meshes/tomato.glb'
@@ -62,6 +65,7 @@ def test_tomato_model_uses_gazebo_mesh_and_half_scale_collision_volume() -> None
 
 
 def test_tomato_gazebo_mesh_stays_low_poly_for_simulation() -> None:
+    # tomato gazebo mesh stays LOW poly FOR 시뮬레이션 동작과 회귀 여부를 검증한다.
     tomato_mesh_path = (
         DESCRIPTION_ROOT / 'models' / 'tomato' / 'meshes' / 'tomato_gazebo.obj'
     )
@@ -75,6 +79,7 @@ def test_tomato_gazebo_mesh_stays_low_poly_for_simulation() -> None:
 
 
 def test_harvest_arm_pose_and_basket_collision_surfaces_match() -> None:
+    # harvest ARM 위치 자세 AND basket collision surfaces match 동작과 회귀 여부를 검증한다.
     agribot_root = _parse_xml(AGRIBOT_MODEL_PATH)
     agribot_urdf_root = _parse_xml(AGRIBOT_URDF_PATH)
 

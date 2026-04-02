@@ -1,3 +1,4 @@
+# 이 모듈은 통합 실행과 런치 조율 패키지에서 mission bridge contract 절차를 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,11 +19,13 @@ HARVEST_RUNNING_STATES = {
 
 
 class MissionBridgeValidationError(ValueError):
+    # 미션 브리지 validation error 문제를 구분하기 위한 예외 클래스다.
     pass
 
 
 @dataclass(frozen=True)
 class MissionRequest:
+    # 미션 요청 데이터를 구조적으로 다루기 위한 클래스를 정의한다.
     command_id: str
     mission_id: str
     request_type: str
@@ -39,15 +42,18 @@ class MissionRequest:
 
     @property
     def effective_tomato_id(self) -> str:
+        # effective tomato id 정보를 계산해 반환한다.
         return self.tomato_id or self.fruit_id or ''
 
 
 def _extract_string(payload: dict[str, Any], key: str, *, default: str = '') -> str:
+    # 원본 데이터에서 string만 골라 추출한다.
     raw_value = payload.get(key, default)
     return str(raw_value).strip() if raw_value is not None else default
 
 
 def _extract_int(payload: dict[str, Any], key: str, *, default: int) -> int:
+    # 원본 데이터에서 INT만 골라 추출한다.
     raw_value = payload.get(key, default)
     try:
         return int(raw_value)
@@ -56,6 +62,7 @@ def _extract_int(payload: dict[str, Any], key: str, *, default: int) -> int:
 
 
 def _extract_payload_object(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    # 원본 데이터에서 payload object만 골라 추출한다.
     payload = raw_payload.get('payload')
     if payload is None:
         return {}
@@ -65,6 +72,7 @@ def _extract_payload_object(raw_payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _extract_string_list(raw_payload: dict[str, Any], payload: dict[str, Any], key: str) -> tuple[str, ...]:
+    # 원본 데이터에서 string list만 골라 추출한다.
     source_value = raw_payload.get(key, payload.get(key))
     if source_value is None:
         return ()
@@ -80,6 +88,7 @@ def _extract_string_list(raw_payload: dict[str, Any], payload: dict[str, Any], k
 
 
 def parse_status_payload(raw_data: str) -> dict[str, Any] | None:
+    # 상태 payload를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     try:
         payload = json.loads(raw_data)
     except json.JSONDecodeError:
@@ -93,6 +102,7 @@ def parse_mission_request_payload(
     *,
     default_robot_id: str = 'AGR-02',
 ) -> MissionRequest:
+    # 미션 요청 데이터 payload를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     payload = _extract_payload_object(raw_payload)
     command_id = _extract_string(raw_payload, 'command_id')
     request_type = (
@@ -170,6 +180,7 @@ def parse_mission_request_payload(
 
 
 def patrol_bridge_status_from_payload(payload: dict[str, Any]) -> tuple[str, str, str | None, bool] | None:
+    # patrol 브리지 상태 페이로드 정보를 계산해 반환한다.
     state = str(payload.get('state', '')).strip().lower()
     message = str(payload.get('message') or '').strip() or 'Patrol 상태를 확인했습니다.'
     error = str(payload.get('error') or '').strip() or None
@@ -186,6 +197,7 @@ def patrol_bridge_status_from_payload(payload: dict[str, Any]) -> tuple[str, str
 
 
 def harvest_status_refers_to_request(payload: dict[str, Any], tomato_id: str) -> bool:
+    # 수확 상태 refers request 정보를 계산해 반환한다.
     if not tomato_id:
         return False
 
@@ -198,6 +210,7 @@ def harvest_status_refers_to_request(payload: dict[str, Any], tomato_id: str) ->
 
 
 def harvest_bridge_status_from_payload(payload: dict[str, Any]) -> tuple[str, str, str | None, bool] | None:
+    # 수확 브리지 상태 페이로드 정보를 계산해 반환한다.
     state = str(payload.get('state', '')).strip().lower()
     message = str(payload.get('message') or '').strip() or 'Harvest route 상태를 확인했습니다.'
     error = str(payload.get('error') or '').strip() or None

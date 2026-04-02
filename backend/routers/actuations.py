@@ -1,3 +1,4 @@
+# 이 모듈은 백엔드의 장치 제어 API 라우터를 정의하고, 요청을 서비스 계층과 연결한다.
 import uuid
 
 from fastapi import APIRouter
@@ -20,14 +21,17 @@ _treatment_dispatcher = TreatmentCommandDispatcher()
 _operations_service = OperationsService()
 
 class ApproveReq(BaseModel):
+    # approve 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     reviewed_by: str
     auto_execute: bool = True
 
 class RejectReq(BaseModel):
+    # reject 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     reviewed_by: str
     comment: Optional[str] = None
 
 class WateringReq(BaseModel):
+    # 급수 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     zone_id: str
     device_id: str
     target_value: float
@@ -37,6 +41,7 @@ class WateringReq(BaseModel):
     recommendation_id: Optional[str] = None
 
 class NutrientsReq(BaseModel):
+    # nutrients 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     zone_id: str
     device_id: str
     target_value: float
@@ -48,12 +53,12 @@ class NutrientsReq(BaseModel):
 
 @router.get("/recommendations")
 def get_recommendations():
-    """IoT 자동 추천 목록 조회"""
+    # recommendations를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return {"data": _operations_service.list_recommendations()}
 
 @router.post("/treatment-plan", response_model=DiseaseTreatmentPlan)
 def build_treatment_plan(req: DiseaseTreatmentPlanRequest):
-    """병해 규칙 엔진으로 분사 계획을 계산"""
+    # 처치 계획를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     return _treatment_rule_engine.evaluate(
         disease_label=req.disease_label,
         zone_id=req.zone_id,
@@ -62,7 +67,7 @@ def build_treatment_plan(req: DiseaseTreatmentPlanRequest):
 
 @router.post("/disease-treatment/dispatch", response_model=DiseaseTreatmentDispatchResponse)
 def dispatch_disease_treatment(req: DiseaseTreatmentDispatchRequest):
-    """병해 규칙 엔진을 평가하고 준비된 분사 명령을 IoT로 전달"""
+    # disease 처치를 외부 시스템이나 다음 처리 단계로 전달한다.
     observation_id = req.observation_id or str(uuid.uuid4())
     treatment_plan = _treatment_rule_engine.evaluate(
         disease_label=req.disease_label,
@@ -83,7 +88,7 @@ def dispatch_disease_treatment(req: DiseaseTreatmentDispatchRequest):
 
 @router.post("/recommendations/{id}/approve")
 def approve_recommendation(id: str, req: ApproveReq):
-    """추천 승인 후 실제 명령으로 전환"""
+    # approve recommendation 정보를 계산해 반환한다.
     return {
         "data": _operations_service.approve_recommendation(
             id,
@@ -94,12 +99,12 @@ def approve_recommendation(id: str, req: ApproveReq):
 
 @router.post("/recommendations/{id}/reject")
 def reject_recommendation(id: str, req: RejectReq):
-    """추천 거절"""
+    # reject recommendation 정보를 계산해 반환한다.
     return {"data": {"id": id, "status": "REJECTED", "reviewed_by": req.reviewed_by, "comment": req.comment}}
 
 @router.post("/watering")
 def water_plants(req: WateringReq):
-    """급수 명령 생성"""
+    # water 작물 정보를 계산해 반환한다.
     return {
         "data": _operations_service.create_manual_command(
             zone_id=req.zone_id,
@@ -115,7 +120,7 @@ def water_plants(req: WateringReq):
 
 @router.post("/nutrients")
 def control_nutrients(req: NutrientsReq):
-    """영양제 실행 명령 생성"""
+    # 제어 nutrients 정보를 계산해 반환한다.
     return {
         "data": _operations_service.create_manual_command(
             zone_id=req.zone_id,
@@ -131,5 +136,5 @@ def control_nutrients(req: NutrientsReq):
 
 @router.get("/history")
 def get_actuation_history():
-    """장치 실행 이력 조회"""
+    # actuation 이력를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     return {"data": _operations_service.list_actuation_history()}

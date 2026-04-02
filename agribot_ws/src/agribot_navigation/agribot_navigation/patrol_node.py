@@ -1,5 +1,4 @@
-"""Run a waypoint patrol with start, stop, resume, and optional hybrid handoff."""
-
+# 이 모듈은 자율주행과 경로 계획 패키지에서 patrol node 기능을 담당한다.
 from __future__ import annotations
 
 import json
@@ -38,11 +37,12 @@ def collect_batch_goal_end_index(
     inspect_dwell_sec: float,
     max_batch_path_length_m: float = 0.0,
 ) -> int:
-    """Return the last consecutive waypoint index that can be sent as one batch goal."""
+    # batch 목표 END index를 모아 순회하기 쉬운 형태로 정리한다.
     if start_index >= len(waypoint_ids):
         return start_index
 
     def should_observe(waypoint: Waypoint) -> bool:
+        # observe가 필요한 상황인지 여부를 판단한다.
         return observe_on_waypoints and waypoint.observe_here and inspect_dwell_sec > 0.0
 
     current = waypoints[waypoint_ids[start_index]]
@@ -81,7 +81,7 @@ def build_intermediate_segment_poses(
     *,
     max_segment_length_m: float,
 ) -> tuple[Pose2D, ...]:
-    """Split long lane travel into shorter synthetic goals."""
+    # intermediate segment 위치 자세 목록를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
     if max_segment_length_m <= 0.0:
         return ()
 
@@ -112,7 +112,7 @@ def resolve_effective_waypoint_pose(
     *,
     prefer_lane_heading_on_inspect_waypoints: bool,
 ) -> Pose2D:
-    """Optionally keep inspect waypoints aligned with lane travel during mapping patrol."""
+    # 현재 입력 조건을 바탕으로 effective waypoint 위치 자세를 계산하거나 결정한다.
     waypoint = waypoints[waypoint_ids[waypoint_index]]
     if (
         not prefer_lane_heading_on_inspect_waypoints
@@ -145,7 +145,7 @@ def is_pose_within_xy_tolerance(
     *,
     xy_tolerance_m: float,
 ) -> bool:
-    """Return True when the current pose is already close enough to the target pose."""
+    # 위치 자세 within XY tolerance인지 여부를 불리언 값으로 판단한다.
     if current_pose is None or xy_tolerance_m <= 0.0:
         return False
 
@@ -162,7 +162,7 @@ def should_treat_soft_completed_navigation_as_success(
     goal_soft_completed: bool,
     xy_tolerance_m: float,
 ) -> bool:
-    """Accept a soft-complete result only while the robot is still near the target."""
+    # treat soft completed navigation AS success가 필요한 상황인지 여부를 판단한다.
     if not goal_soft_completed or target_pose is None:
         return False
 
@@ -174,9 +174,10 @@ def should_treat_soft_completed_navigation_as_success(
 
 
 class PatrolNode(Node):
-    """Visit the configured waypoint list in order and expose patrol controls."""
+    # ROS 2 실행 환경에서 patrol 흐름을 담당하는 노드 클래스를 정의한다.
 
     def __init__(self) -> None:
+        # PatrolNode 인스턴스가 사용할 기본 상태와 의존성을 준비한다.
         super().__init__('patrol_node')
 
         self.declare_parameter(
@@ -314,12 +315,14 @@ class PatrolNode(Node):
             self._auto_start_timer = self.create_timer(0.1, self._auto_start_once)
 
     def _load_plan(self) -> PatrolPlan:
+        # 계획를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
         self._plan_path = Path(str(self.get_parameter('patrol_waypoints_file').value)).expanduser()
         if not self._plan_path.is_absolute():
             self._plan_path = get_default_patrol_waypoints_path().parent.parent / self._plan_path
         return load_patrol_plan(self._plan_path)
 
     def _auto_start_once(self) -> None:
+        # auto start once 정보를 계산해 반환한다.
         if self._state != 'idle':
             if self._auto_start_timer is not None:
                 self._auto_start_timer.cancel()
@@ -339,6 +342,7 @@ class PatrolNode(Node):
             self.get_logger().info('Auto-started patrol sequence.')
 
     def _handle_start(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        # handle start 정보를 계산해 반환한다.
         del request
 
         if self._state in {'starting', 'running', 'stopping', 'observing'}:
@@ -355,6 +359,7 @@ class PatrolNode(Node):
         return response
 
     def _handle_stop(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        # handle stop 정보를 계산해 반환한다.
         del request
 
         if self._state in {'idle', 'stopped', 'completed'}:
@@ -397,6 +402,7 @@ class PatrolNode(Node):
         return response
 
     def _handle_resume(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        # handle resume 정보를 계산해 반환한다.
         del request
 
         if self._state != 'stopped':
@@ -421,6 +427,7 @@ class PatrolNode(Node):
         return response
 
     def _start_patrol(self, *, reset_progress: bool) -> bool:
+        # patrol 실행 흐름을 시작하거나 마무리한다.
         if reset_progress:
             self._next_waypoint_index = 0
             self._goal_reject_retry_count = 0
@@ -447,6 +454,7 @@ class PatrolNode(Node):
         return True
 
     def _send_goal_for_index(self, waypoint_index: int) -> None:
+        # 목표 FOR index를 외부 시스템이나 다음 처리 단계로 전달한다.
         if self._is_waypoint_already_reached(waypoint_index):
             self._clear_segment_goal_sequence()
             self._set_state(
@@ -478,6 +486,7 @@ class PatrolNode(Node):
         self._send_single_goal(waypoint_index)
 
     def _prepare_segment_goal_sequence(self, waypoint_index: int) -> bool:
+        # prepare segment 목표 sequence 정보를 계산해 반환한다.
         segment_goals = self._build_segment_goal_queue(waypoint_index)
         if not segment_goals:
             self._clear_segment_goal_sequence()
@@ -490,6 +499,7 @@ class PatrolNode(Node):
         return True
 
     def _build_segment_goal_queue(self, waypoint_index: int) -> list[PoseStamped]:
+        # segment 목표 queue를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         if waypoint_index <= 0 or self._max_lane_segment_length_m <= 0.0:
             return []
 
@@ -517,6 +527,7 @@ class PatrolNode(Node):
         return goal_queue
 
     def _dispatch_next_segment_goal(self) -> None:
+        # next segment 목표를 외부 시스템이나 다음 처리 단계로 전달한다.
         if not self._segment_goal_queue or self._segment_target_waypoint_index is None:
             self._clear_segment_goal_sequence()
             return
@@ -565,6 +576,7 @@ class PatrolNode(Node):
         )
 
     def _send_single_goal(self, waypoint_index: int) -> None:
+        # single 목표를 외부 시스템이나 다음 처리 단계로 전달한다.
         self._clear_segment_goal_sequence()
         waypoint = self._waypoint_for_index(waypoint_index)
         goal = NavigateToPose.Goal()
@@ -595,6 +607,7 @@ class PatrolNode(Node):
         )
 
     def _send_batch_goal(self, start_index: int, end_index: int) -> None:
+        # batch 목표를 외부 시스템이나 다음 처리 단계로 전달한다.
         self._clear_segment_goal_sequence()
         goal = NavigateThroughPoses.Goal()
         goal.poses = [
@@ -634,6 +647,7 @@ class PatrolNode(Node):
         end_index: int,
         kind: str,
     ) -> None:
+        # handle 목표 response 정보를 계산해 반환한다.
         try:
             goal_handle = future.result()
         except Exception as exc:
@@ -688,6 +702,7 @@ class PatrolNode(Node):
             self._set_state('running', f'Navigating to waypoint {self._describe_waypoint(end_index)}.')
 
     def _handle_navigation_feedback(self, feedback_msg: Any) -> None:
+        # handle 주행 feedback 정보를 계산해 반환한다.
         self._last_distance_remaining_m = float(feedback_msg.feedback.distance_remaining)
         if (
             not self._active_goal_soft_completed
@@ -699,6 +714,7 @@ class PatrolNode(Node):
         self._publish_status()
 
     def _handle_odom(self, message: Odometry) -> None:
+        # handle odom 정보를 계산해 반환한다.
         orientation = message.pose.pose.orientation
         self._latest_robot_pose = Pose2D(
             x=float(message.pose.pose.position.x),
@@ -717,6 +733,7 @@ class PatrolNode(Node):
         end_index: int,
         kind: str,
     ) -> None:
+        # handle 주행 결과 정보를 계산해 반환한다.
         self._active_goal_handle = None
         self._goal_result_future = None
         self._last_distance_remaining_m = None
@@ -781,6 +798,7 @@ class PatrolNode(Node):
         )
 
     def _handle_successful_segment_goal(self) -> None:
+        # handle successful segment 목표 정보를 계산해 반환한다.
         if self._segment_target_waypoint_index is None or not self._segment_goal_queue:
             self._clear_segment_goal_sequence()
             self._set_error('Segmented patrol goal state became inconsistent.')
@@ -796,6 +814,7 @@ class PatrolNode(Node):
         self._handle_successful_waypoint(final_waypoint_index)
 
     def _handle_successful_waypoint(self, waypoint_index: int) -> None:
+        # handle successful 웨이포인트 정보를 계산해 반환한다.
         self._current_waypoint_index = None
         self._next_waypoint_index = waypoint_index + 1
 
@@ -816,6 +835,7 @@ class PatrolNode(Node):
         self._send_goal_for_index(self._next_waypoint_index)
 
     def _schedule_dwell(self) -> None:
+        # dwell를 어떤 순서와 조건으로 처리할지 계획한다.
         self._cancel_dwell_timer()
         if self._inspect_dwell_sec <= 0.0:
             self._send_goal_for_index(self._next_waypoint_index)
@@ -824,18 +844,21 @@ class PatrolNode(Node):
         self._dwell_timer = self.create_timer(self._inspect_dwell_sec, self._finish_dwell)
 
     def _finish_dwell(self) -> None:
+        # finish dwell 정보를 계산해 반환한다.
         self._cancel_dwell_timer()
         if self._state != 'observing':
             return
         self._send_goal_for_index(self._next_waypoint_index)
 
     def _request_goal_cancel(self) -> None:
+        # request 목표 cancel 정보를 계산해 반환한다.
         if self._active_goal_handle is None or self._cancel_future is not None:
             return
         self._cancel_future = self._active_goal_handle.cancel_goal_async()
         self._cancel_future.add_done_callback(self._handle_cancel_response)
 
     def _handle_cancel_response(self, future: Any) -> None:
+        # handle cancel response 정보를 계산해 반환한다.
         try:
             cancel_response = future.result()
         except Exception as exc:
@@ -849,6 +872,7 @@ class PatrolNode(Node):
             self._set_error('Navigation goal rejected the patrol stop request.')
 
     def _cancel_dwell_timer(self) -> None:
+        # cancel dwell timer 정보를 계산해 반환한다.
         if self._dwell_timer is None:
             return
         self._dwell_timer.cancel()
@@ -856,6 +880,7 @@ class PatrolNode(Node):
         self._dwell_timer = None
 
     def _schedule_goal_reject_retry(self, start_index: int, end_index: int, kind: str) -> bool:
+        # 목표 reject retry를 어떤 순서와 조건으로 처리할지 계획한다.
         if self._goal_reject_retry_sec <= 0.0:
             return False
         if self._goal_reject_retry_count >= self._goal_reject_retry_limit:
@@ -880,12 +905,14 @@ class PatrolNode(Node):
         return True
 
     def _retry_goal_after_rejection(self, waypoint_index: int) -> None:
+        # retry 목표 after rejection 정보를 계산해 반환한다.
         self._cancel_goal_retry_timer()
         if self._state == 'error':
             return
         self._send_goal_for_index(waypoint_index)
 
     def _cancel_goal_retry_timer(self) -> None:
+        # cancel 목표 retry timer 정보를 계산해 반환한다.
         if self._goal_retry_timer is None:
             return
         self._goal_retry_timer.cancel()
@@ -893,6 +920,7 @@ class PatrolNode(Node):
         self._goal_retry_timer = None
 
     def _request_completion_action(self) -> None:
+        # request completion action 정보를 계산해 반환한다.
         if self._completion_requested or self._completion_action == 'none':
             return
         if self._completion_action != 'start_frontier_explorer':
@@ -918,6 +946,7 @@ class PatrolNode(Node):
         )
 
     def _handle_completion_action_response(self, future: Any) -> None:
+        # handle completion action response 정보를 계산해 반환한다.
         try:
             response = future.result()
         except Exception as exc:
@@ -947,6 +976,7 @@ class PatrolNode(Node):
         )
 
     def _should_observe(self, waypoint: Waypoint) -> bool:
+        # observe가 필요한 상황인지 여부를 판단한다.
         return (
             self._observe_on_inspect_waypoints
             and waypoint.observe_here
@@ -954,12 +984,15 @@ class PatrolNode(Node):
         )
 
     def _build_pose_stamped(self, waypoint: Waypoint) -> PoseStamped:
+        # 위치 자세 stamped를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         return self._build_pose_stamped_from_pose(waypoint.pose)
 
     def _build_pose_stamped_for_index(self, waypoint_index: int) -> PoseStamped:
+        # 위치 자세 stamped FOR index를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         return self._build_pose_stamped_from_pose(self._effective_waypoint_pose(waypoint_index))
 
     def _build_pose_stamped_from_pose(self, pose_2d: Pose2D) -> PoseStamped:
+        # 위치 자세 stamped from 위치 자세를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         return build_latest_pose_stamped(
             frame_id=self._plan.frame_id,
             x_value=pose_2d.x,
@@ -969,6 +1002,7 @@ class PatrolNode(Node):
         )
 
     def _pose_2d_from_stamped(self, pose: PoseStamped) -> Pose2D:
+        # 위치 자세 2 d stamped 정보를 계산해 반환한다.
         orientation = pose.pose.orientation
         return Pose2D(
             x=float(pose.pose.position.x),
@@ -981,6 +1015,7 @@ class PatrolNode(Node):
         )
 
     def _is_pose_already_reached(self, target_pose: Pose2D) -> bool:
+        # 위치 자세 already reached인지 여부를 불리언 값으로 판단한다.
         return is_pose_within_xy_tolerance(
             self._latest_robot_pose,
             target_pose,
@@ -988,9 +1023,11 @@ class PatrolNode(Node):
         )
 
     def _is_waypoint_already_reached(self, waypoint_index: int) -> bool:
+        # waypoint already reached인지 여부를 불리언 값으로 판단한다.
         return self._is_pose_already_reached(self._effective_waypoint_pose(waypoint_index))
 
     def _effective_waypoint_pose(self, waypoint_index: int) -> Pose2D:
+        # effective 웨이포인트 위치 자세 정보를 계산해 반환한다.
         return resolve_effective_waypoint_pose(
             self._waypoint_ids,
             self._plan.waypoints,
@@ -999,9 +1036,11 @@ class PatrolNode(Node):
         )
 
     def _waypoint_for_index(self, waypoint_index: int) -> Waypoint:
+        # 웨이포인트 index 정보를 계산해 반환한다.
         return self._plan.waypoints[self._waypoint_ids[waypoint_index]]
 
     def _describe_waypoint(self, waypoint_index: int | None) -> str:
+        # 웨이포인트을 설명 문자열로 만든다.
         if waypoint_index is None or waypoint_index >= len(self._waypoint_ids):
             return 'n/a'
         waypoint_id = self._waypoint_ids[waypoint_index]
@@ -1009,6 +1048,7 @@ class PatrolNode(Node):
         return f'{waypoint.display_name} ({waypoint_id})'
 
     def _describe_goal_target(self, start_index: int, end_index: int, kind: str) -> str:
+        # 목표 대상을 설명 문자열로 만든다.
         if kind == 'batch' and end_index > start_index:
             return (
                 f'batched route from {self._describe_waypoint(start_index)} '
@@ -1019,6 +1059,7 @@ class PatrolNode(Node):
         return f'waypoint {self._describe_waypoint(end_index)}'
 
     def _describe_active_target(self) -> str:
+        # active 대상을 설명 문자열로 만든다.
         if self._current_waypoint_index is None:
             return 'n/a'
         return self._describe_goal_target(
@@ -1030,12 +1071,14 @@ class PatrolNode(Node):
         )
 
     def _set_state(self, state: str, message: str) -> None:
+        # 상태을 설정한다.
         self._state = state
         self._state_message = message
         self.get_logger().info(message)
         self._publish_status()
 
     def _set_error(self, message: str) -> None:
+        # error을 설정한다.
         self._last_error_message = message
         self._state = 'error'
         self._state_message = message
@@ -1043,6 +1086,7 @@ class PatrolNode(Node):
         self._publish_status()
 
     def _publish_status(self) -> None:
+        # 상태를 외부 시스템이나 다음 처리 단계로 전달한다.
         current_waypoint_id = None
         if self._current_waypoint_index is not None and self._current_waypoint_index < len(
             self._waypoint_ids
@@ -1087,11 +1131,13 @@ class PatrolNode(Node):
         self._status_publisher.publish(String(data=json.dumps(payload, sort_keys=True)))
 
     def _clear_segment_goal_sequence(self) -> None:
+        # segment 목표 sequence을 비운다.
         self._segment_goal_queue = []
         self._segment_total_goal_count = 0
         self._segment_target_waypoint_index = None
 
     def destroy_node(self) -> bool:
+        # destroy 노드 정보를 계산해 반환한다.
         self._cancel_dwell_timer()
         self._cancel_goal_retry_timer()
         self._navigate_client.destroy()
@@ -1102,6 +1148,7 @@ class PatrolNode(Node):
 
 
 def main(args: list[str] | None = None) -> None:
+    # 스크립트 실행 진입점에서 전체 흐름을 순서대로 실행한다.
     rclpy.init(args=args)
     node = PatrolNode()
     try:

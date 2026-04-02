@@ -1,7 +1,7 @@
+# 이 테스트는 IoT 장치 연동 패키지의 mqtt contract 동작을 검증한다.
 from pathlib import Path
-import json
 
-from agribot_interfaces.msg import EnvironmentData, IoTCommand, IoTDeviceState
+from agribot_interfaces.msg import EnvironmentData, IoTCommand, IoTCommandResult, IoTDeviceState
 from agribot_iot.mqtt_contract import (
     deserialize_iot_command_payload,
     load_mqtt_bridge_config,
@@ -11,7 +11,6 @@ from agribot_iot.mqtt_contract import (
     serialize_iot_command,
     serialize_iot_device_state,
 )
-from std_msgs.msg import String
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -26,23 +25,29 @@ MQTT_TOPICS = (
 
 
 def test_load_mqtt_bridge_config_contains_expected_routes() -> None:
+    # load mqtt 브리지 설정 contains expected 경로 목록 동작과 회귀 여부를 검증한다.
     config = load_mqtt_bridge_config(MQTT_TOPICS)
 
     assert config.broker.host == 'localhost'
     assert config.broker.port == 1883
     assert len(config.ros_to_mqtt) == 3
-    assert len(config.mqtt_to_ros) == 1
-    assert config.mqtt_to_ros[0].mqtt_topic == 'agribot/commands/actuation'
+    assert len(config.mqtt_to_ros) == 2
+    assert config.mqtt_to_ros[0].mqtt_topic == 'agribot/commands/manual'
     device_state_route = next(route for route in config.ros_to_mqtt if route.ros_topic == '/iot/device_state')
     command_result_route = next(route for route in config.ros_to_mqtt if route.ros_topic == '/iot/command_result')
 
     assert device_state_route.serializer == 'iot_device_state'
     assert device_state_route.retain is True
-    assert command_result_route.serializer == 'raw_json'
+    assert device_state_route.mqtt_topic_template == 'agribot/iot/device_state/{device_id}'
+    assert command_result_route.serializer == 'iot_command_result'
+    assert command_result_route.mqtt_topic_template == 'agribot/iot/command_result/{command_id}'
     assert command_result_route.retain is False
+    assert config.broker.clean_session is False
+    assert config.broker.offline_queue_max_messages == 256
 
 
 def test_serializers_match_expected_json_shape() -> None:
+    # serializers match expected JSON 데이터 shape 동작과 회귀 여부를 검증한다.
     environment = EnvironmentData()
     environment.zone_id = 'farm_01'
     environment.temperature = 24.5
@@ -77,14 +82,14 @@ def test_serializers_match_expected_json_shape() -> None:
 
 
 def test_deserialize_iot_command_payload_rebuilds_message() -> None:
-    payload = String()
-    payload.data = (
+    # deserialize IoT 명령 payload rebuilds message 동작과 회귀 여부를 검증한다.
+    payload = (
         '{"command_id":"command-02","zone_id":"farm_01","device_id":"farm_01_watering",'
         '"device_type":"watering","command_type":"dispense_water","target_value":450.0,'
         '"unit":"ml","requested_by":"backend:test"}'
     )
 
-    message = deserialize_iot_command_payload(payload.data)
+    message = deserialize_iot_command_payload(payload)
 
     assert message.command_id == 'command-02'
     assert message.zone_id == 'farm_01'
@@ -93,25 +98,20 @@ def test_deserialize_iot_command_payload_rebuilds_message() -> None:
     assert message.target_value == 450.0
 
 
-def test_raw_json_serializer_keeps_command_result_payload_fields() -> None:
-    payload = String()
-    payload.data = json.dumps(
-        {
-            'command_id': 'result-01',
-            'zone_id': 'farm_01',
-            'device_id': 'farm_01_nutrient',
-            'device_type': 'nutrient',
-            'command_type': 'apply_nutrient_recipe',
-            'state': 'COMPLETED',
-            'success': True,
-            'nutrient_type': 'calcium_boost',
-            'requested_by': 'dashboard:user',
-        },
-        ensure_ascii=True,
-        sort_keys=True,
-    )
+def test_iot_command_result_serializer_keeps_payload_fields() -> None:
+    # typed command result serializer keeps 명령 결과 payload fields 동작과 회귀 여부를 검증한다.
+    payload = IoTCommandResult()
+    payload.command_id = 'result-01'
+    payload.zone_id = 'farm_01'
+    payload.device_id = 'farm_01_nutrient'
+    payload.device_type = 'nutrient'
+    payload.command_type = 'apply_nutrient_recipe'
+    payload.state = 'COMPLETED'
+    payload.success = True
+    payload.nutrient_type = 'calcium_boost'
+    payload.requested_by = 'dashboard:user'
 
-    serialized = serialize_message('raw_json', payload)
+    serialized = serialize_message('iot_command_result', payload)
 
     assert serialized['device_type'] == 'nutrient'
     assert serialized['nutrient_type'] == 'calcium_boost'

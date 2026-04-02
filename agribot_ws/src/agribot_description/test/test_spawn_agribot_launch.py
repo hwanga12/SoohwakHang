@@ -1,5 +1,4 @@
-"""spawn launch가 수확 팔 브리지, GUI 설정, 그래픽 프로필을 함께 내보내는지 검증한다."""
-
+# 이 테스트는 로봇 모델과 시뮬레이션 자산 패키지의 spawn agribot launch 동작을 검증한다.
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
@@ -22,6 +21,7 @@ LAUNCH_FILE = (
 
 
 def _load_launch_module():
+    # launch module를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     spec = spec_from_file_location('agribot_description_spawn_launch', LAUNCH_FILE)
     module = module_from_spec(spec)
     assert spec.loader is not None
@@ -30,6 +30,7 @@ def _load_launch_module():
 
 
 def _patch_package_share_lookup(monkeypatch, module) -> None:
+    # patch package share lookup 정보를 계산해 반환한다.
     share_dirs = {
         'agribot_description': REPO_ROOT / 'agribot_ws' / 'src' / 'agribot_description',
         'ros_gz_sim': REPO_ROOT / 'agribot_ws' / 'src' / 'agribot_description',
@@ -42,10 +43,12 @@ def _patch_package_share_lookup(monkeypatch, module) -> None:
 
 
 def _declared_node_name(node: Node) -> str:
+    # declared 노드 name 정보를 계산해 반환한다.
     return str(getattr(node, '_Node__node_name', ''))
 
 
 def _launch_env_map(launch_description) -> dict[str, str]:
+    # ENV 지도 실행 흐름을 시작하거나 마무리한다.
     result: dict[str, str] = {}
     for entity in launch_description.entities:
         if not isinstance(entity, SetEnvironmentVariable):
@@ -59,18 +62,21 @@ def _launch_env_map(launch_description) -> dict[str, str]:
 
 
 def _text_substitution_value(value) -> str:
+    # 텍스트 substitution 값 정보를 계산해 반환한다.
     if isinstance(value, tuple) and value:
         return getattr(value[0], 'text', '').splitlines()[0]
     return str(value)
 
 
 def _iter_text_parts(value) -> list[str]:
+    # iter 텍스트 parts 정보를 계산해 반환한다.
     if isinstance(value, (list, tuple)):
         return [getattr(item, 'text', str(item)) for item in value]
     return [str(value)]
 
 
 def _parameter_map(node: Node) -> dict[str, object]:
+    # parameter 지도 정보를 계산해 반환한다.
     raw_parameters = getattr(node, '_Node__parameters', ())
     parameter_map: dict[str, object] = {}
     for item in raw_parameters:
@@ -83,6 +89,7 @@ def _parameter_map(node: Node) -> dict[str, object]:
 
 
 def _launch_configuration_name(value) -> str | None:
+    # configuration 이름 실행 흐름을 시작하거나 마무리한다.
     substitutions = getattr(value, 'variable_name', None)
     if not substitutions:
         return None
@@ -91,6 +98,7 @@ def _launch_configuration_name(value) -> str | None:
 
 
 def test_spawn_launch_bridges_harvest_arm_command_topic(monkeypatch) -> None:
+    # spawn launch bridges harvest ARM 명령 topic 동작과 회귀 여부를 검증한다.
     module = _load_launch_module()
     _patch_package_share_lookup(monkeypatch, module)
     launch_description = module.generate_launch_description()
@@ -112,6 +120,7 @@ def test_spawn_launch_bridges_harvest_arm_command_topic(monkeypatch) -> None:
 
 
 def test_spawn_launch_uses_raw_clock_and_disables_clock_guard(monkeypatch) -> None:
+    # spawn launch uses RAW clock AND disables clock guard 동작과 회귀 여부를 검증한다.
     module = _load_launch_module()
     _patch_package_share_lookup(monkeypatch, module)
     launch_description = module.generate_launch_description()
@@ -134,6 +143,7 @@ def test_spawn_launch_uses_raw_clock_and_disables_clock_guard(monkeypatch) -> No
 
 
 def test_spawn_launch_defaults_to_system_graphics_profile_without_nvidia(monkeypatch) -> None:
+    # spawn launch defaults TO system graphics 프로필 without nvidia 동작과 회귀 여부를 검증한다.
     monkeypatch.delenv(GRAPHICS_PROFILE_ENV_VAR, raising=False)
     monkeypatch.setattr('agribot_bringup.launch_profile.os.path.exists', lambda _path: False)
 
@@ -148,6 +158,7 @@ def test_spawn_launch_defaults_to_system_graphics_profile_without_nvidia(monkeyp
 
 
 def test_spawn_launch_can_force_nvidia_profile(monkeypatch) -> None:
+    # spawn launch CAN force nvidia 프로필 동작과 회귀 여부를 검증한다.
     monkeypatch.setenv(GRAPHICS_PROFILE_ENV_VAR, 'nvidia')
 
     module = _load_launch_module()
@@ -162,6 +173,7 @@ def test_spawn_launch_can_force_nvidia_profile(monkeypatch) -> None:
 
 
 def test_spawn_launch_passes_repo_gui_config_to_gz_sim(monkeypatch) -> None:
+    # spawn launch passes repo GUI 설정 TO GZ SIM 동작과 회귀 여부를 검증한다.
     module = _load_launch_module()
     _patch_package_share_lookup(monkeypatch, module)
     launch_description = module.generate_launch_description()

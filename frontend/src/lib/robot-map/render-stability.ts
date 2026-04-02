@@ -1,3 +1,6 @@
+/*
+ * 이 모듈은 지도 렌더링 흔들림을 줄이는 보조 로직을 담는다.
+ */
 import { useRef } from 'react'
 import type {
   RobotMapData,
@@ -111,6 +114,9 @@ function areGuideLinesEqual(left: SemanticGuideLine[], right: SemanticGuideLine[
   return true
 }
 
+/**
+ * 로봇 위치 자세 동일이 서로 같은지 비교하는 함수다.
+ */
 export function areRobotPosesEqual(
   left: RobotTargetPose | RobotPoseSnapshot | null | undefined,
   right: RobotTargetPose | RobotPoseSnapshot | null | undefined,
@@ -122,6 +128,9 @@ export function areRobotPosesEqual(
   })
 }
 
+/**
+ * 로봇 지도 동일이 서로 같은지 비교하는 함수다.
+ */
 export function areRobotMapsEqual(
   left: RobotMapData | undefined,
   right: RobotMapData | undefined,
@@ -144,6 +153,9 @@ export function areRobotMapsEqual(
   ))
 }
 
+/**
+ * 미리보기 경로 동일이 서로 같은지 비교하는 함수다.
+ */
 export function arePreviewPathsEqual(
   left: NavigationPreviewPoint[] | null | undefined,
   right: NavigationPreviewPoint[] | null | undefined,
@@ -166,6 +178,9 @@ export function arePreviewPathsEqual(
   })
 }
 
+/**
+ * 의미 기반 장면 동일이 서로 같은지 비교하는 함수다.
+ */
 export function areSemanticScenesEqual(left: SemanticScene, right: SemanticScene) {
   if (left === right) {
     return true
@@ -202,18 +217,30 @@ function useStableValue<T>(value: T, areEqual: (left: T, right: T) => boolean) {
   return stableRef.current
 }
 
+/**
+ * stable 의미 기반 장면 상태와 부수효과를 묶어 재사용하는 훅이다.
+ */
 export function useStableSemanticScene(scene: SemanticScene) {
   return useStableValue(scene, areSemanticScenesEqual)
 }
 
+/**
+ * stable 로봇 지도 상태와 부수효과를 묶어 재사용하는 훅이다.
+ */
 export function useStableRobotMap(map: RobotMapData | undefined) {
   return useStableValue(map, areRobotMapsEqual)
 }
 
+/**
+ * stable 로봇 위치 자세 상태와 부수효과를 묶어 재사용하는 훅이다.
+ */
 export function useStableRobotPose<T extends RobotTargetPose | RobotPoseSnapshot | null | undefined>(pose: T) {
   return useStableValue(pose, areRobotPosesEqual) as T
 }
 
+/**
+ * stable 미리보기 경로 상태와 부수효과를 묶어 재사용하는 훅이다.
+ */
 export function useStablePreviewPath(path: NavigationPreviewPoint[] | null | undefined) {
   return useStableValue(path, arePreviewPathsEqual)
 }

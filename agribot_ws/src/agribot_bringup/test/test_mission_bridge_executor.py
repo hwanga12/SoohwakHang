@@ -1,3 +1,4 @@
+# 이 테스트는 통합 실행과 런치 조율 패키지의 mission bridge executor 동작을 검증한다.
 from agribot_bringup.mission_bridge_contract import (
     MissionBridgeValidationError,
     harvest_bridge_status_from_payload,
@@ -8,6 +9,7 @@ from agribot_bringup.mission_bridge_contract import (
 
 
 def test_parse_mission_request_payload_supports_start_patrol_contract() -> None:
+    # parse 미션 요청 데이터 payload supports start patrol 계약 동작과 회귀 여부를 검증한다.
     request = parse_mission_request_payload(
         {
             'command_id': 'mission-patrol-001',
@@ -29,6 +31,7 @@ def test_parse_mission_request_payload_supports_start_patrol_contract() -> None:
 
 
 def test_parse_mission_request_payload_supports_harvest_alias_fields() -> None:
+    # parse 미션 요청 데이터 payload supports harvest 별칭 fields 동작과 회귀 여부를 검증한다.
     request = parse_mission_request_payload(
         {
             'command_id': 'mission-harvest-001',
@@ -56,6 +59,7 @@ def test_parse_mission_request_payload_supports_harvest_alias_fields() -> None:
 
 
 def test_parse_mission_request_payload_rejects_missing_harvest_target() -> None:
+    # parse 미션 요청 데이터 payload rejects missing harvest target 동작과 회귀 여부를 검증한다.
     try:
         parse_mission_request_payload(
             {
@@ -72,6 +76,7 @@ def test_parse_mission_request_payload_rejects_missing_harvest_target() -> None:
 
 
 def test_patrol_bridge_status_from_payload_maps_running_and_terminal_states() -> None:
+    # patrol 브리지 상태 from payload 지도 목록 running AND terminal 상태 묶음 동작과 회귀 여부를 검증한다.
     running = patrol_bridge_status_from_payload(
         {'state': 'running', 'message': 'Navigating to waypoint farm_01_home.'}
     )
@@ -93,6 +98,7 @@ def test_patrol_bridge_status_from_payload_maps_running_and_terminal_states() ->
 
 
 def test_harvest_bridge_helpers_match_active_target_and_terminal_states() -> None:
+    # harvest 브리지 helpers match active target AND terminal 상태 묶음 동작과 회귀 여부를 검증한다.
     running_payload = {
         'state': 'harvesting',
         'message': 'Simulating harvest for farm01_plant_03_tomato_01 for 2.0s.',

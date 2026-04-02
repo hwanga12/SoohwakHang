@@ -1,3 +1,4 @@
+# 이 모듈은 인지와 추론 패키지에서 setup 기능을 담당한다.
 from setuptools import setup
 import os
 from glob import glob

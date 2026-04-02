@@ -1,3 +1,4 @@
+# 이 모듈은 로봇 모델과 시뮬레이션 자산 패키지에서 setup 로직을 담당한다.
 from setuptools import setup
 import os
 from glob import glob
@@ -5,6 +6,7 @@ from glob import glob
 package_name = 'agribot_description'
 
 def get_data_files():
+    # data files를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     data_files = [
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),

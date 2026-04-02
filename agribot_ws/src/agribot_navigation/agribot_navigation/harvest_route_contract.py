@@ -1,5 +1,4 @@
-"""harvest_route_node 요청 payload를 한 계약으로 파싱하기 위한 보조 모듈."""
-
+# 이 모듈은 자율주행과 경로 계획 패키지에서 harvest route contract 기능을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,6 +8,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class HarvestRouteRequest:
+    # harvest 경로 요청 데이터를 구조적으로 다루기 위한 클래스를 정의한다.
     tomato_id: str
     plant_id: str = ''
     mission_id: str = ''
@@ -19,6 +19,7 @@ class HarvestRouteRequest:
 
 
 def _normalize_text(value: Any) -> str:
+    # text를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     if value is None:
         return ''
     normalized = str(value).strip()
@@ -32,6 +33,7 @@ def parse_harvest_route_request(
     *,
     default_trigger: str = 'manual_request',
 ) -> HarvestRouteRequest | None:
+    # harvest 경로 요청 데이터를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
     payload_text = str(raw_data).strip()
     if not payload_text:
         return None

@@ -6,6 +6,13 @@ broker:
   keepalive_sec: 30
   qos: 1
   retain_default: false
+  clean_session: false
+  reconnect_min_delay_sec: 1.0
+  reconnect_max_delay_sec: 30.0
+  publish_retry_count: 3
+  publish_retry_backoff_sec: 0.5
+  offline_queue_dir: /tmp/agribot_mqtt_offline
+  offline_queue_max_messages: 256
 ros_to_mqtt:
   - ros_topic: /environment_data
     ros_type: agribot_interfaces/msg/EnvironmentData
@@ -14,15 +21,19 @@ ros_to_mqtt:
     retain: false
   - ros_topic: /iot/device_state
     ros_type: agribot_interfaces/msg/IoTDeviceState
-    mqtt_topic_template: agribot/iot/device_state
+    mqtt_topic_template: agribot/iot/device_state/{device_id}
     serializer: iot_device_state
     retain: true
   - ros_topic: /iot/command_result
-    ros_type: std_msgs/msg/String
-    mqtt_topic_template: agribot/iot/command_result
-    serializer: raw_json
+    ros_type: agribot_interfaces/msg/IoTCommandResult
+    mqtt_topic_template: agribot/iot/command_result/{command_id}
+    serializer: iot_command_result
     retain: false
 mqtt_to_ros:
+  - mqtt_topic: agribot/commands/manual
+    ros_topic: /iot/commands/manual
+    ros_type: agribot_interfaces/msg/IoTCommand
+    deserializer: iot_command
   - mqtt_topic: agribot/commands/actuation
     ros_topic: /iot/commands/manual
     ros_type: agribot_interfaces/msg/IoTCommand

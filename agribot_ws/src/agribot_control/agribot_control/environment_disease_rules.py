@@ -1,3 +1,4 @@
+# 이 모듈은 상위 제어와 의사결정 패키지에서 environment disease rules 판단과 실행 보조 로직을 담당한다.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -5,12 +6,14 @@ from enum import Enum
 
 
 class DecisionType(str, Enum):
+    # decision type 값을 명확히 구분하기 위한 열거형 클래스를 정의한다.
     RECOMMEND = 'RECOMMEND'
     HOLD = 'HOLD'
 
 
 @dataclass(slots=True)
 class EnvironmentSnapshot:
+    # environment 시점의 값을 기록하기 위한 스냅샷 클래스를 정의한다.
     zone_id: str
     temperature: float
     humidity: float
@@ -21,6 +24,7 @@ class EnvironmentSnapshot:
 
 @dataclass(slots=True)
 class DiseaseSignal:
+    # disease 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     class_name: str = ''
     disease_name: str = ''
     health_score: float = 1.0
@@ -31,6 +35,7 @@ class DiseaseSignal:
 
 @dataclass(slots=True)
 class RuleDecision:
+    # rule 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     decision_type: str
     device_type: str
     command_type: str
@@ -48,6 +53,7 @@ def evaluate_environment_disease_rules(
     environment: EnvironmentSnapshot,
     disease_signal: DiseaseSignal | None = None,
 ) -> list[RuleDecision]:
+    # 환경 disease 규칙 조건을 평가한다.
     disease_signal = disease_signal or DiseaseSignal()
     decisions: list[RuleDecision] = []
 
@@ -129,6 +135,7 @@ def _is_humid_fungal_risk(
     environment: EnvironmentSnapshot,
     disease_signal: DiseaseSignal,
 ) -> bool:
+    # humid fungal risk인지 여부를 불리언 값으로 판단한다.
     if environment.humidity < 80.0:
         return False
     if disease_signal.repeat_count < 2:
@@ -148,6 +155,7 @@ def _is_humid_fungal_risk(
 
 
 def _needs_calcium_support(disease_signal: DiseaseSignal) -> bool:
+    # calcium support 여부를 판단해 반환한다.
     if disease_signal.confidence and disease_signal.confidence < 0.5:
         return False
 
@@ -174,6 +182,7 @@ def _needs_calcium_support(disease_signal: DiseaseSignal) -> bool:
 
 
 def _normalized_disease_text(disease_signal: DiseaseSignal) -> str:
+    # normalized disease 텍스트 정보를 계산해 반환한다.
     return ' '.join(
         item.strip().lower()
         for item in (disease_signal.class_name, disease_signal.disease_name)
