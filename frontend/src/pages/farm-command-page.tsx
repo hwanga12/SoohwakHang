@@ -944,7 +944,7 @@ export function FarmCommandPage() {
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null)
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false)
   const [activityState, setActivityState] = useState<string | null>(null)
-  const [uiMessage, setUiMessage] = useState<string | null>(null)
+  const [, setUiMessage] = useState<string | null>(null)
   const [actionRecords, setActionRecords] = useState<Record<string, AssetActionRecord>>({})
   const [activeHarvestMission, setActiveHarvestMission] = useState<PendingMissionRequest | null>(null)
   const [activePatrolMission, setActivePatrolMission] = useState<PendingMissionRequest | null>(null)
@@ -1721,29 +1721,7 @@ export function FarmCommandPage() {
     || selectedPlantDetail?.latestImageUrl
     || selectedPlantLiveCameraImage
     || ''
-  const selectedPlantPreviewLabel =
-    selectedPlantMatchedObservationImage
-      ? '방금 촬영된 작물 이미지'
-      : selectedPlantObservation?.displayLabel
-        || selectedPlantDetail?.latestDisplayLabel
-        || (selectedPlantLiveCameraImage ? '실시간 로봇 카메라' : '발표용 이미지')
   const currentActivity = currentMissionActivity ?? activityState ?? robot.missionState
-  const selectedPlantFeedbackTitle =
-    selectedActionRecord?.label
-    || (
-      selectedPlantDetail
-      && activeDiagnoseCommand?.plantId === selectedPlantDetail.id
-        ? currentActivity
-        : null
-    )
-  const selectedPlantFeedbackDetail = selectedActionRecord?.detail || uiMessage
-  const selectedPlantFeedbackTime =
-    selectedPlantObservation?.reviewedAt
-    || selectedPlantDetail?.lastObserved
-    || ''
-  const showSelectedPlantFeedback =
-    Boolean(selectedPlantFeedbackTitle)
-    || Boolean(selectedPlantFeedbackDetail)
   const selectedPlantNavigationPlan = useMemo(() => {
     if (!selectedPlantDetail) {
       return null
@@ -2682,7 +2660,6 @@ export function FarmCommandPage() {
                   alt={`${selectedPlantDetail.name} 확인 이미지`}
                   className="farm-plant-modal__image"
                   height="100%"
-                  label={selectedPlantPreviewLabel}
                   src={selectedPlantPreviewImage || previewImageForAsset('plant', selectedPlantAsset.status)}
                 />
               </div>
@@ -2726,19 +2703,6 @@ export function FarmCommandPage() {
                     {harvestButtonLabel}
                   </button>
                 </div>
-                {showSelectedPlantFeedback ? (
-                  <div className="farm-plant-modal__feedback">
-                    <div className="farm-plant-modal__feedback-head">
-                      <strong>{selectedPlantFeedbackTitle || '최근 작업 결과'}</strong>
-                      {selectedPlantFeedbackTime ? (
-                        <span className="muted">{selectedPlantFeedbackTime}</span>
-                      ) : null}
-                    </div>
-                    <p className="muted">
-                      {selectedPlantFeedbackDetail || '최근 작업 피드백이 여기에 표시됩니다.'}
-                    </p>
-                  </div>
-                ) : null}
               </div>
             </div>
           </div>
