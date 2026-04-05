@@ -23,8 +23,6 @@ def test_iot_device_catalog_uses_shared_zone_device_names() -> None:
     assert set(catalog.zones) == {'farm_01'}
     assert set(catalog.devices) == {
         'farm_01_watering',
-        'farm_01_curtain',
-        'farm_01_fan',
         'farm_01_nutrient',
         'sprinkler_0',
         'sprinkler_1',

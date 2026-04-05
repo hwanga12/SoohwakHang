@@ -81,5 +81,7 @@ source_ros_setup_files() {
     source_file_without_strict_nounset "${ws_setup}" || return 1
 }
 
+source_ros_setup_files || return 1
+
 unset _AGRIBOT_ENV_DIR
 unset _AGRIBOT_REPO_ROOT

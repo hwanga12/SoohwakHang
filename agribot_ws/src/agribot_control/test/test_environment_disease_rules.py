@@ -28,28 +28,8 @@ def test_dry_soil_recommends_auto_watering() -> None:
     assert watering.auto_execute is True
 
 
-def test_hot_and_bright_environment_recommends_curtain() -> None:
-    # HOT AND bright environment recommends 커튼 동작과 회귀 여부를 검증한다.
-    decisions = evaluate_environment_disease_rules(
-        EnvironmentSnapshot(
-            zone_id='farm_01',
-            temperature=33.0,
-            humidity=60.0,
-            soil_moisture=42.0,
-            light_level=38000.0,
-        )
-    )
-
-    curtain = next(
-        decision for decision in decisions if decision.device_type == 'curtain'
-    )
-    assert curtain.command_type == 'set_curtain_position'
-    assert curtain.target_value == 60.0
-    assert curtain.auto_execute is True
-
-
-def test_humid_fungal_repeat_holds_watering_and_enables_fan() -> None:
-    # humid fungal repeat holds 급수 AND enables 환기팬 동작과 회귀 여부를 검증한다.
+def test_humid_fungal_repeat_holds_watering_without_additional_recommendation() -> None:
+    # humid fungal repeat holds 급수 without additional recommendation 동작과 회귀 여부를 검증한다.
     decisions = evaluate_environment_disease_rules(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -71,14 +51,8 @@ def test_humid_fungal_repeat_holds_watering_and_enables_fan() -> None:
         and decision.decision_type == DecisionType.HOLD.value
         for decision in decisions
     )
-    fan = next(decision for decision in decisions if decision.device_type == 'fan')
-    assert fan.target_value == 3.0
-    assert fan.auto_execute is True
     assert all(
-        not (
-            decision.device_type == 'watering'
-            and decision.decision_type == DecisionType.RECOMMEND.value
-        )
+        decision.decision_type != DecisionType.RECOMMEND.value
         for decision in decisions
     )
 

@@ -75,66 +75,6 @@ def evaluate_environment_disease_rules(
                 source_rule='R-HOLD-WATER-HUMID-FUNGAL',
             )
         )
-        decisions.append(
-            RuleDecision(
-                decision_type=DecisionType.RECOMMEND.value,
-                device_type='fan',
-                command_type='set_fan_level',
-                target_value=3.0,
-                unit='level',
-                priority=330,
-                auto_execute=True,
-                requires_approval=False,
-                reason='고습도 곰팡이 리스크를 낮추기 위해 환기팬 강풍을 권장합니다.',
-                source_rule='R-FAN-HUMID-FUNGAL',
-            )
-        )
-    elif environment.humidity >= 75.0 and environment.temperature >= 30.0:
-        decisions.append(
-            RuleDecision(
-                decision_type=DecisionType.RECOMMEND.value,
-                device_type='fan',
-                command_type='set_fan_level',
-                target_value=2.0,
-                unit='level',
-                priority=190,
-                auto_execute=True,
-                requires_approval=False,
-                reason='고온다습 구간이라 공기 순환을 위해 환기팬 중풍을 권장합니다.',
-                source_rule='R-FAN-HOT-HUMID',
-            )
-        )
-
-    if environment.temperature >= 32.0 and environment.light_level >= 35000.0:
-        decisions.append(
-            RuleDecision(
-                decision_type=DecisionType.RECOMMEND.value,
-                device_type='curtain',
-                command_type='set_curtain_position',
-                target_value=60.0,
-                unit='percent_closed',
-                priority=250,
-                auto_execute=True,
-                requires_approval=False,
-                reason='고온과 강한 조도가 동시에 높아 천장 커튼 60% 닫힘을 권장합니다.',
-                source_rule='R-CURTAIN-HOT-BRIGHT-STRONG',
-            )
-        )
-    elif environment.temperature >= 29.0 and environment.light_level >= 25000.0:
-        decisions.append(
-            RuleDecision(
-                decision_type=DecisionType.RECOMMEND.value,
-                device_type='curtain',
-                command_type='set_curtain_position',
-                target_value=35.0,
-                unit='percent_closed',
-                priority=180,
-                auto_execute=True,
-                requires_approval=False,
-                reason='온도와 조도가 함께 상승해 천장 커튼 부분 닫힘을 권장합니다.',
-                source_rule='R-CURTAIN-HOT-BRIGHT-MODERATE',
-            )
-        )
 
     if not humid_fungal_risk:
         if environment.soil_moisture < 22.0:

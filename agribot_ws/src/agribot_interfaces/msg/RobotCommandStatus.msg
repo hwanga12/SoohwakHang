@@ -1,0 +1,30 @@
+# RobotCommandStatus.msg
+# Structured robot command status mirrored by the runtime bridge executor.
+
+std_msgs/Header header
+string command_id
+string requested_command_type
+string command_type
+string robot_id
+string requested_by
+string map_id
+string frame_id
+string status
+string message
+string error
+string result
+string target_zone_id
+string home_waypoint_id
+string target_waypoint_id
+string navigation_phase
+bool preempt_current_navigation
+bool has_target_pose
+TargetPose target_pose
+bool has_route_target_pose
+TargetPose route_target_pose
+bool has_final_target_pose
+TargetPose final_target_pose
+string received_at
+string started_at
+string completed_at
+string updated_at

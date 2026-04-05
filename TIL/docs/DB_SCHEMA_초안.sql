@@ -82,9 +82,8 @@ DO $$
 BEGIN
     CREATE TYPE device_type AS ENUM (
         'WATER_PUMP',
-        'CURTAIN',
-        'FAN',
-        'NUTRIENT'
+        'NUTRIENT',
+        'SPRINKLER'
     );
 EXCEPTION
     WHEN duplicate_object THEN NULL;
@@ -122,8 +121,6 @@ DO $$
 BEGIN
     CREATE TYPE recommendation_type AS ENUM (
         'WATERING',
-        'CURTAIN',
-        'FAN',
         'NUTRIENTS'
     );
 EXCEPTION
@@ -171,8 +168,6 @@ DO $$
 BEGIN
     CREATE TYPE actuation_command_type AS ENUM (
         'WATERING',
-        'CURTAIN',
-        'FAN',
         'NUTRIENTS',
         'STOP'
     );

@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import uuid
 
+from ros_protocol_bridge import get_ros_protocol_bridge
 from services.actuation.schemas import ActuationDispatchResult, DiseaseTreatmentPlan
 
 
@@ -164,13 +165,8 @@ class TreatmentCommandDispatcher:
         requires_approval: bool = False,
     ) -> ActuationDispatchResult:
         # manual 명령를 외부 시스템이나 다음 처리 단계로 전달한다.
-        normalized_device_type = device_type.strip().lower()
-        if normalized_device_type == 'sprinkler':
-            topic = self._dispatch_command_topic
-            min_subscribers = self._dispatch_min_subscribers
-        else:
-            topic = self._manual_command_topic
-            min_subscribers = self._manual_min_subscribers
+        topic = self._manual_command_topic
+        min_subscribers = self._manual_min_subscribers
 
         validation_error = self._validate_runtime(topic=topic)
         if validation_error is not None:
@@ -197,6 +193,8 @@ class TreatmentCommandDispatcher:
 
     def _validate_runtime(self, *, topic: str) -> ActuationDispatchResult | None:
         # 런타임 데이터가 기대한 계약을 만족하는지 확인하고 필요한 보정을 수행한다.
+        if get_ros_protocol_bridge().is_ready():
+            return None
         if not self._env_setup_script.exists():
             return ActuationDispatchResult(
                 dispatched=False,
@@ -239,6 +237,18 @@ class TreatmentCommandDispatcher:
         min_subscribers: int,
     ) -> ActuationDispatchResult:
         # 명령를 외부 시스템이나 다음 처리 단계로 전달한다.
+        if get_ros_protocol_bridge().publish_iot_command(asdict(command), topic=topic):
+            return ActuationDispatchResult(
+                dispatched=True,
+                status='dispatched',
+                command_id=command.command_id,
+                topic=topic,
+                device_id=command.device_id,
+                device_type=command.device_type,
+                method='ros_direct_bridge',
+                detail_message='IoT command published to ROS successfully via direct bridge.',
+            )
+
         with tempfile.NamedTemporaryFile(
             mode='w',
             encoding='utf-8',

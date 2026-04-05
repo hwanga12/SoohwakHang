@@ -16,20 +16,56 @@ export function useLiveStatus() {
   const [status, setStatus] = useState<LiveStatus>('connecting')
 
   useEffect(() => {
-    const socket = createStatusSocket({
-      onOpen: () => {
-        setStatus('connected')
-      },
-      onClose: () => {
-        setStatus('disconnected')
-      },
-      onError: () => {
-        setStatus('disconnected')
-      },
-    })
+    let disposed = false
+    let socket: WebSocket | null = null
+    let reconnectTimer: number | null = null
+    let reconnectDelayMs = 1000
+
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimer !== null) {
+        return
+      }
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null
+        reconnectDelayMs = Math.min(reconnectDelayMs * 2, 10000)
+        connect()
+      }, reconnectDelayMs)
+    }
+
+    const connect = () => {
+      if (disposed) {
+        return
+      }
+      setStatus('connecting')
+      socket = createStatusSocket({
+        onOpen: () => {
+          reconnectDelayMs = 1000
+          setStatus('connected')
+        },
+        onClose: () => {
+          if (disposed) {
+            return
+          }
+          setStatus('disconnected')
+          scheduleReconnect()
+        },
+        onError: () => {
+          if (disposed) {
+            return
+          }
+          setStatus('disconnected')
+        },
+      })
+    }
+
+    connect()
 
     return () => {
-      socket.close()
+      disposed = true
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer)
+      }
+      socket?.close()
     }
   }, [])
 

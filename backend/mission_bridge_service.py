@@ -5,6 +5,7 @@ import json
 import uuid
 from typing import Any
 
+from ros_protocol_bridge import get_ros_protocol_bridge
 from robot_runtime_state_service import (
     RobotRuntimeStateError,
     build_idle_mission_status_payload,
@@ -246,13 +247,18 @@ def publish_patrol_start_mission(
             "patrol_mode": normalized_patrol_mode,
         },
     )
-    write_json_atomic(mission_request_file_path(), bridge_payload)
+    bridge = get_ros_protocol_bridge()
+    published_transport = "ros_topic" if bridge.publish_mission_request(bridge_payload) else "runtime_file"
+    if published_transport != "ros_topic":
+        write_json_atomic(mission_request_file_path(), bridge_payload)
 
     operator_message = "패트롤 시작 요청을 접수했습니다. mission status를 확인하세요."
-    return _build_publish_response(
+    response = _build_publish_response(
         bridge_payload=bridge_payload,
         operator_message=operator_message,
     )
+    response["transport"] = published_transport
+    return response
 
 
 def publish_harvest_target_mission(
@@ -301,13 +307,18 @@ def publish_harvest_target_mission(
             "inspect_waypoint_ids": normalized_inspect_waypoint_ids or None,
         },
     )
-    write_json_atomic(mission_request_file_path(), bridge_payload)
+    bridge = get_ros_protocol_bridge()
+    published_transport = "ros_topic" if bridge.publish_mission_request(bridge_payload) else "runtime_file"
+    if published_transport != "ros_topic":
+        write_json_atomic(mission_request_file_path(), bridge_payload)
 
     operator_message = "수확 target 요청을 접수했습니다. mission status를 확인하세요."
-    return _build_publish_response(
+    response = _build_publish_response(
         bridge_payload=bridge_payload,
         operator_message=operator_message,
     )
+    response["transport"] = published_transport
+    return response
 
 
 def read_latest_mission_status_payload() -> dict[str, Any]:

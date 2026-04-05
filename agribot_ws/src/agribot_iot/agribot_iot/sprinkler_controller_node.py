@@ -8,14 +8,13 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 
-from agribot_interfaces.msg import IoTCommand, IoTDeviceState
+from agribot_interfaces.msg import IoTCommand, IoTCommandResult, IoTDeviceState
 from ament_index_python.packages import get_package_share_directory
 from rclpy.callback_groups import ReentrantCallbackGroup
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from std_msgs.msg import String
-
+from .command_result_contract import command_result_message_from_payload
 from .device_mapping import IoTDeviceSpec, get_default_iot_devices_path, load_iot_device_catalog
 from .sprinkler_controller_logic import (
     SprinklerExecutionPlan,
@@ -81,7 +80,7 @@ class SprinklerControllerNode(Node):
             20,
         )
         self._command_result_publisher = self.create_publisher(
-            String,
+            IoTCommandResult,
             self._command_result_topic,
             20,
         )
@@ -382,13 +381,15 @@ class SprinklerControllerNode(Node):
         executed_duration_sec: float,
     ) -> None:
         # 결과를 외부 시스템이나 다음 처리 단계로 전달한다.
-        result = String()
-        result.data = build_sprinkler_result_payload(
-            plan,
-            success=success,
-            state=state,
-            detail_message=detail_message,
-            executed_duration_sec=executed_duration_sec,
+        result = command_result_message_from_payload(
+            build_sprinkler_result_payload(
+                plan,
+                success=success,
+                state=state,
+                detail_message=detail_message,
+                executed_duration_sec=executed_duration_sec,
+            ),
+            stamp=self.get_clock().now().to_msg(),
         )
         self._command_result_publisher.publish(result)
         self.get_logger().info(

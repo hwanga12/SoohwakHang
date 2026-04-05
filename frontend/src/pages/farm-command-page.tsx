@@ -374,6 +374,35 @@ function extractPlantIdFromFruitId(fruitId?: string | null) {
   return match?.[0] ?? null
 }
 
+function canonicalFruitIdForPlant(plantId: string) {
+  const normalizedPlantId = plantId.trim()
+  if (!normalizedPlantId) {
+    return ''
+  }
+
+  return normalizedPlantId.includes('_tomato_')
+    ? normalizedPlantId
+    : `${normalizedPlantId}_tomato_01`
+}
+
+function resolvePlantTargetId(
+  plantId: string,
+  targetId?: string | null,
+  plantLookup?: Map<string, PlantRow>,
+) {
+  const normalizedTargetId = (targetId ?? '').trim()
+  if (normalizedTargetId) {
+    return normalizedTargetId
+  }
+
+  const lookupTargetId = (plantLookup?.get(plantId)?.targetId ?? '').trim()
+  if (lookupTargetId) {
+    return lookupTargetId
+  }
+
+  return canonicalFruitIdForPlant(plantId)
+}
+
 function buildPlantHarvestRuntime(
   plant: PlantModalDetail,
   harvest: HarvestPageData,
@@ -1124,12 +1153,12 @@ export function FarmCommandPage() {
       setActivityState('AI 진단 완료')
       rememberAction(
         variables.plantId,
-        'AI 진단 저장',
-        `${variables.plantName} 진단 결과 ${result.displayLabel} 이 DB에 저장되었습니다.`,
+        result.displayLabel,
+        `${variables.plantName} 진단 결과가 반영되었습니다.`,
         result.diagnosisNeeded ? 'danger' : 'healthy',
       )
       setUiMessage(
-        `${variables.plantName} 시연용 AI 진단이 완료되었습니다. ${result.displayLabel} 결과가 저장되었습니다.`,
+        `${variables.plantName} 결과가 반영되었습니다. 현재 상태는 ${result.displayLabel}입니다.`,
       )
 
       queryClient.setQueryData<PlantsPageData>(
@@ -1311,7 +1340,11 @@ export function FarmCommandPage() {
               : runtimeHarvestTarget || harvestTarget
                 ? 'target'
                 : 'normal'
-        const nextLinkedId = plant?.targetId ?? asset.linkedId
+        const nextLinkedId = resolvePlantTargetId(
+          asset.id,
+          plant?.targetId ?? asset.linkedId,
+          plantLookup,
+        )
         const nextLabel = plant?.name ?? asset.label
         const nextShortLabel = plant?.name.replace('토마토 ', '') ?? asset.shortLabel
         const nextDescription =
@@ -1406,7 +1439,7 @@ export function FarmCommandPage() {
 
       return {
         id: harvestPlant.id,
-        targetId: harvestPlant.targetId,
+        targetId: resolvePlantTargetId(harvestPlant.id, harvestPlant.targetId, plantLookup),
         name: harvestPlant.name,
         zoneLabel: harvestPlant.zoneLabel,
         positionLabel: harvestPlant.positionLabel,
@@ -1425,7 +1458,7 @@ export function FarmCommandPage() {
     if (plant) {
       return {
         id: plant.id,
-        targetId: plant.targetId,
+        targetId: resolvePlantTargetId(plant.id, plant.targetId, plantLookup),
         name: plant.name,
         zoneLabel: plant.zoneLabel,
         positionLabel: plant.positionLabel,
@@ -1441,7 +1474,7 @@ export function FarmCommandPage() {
 
     return {
       id: asset.id,
-      targetId: asset.linkedId ?? `${asset.id}_fruit_01`,
+      targetId: resolvePlantTargetId(asset.id, asset.linkedId, plantLookup),
       name: asset.label,
       zoneLabel: `zone ${asset.zoneId}`,
       positionLabel: `x ${asset.position.x.toFixed(1)} / y ${asset.position.y.toFixed(1)}`,
@@ -1721,22 +1754,6 @@ export function FarmCommandPage() {
     || selectedPlantDetail?.latestImageUrl
     || selectedPlantLiveCameraImage
     || ''
-  const selectedPlantPreviewLabel =
-    selectedPlantMatchedObservationImage
-      ? '방금 촬영된 작물 이미지'
-      : selectedPlantObservation?.displayLabel
-        || selectedPlantDetail?.latestDisplayLabel
-        || (selectedPlantLiveCameraImage ? '실시간 로봇 카메라' : '발표용 이미지')
-  const selectedPlantPreviewNote =
-    selectedPlantMatchedObservationImage
-      ? '선택한 식물에 대해 가장 최근에 저장된 자동 관측 이미지입니다.'
-      : selectedPlantObservation !== null
-        ? '최근 자동 관측으로 저장된 식물 스냅샷입니다.'
-        : selectedPlantDetail?.latestImageUrl
-          ? '최근 저장된 식물 이미지입니다.'
-          : selectedPlantLiveCameraImage
-            ? '현재 로봇이 보는 Gazebo 카메라 전체 화면입니다. 식물별 관측 이미지가 생기면 그 사진을 먼저 보여줍니다.'
-            : '백엔드 live 이미지가 없으면 시연용 기본 이미지를 표시합니다.'
   const currentActivity = currentMissionActivity ?? activityState ?? robot.missionState
   const selectedPlantNavigationPlan = useMemo(() => {
     if (!selectedPlantDetail) {
@@ -2082,8 +2099,11 @@ export function FarmCommandPage() {
     const targetPlant = selectedAsset?.kind === 'plant'
       ? selectedPlantDetail
       : attentionPlant
+    const resolvedTargetId = targetPlant
+      ? resolvePlantTargetId(targetPlant.id, targetPlant.targetId, plantLookup)
+      : ''
 
-    if (!targetPlant) {
+    if (!targetPlant || !resolvedTargetId) {
       return
     }
 
@@ -2111,7 +2131,7 @@ export function FarmCommandPage() {
 
     const diagnoseStartInput = {
       plantId: targetPlant.id,
-      fruitId: targetPlant.targetId,
+      fruitId: resolvedTargetId,
       plantName: targetPlant.name,
       plan: inspectionPlan,
     } satisfies QueuedDiagnoseStart
@@ -2140,8 +2160,17 @@ export function FarmCommandPage() {
 
   const handleHarvest = () => {
     const targetPlant = selectedPlantDetail
+    const resolvedTargetId = targetPlant
+      ? resolvePlantTargetId(targetPlant.id, targetPlant.targetId, plantLookup)
+      : ''
 
-    if (!targetPlant || missionControlBlocked || patrolMutation.isPending || harvestMutation.isPending) {
+    if (
+      !targetPlant
+      || !resolvedTargetId
+      || missionControlBlocked
+      || patrolMutation.isPending
+      || harvestMutation.isPending
+    ) {
       return
     }
 
@@ -2154,7 +2183,7 @@ export function FarmCommandPage() {
     harvestMutation.reset()
     harvestMutation.mutate({
       plantId: targetPlant.id,
-      fruitId: targetPlant.targetId,
+      fruitId: resolvedTargetId,
       plantName: targetPlant.name,
       inspectWaypointId: selectedPlantNavigationPlan?.inspectWaypointId ?? null,
       inspectWaypointIds: selectedPlantNavigationPlan?.inspectWaypointIds ?? [],
@@ -2676,13 +2705,11 @@ export function FarmCommandPage() {
                   alt={`${selectedPlantDetail.name} 확인 이미지`}
                   className="farm-plant-modal__image"
                   height="100%"
-                  label={selectedPlantPreviewLabel}
                   src={selectedPlantPreviewImage || previewImageForAsset('plant', selectedPlantAsset.status)}
                 />
               </div>
 
               <div className="farm-plant-modal__body">
-                <p className="farm-plant-modal__media-note">{selectedPlantPreviewNote}</p>
                 <div className="farm-plant-modal__actions">
                   <button
                     className="action-button"

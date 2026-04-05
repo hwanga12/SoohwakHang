@@ -6,6 +6,7 @@ import time
 import uuid
 from typing import Any
 
+from ros_protocol_bridge import get_ros_protocol_bridge
 from robot_runtime_state_service import (
     RobotRuntimeStateError,
     build_idle_command_status_payload,
@@ -665,7 +666,7 @@ def publish_robot_command(
 
     if file_command_type not in FILE_BRIDGE_COMMAND_TYPES:
         raise RobotCommandValidationError(
-            f"파일 브리지로 내보낼 수 없는 command_type 입니다: {file_command_type!r}"
+            f"런타임 브리지로 내보낼 수 없는 command_type 입니다: {file_command_type!r}"
         )
 
     bridge_payload = _build_bridge_payload(
@@ -679,9 +680,12 @@ def publish_robot_command(
         payload=command_payload,
         preempt_current_navigation=resolved_preempt_current_navigation,
     )
-    write_json_atomic(command_file_path(), bridge_payload)
+    bridge = get_ros_protocol_bridge()
+    published_transport = "ros_topic" if bridge.publish_robot_command(bridge_payload) else "runtime_file"
+    if published_transport != "ros_topic":
+        write_json_atomic(command_file_path(), bridge_payload)
 
-    return _build_publish_response(
+    response = _build_publish_response(
         bridge_payload=bridge_payload,
         requested_command_type=requested_command_type,
         command_type=file_command_type,
@@ -695,6 +699,8 @@ def publish_robot_command(
         home_waypoint_id=command_payload.get("home_waypoint_id"),
         current_control_state=control_state,
     )
+    response["transport"] = published_transport
+    return response
 
 
 def read_latest_command_status_payload() -> dict[str, Any]:

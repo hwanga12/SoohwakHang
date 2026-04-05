@@ -107,8 +107,6 @@ def _device_type(raw_type: str) -> str:
     # 장치 type 정보를 계산해 반환한다.
     mapping = {
         "watering": "WATER_PUMP",
-        "curtain": "CURTAIN",
-        "fan": "FAN",
         "nutrient": "NUTRIENT",
         "sprinkler": "SPRINKLER",
     }
@@ -119,8 +117,6 @@ def _device_unit(raw_type: str) -> str:
     # 장치 unit 정보를 계산해 반환한다.
     mapping = {
         "watering": "ml",
-        "curtain": "percent",
-        "fan": "level",
         "nutrient": "ml",
         "sprinkler": "sec",
     }
@@ -129,10 +125,7 @@ def _device_unit(raw_type: str) -> str:
 
 def _device_initial_state(raw_type: str) -> str:
     # 장치 initial 상태 정보를 계산해 반환한다.
-    mapping = {
-        "curtain": "CLOSED",
-    }
-    return mapping.get(raw_type.strip().lower(), "OFF")
+    return "OFF"
 
 
 def _display_name(plant_id: str) -> str:
