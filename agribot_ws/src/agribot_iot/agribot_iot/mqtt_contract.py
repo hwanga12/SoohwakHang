@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from ament_index_python.packages import get_package_share_directory
-from agribot_interfaces.msg import EnvironmentData, IoTCommand, IoTDeviceState
-from std_msgs.msg import String
+from agribot_interfaces.msg import EnvironmentData, IoTCommand, IoTCommandResult, IoTDeviceState
 import yaml
+
+from .command_result_contract import command_result_payload_from_message
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,13 @@ class MqttBrokerConfig:
     keepalive_sec: int
     qos: int
     retain_default: bool
+    clean_session: bool
+    reconnect_min_delay_sec: float
+    reconnect_max_delay_sec: float
+    publish_retry_count: int
+    publish_retry_backoff_sec: float
+    offline_queue_dir: str
+    offline_queue_max_messages: int
 
 
 @dataclass(frozen=True)
@@ -78,6 +86,21 @@ def load_mqtt_bridge_config(path: Path) -> MqttBridgeConfig:
             keepalive_sec=int(broker_payload.get('keepalive_sec', 30)),
             qos=int(broker_payload.get('qos', 1)),
             retain_default=bool(broker_payload.get('retain_default', False)),
+            clean_session=bool(broker_payload.get('clean_session', False)),
+            reconnect_min_delay_sec=float(broker_payload.get('reconnect_min_delay_sec', 1.0)),
+            reconnect_max_delay_sec=float(broker_payload.get('reconnect_max_delay_sec', 30.0)),
+            publish_retry_count=max(0, int(broker_payload.get('publish_retry_count', 3))),
+            publish_retry_backoff_sec=max(
+                0.0,
+                float(broker_payload.get('publish_retry_backoff_sec', 0.5)),
+            ),
+            offline_queue_dir=str(
+                broker_payload.get('offline_queue_dir', '/tmp/agribot_mqtt_offline')
+            ),
+            offline_queue_max_messages=max(
+                1,
+                int(broker_payload.get('offline_queue_max_messages', 256)),
+            ),
         ),
         ros_to_mqtt=tuple(
             RosToMqttRoute(
@@ -156,18 +179,9 @@ def serialize_iot_device_state(message: IoTDeviceState) -> dict[str, Any]:
     }
 
 
-def serialize_std_string_json(message: String) -> dict[str, Any]:
-    # STD string JSON 데이터를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
-    payload = message.data.strip()
-    if not payload:
-        return {}
-    try:
-        decoded = json.loads(payload)
-    except json.JSONDecodeError:
-        return {'data': payload}
-    if isinstance(decoded, dict):
-        return decoded
-    return {'data': decoded}
+def serialize_iot_command_result(message: IoTCommandResult) -> dict[str, Any]:
+    # IoT command result를 다른 계층에서 쓰기 쉬운 형태로 변환한다.
+    return command_result_payload_from_message(message)
 
 
 def resolve_mqtt_topic(template: str, message: Any) -> str:
@@ -188,7 +202,7 @@ def serialize_message(serializer: str, message: Any) -> dict[str, Any]:
         'environment_data': serialize_environment_data,
         'iot_command': serialize_iot_command,
         'iot_device_state': serialize_iot_device_state,
-        'raw_json': serialize_std_string_json,
+        'iot_command_result': serialize_iot_command_result,
     }
     try:
         serializer_fn = serializer_map[serializer]

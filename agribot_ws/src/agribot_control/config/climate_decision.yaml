@@ -1,6 +1,0 @@
-climate_decision_node:
-  ros__parameters:
-    environment_topic: /environment_data
-    plant_observation_topic: /plant_observation
-    zone_id_filter: ''
-    log_only_on_change: true

@@ -47,8 +47,8 @@ def test_mid_soil_moisture_creates_review_request() -> None:
     assert watering.auto_execute is False
 
 
-def test_humid_fungal_risk_only_keeps_fan_request() -> None:
-    # humid fungal risk only keeps 환기팬 요청 데이터 동작과 회귀 여부를 검증한다.
+def test_humid_fungal_risk_skips_actionable_requests() -> None:
+    # humid fungal risk skips actionable 요청 데이터 동작과 회귀 여부를 검증한다.
     plans = plan_actuation_requests(
         EnvironmentSnapshot(
             zone_id='farm_01',
@@ -66,8 +66,7 @@ def test_humid_fungal_risk_only_keeps_fan_request() -> None:
         requested_by='mission_manager:auto',
     )
 
-    assert any(plan.device_type == 'fan' for plan in plans)
-    assert all(plan.device_type != 'watering' for plan in plans)
+    assert plans == []
 
 
 def test_calcium_disorder_creates_review_nutrient_request_with_payload_in_reason() -> None:

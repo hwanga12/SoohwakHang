@@ -7,6 +7,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 import models
 from database import engine
+from ros_protocol_bridge import get_ros_protocol_bridge
 
 # ⭐️ Import all routers
 from routers import (
@@ -56,6 +57,20 @@ async def disable_docs_cache(request: Request, call_next) -> Response:
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
     return response
+
+
+@app.on_event("startup")
+async def startup_ros_protocol_bridge() -> None:
+    # Start the optional direct ROS bridge when the backend boots.
+    bridge = get_ros_protocol_bridge()
+    if not bridge.start():
+        logger.info("ROS direct bridge unavailable; backend will use legacy fallbacks.")
+
+
+@app.on_event("shutdown")
+async def shutdown_ros_protocol_bridge() -> None:
+    # Stop the optional direct ROS bridge when the backend shuts down.
+    get_ros_protocol_bridge().stop()
 
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 app.include_router(robots.router, prefix="/api/v1/robot", tags=["Robot"])

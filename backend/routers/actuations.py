@@ -40,24 +40,6 @@ class WateringReq(BaseModel):
     request_source: str
     recommendation_id: Optional[str] = None
 
-class CurtainReq(BaseModel):
-    # 커튼 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
-    zone_id: str
-    device_id: str
-    target_value: float
-    value_unit: str = "percent"
-    requested_by: str
-    request_source: str
-
-class FanReq(BaseModel):
-    # 환기팬 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
-    zone_id: str
-    device_id: str
-    target_value: float
-    value_unit: str = "level"
-    requested_by: str
-    request_source: str
-
 class NutrientsReq(BaseModel):
     # nutrients 관련 동작과 상태를 함께 다루기 위한 클래스를 정의한다.
     zone_id: str
@@ -133,36 +115,6 @@ def water_plants(req: WateringReq):
             requested_by=req.requested_by,
             request_source=req.request_source,
             recommendation_id=req.recommendation_id,
-        )
-    }
-
-@router.post("/curtain")
-def control_curtain(req: CurtainReq):
-    # 제어 커튼 정보를 계산해 반환한다.
-    return {
-        "data": _operations_service.create_manual_command(
-            zone_id=req.zone_id,
-            device_id=req.device_id,
-            command_type="CURTAIN",
-            target_value=req.target_value,
-            value_unit=req.value_unit,
-            requested_by=req.requested_by,
-            request_source=req.request_source,
-        )
-    }
-
-@router.post("/fan")
-def control_fan(req: FanReq):
-    # 제어 환기팬 정보를 계산해 반환한다.
-    return {
-        "data": _operations_service.create_manual_command(
-            zone_id=req.zone_id,
-            device_id=req.device_id,
-            command_type="FAN",
-            target_value=req.target_value,
-            value_unit=req.value_unit,
-            requested_by=req.requested_by,
-            request_source=req.request_source,
         )
     }
 

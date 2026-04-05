@@ -531,8 +531,6 @@ INSERT INTO public.harvest_events VALUES ('87b167a0-2490-5976-b5a2-3b4e7dcaccf7'
 -- Data for Name: iot_devices; Type: TABLE DATA; Schema: public; Owner: agribot
 --
 
-INSERT INTO public.iot_devices VALUES ('farm_01_curtain', 'farm_01', 'CURTAIN', 'Farm 01 Ceiling Curtain', 'AUTO', 'CLOSED', 0, 'percent', true, '2026-03-30 02:41:55');
-INSERT INTO public.iot_devices VALUES ('farm_01_fan', 'farm_01', 'FAN', 'Farm 01 Ventilation Fan', 'AUTO', 'OFF', 0, 'level', true, '2026-03-30 02:41:55');
 INSERT INTO public.iot_devices VALUES ('farm_01_nutrient', 'farm_01', 'NUTRIENT', 'Farm 01 Nutrient Dispenser', 'AUTO', 'OFF', 0, 'ml', true, '2026-03-30 02:41:55');
 INSERT INTO public.iot_devices VALUES ('farm_01_watering', 'farm_01', 'WATER_PUMP', 'Farm 01 Watering Pump', 'AUTO', 'OFF', 0, 'ml', true, '2026-03-30 02:41:55');
 INSERT INTO public.iot_devices VALUES ('sprinkler_0', 'farm_01', 'SPRINKLER', 'Farm 01 Sprinkler 0', 'AUTO', 'OFF', 0, 'sec', true, '2026-03-30 02:41:55');
@@ -1022,4 +1020,3 @@ ALTER TABLE ONLY public.robots
 --
 
 \unrestrict M75cY3xmKgAT6tialeN2Q1MDnjyF0aDLnz5fsulETaKPtD2aHVgB227xzk8vba9
-

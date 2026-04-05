@@ -1,0 +1,213 @@
+@startuml
+title AgriBot Layered System Architecture
+
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultTextAlignment center
+skinparam ArrowColor #444444
+skinparam PackageBorderColor #666666
+skinparam PackageBackgroundColor #FBFBFB
+skinparam ComponentBorderColor #666666
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam DatabaseBorderColor #666666
+skinparam DatabaseBackgroundColor #FFFFFF
+skinparam QueueBorderColor #666666
+skinparam QueueBackgroundColor #FFFFFF
+skinparam NodeBorderColor #666666
+skinparam NodeBackgroundColor #FFFFFF
+skinparam FolderBorderColor #666666
+skinparam FolderBackgroundColor #FFFFFF
+
+package "1. Hardware Layer" as hw {
+  actor "Operator" as operator
+
+  node "Operator Device" as operator_device {
+    component "Web Browser" as browser
+  }
+
+  node "AgriBot Robot\n(physical or simulated)" as robot_hw {
+    component "Drive Base\nleft / right wheel + caster" as drive_base
+    component "RGB-D Camera" as camera_hw
+    component "LiDAR" as lidar_hw
+    component "IMU" as imu_hw
+    component "Harvest Arm" as arm_hw
+    component "Harvest Basket" as basket_hw
+  }
+
+  node "Farm IoT Devices\n(simulated or external)" as iot_hw {
+    component "Environment Sensor" as env_sensor_hw
+    component "Watering Controller" as watering_hw
+    component "Nutrient Controller" as nutrient_hw
+    component "Sprinklers" as sprinkler_hw
+  }
+
+  cloud "Tomato Crops / Fruits / Zones" as crop_env
+}
+
+package "2. Middleware / Platform Layer" as platform {
+  component "Client Runtime\nBrowser + JS engine" as client_runtime
+  component "Backend Runtime\nUbuntu 24.04 + Python 3.12" as backend_runtime
+  component "ROS 2 Jazzy\nDDS topic / service / action bus" as ros2_runtime
+  component "Gazebo Harmonic\nros_gz_bridge + ros_gz_image" as sim_runtime
+  component "Nav2 + AMCL + SLAM Toolbox" as nav_runtime
+  component "Docker Compose Runtime" as docker_runtime
+  folder "Shared Runtime File Bridge\nAGRIBOT_RUNTIME_DIR\n/tmp/agribot_runtime" as runtime_dir
+}
+
+package "3. Software / Service Layer" as software {
+  package "Frontend" as frontend_pkg {
+    component "React 18 + Vite 6 + TypeScript\nDashboard / Map / Plants /\nEnvironment / Alerts / Harvest" as frontend
+    component "Axios + TanStack Query" as frontend_http
+    component "WebSocket Client" as frontend_ws
+  }
+
+  package "Backend" as backend_pkg {
+    component "FastAPI Routers\n/dashboard /robot /missions\n/plants /environment /iot\n/actuations /harvests /media\n/camera /inference" as backend_api
+    component "Realtime Router\n/ws/live" as backend_ws
+    component "ROS / Runtime Integration\nros_protocol_bridge\nrobot_command_bridge_service\nmission_bridge_service\nrobot_runtime_state_service" as backend_bridge
+    component "AI / Policy Services\nYOLO confirm\nai_judgments\nactuation_dispatcher\nperception_read_service" as backend_services
+  }
+
+  package "Robot Software" as robot_pkg {
+    component "agribot_bringup\nsimulation.launch.py" as bringup
+    component "agribot_description\nURDF + world + ros_gz bridges" as description_pkg
+    component "agribot_navigation\npatrol_node\nharvest_action_server" as navigation_pkg
+    component "agribot_control\nmission_manager\nwatering_decision\nmanual_actuation_guard" as control_pkg
+    component "agribot_perception\nthin_inference_node" as perception_pkg
+    component "agribot_iot\nenvironment_sensor\nwatering/nutrient/sprinkler\nmqtt_bridge_node" as iot_pkg
+    component "agribot_interfaces\nmsg / srv / action contracts" as interfaces_pkg
+  }
+}
+
+package "4. Data / Asset Layer" as data_layer {
+  database "PostgreSQL 16\nagribot_db" as postgres
+  queue "Eclipse Mosquitto\nMQTT Broker" as mosquitto
+  component "pgAdmin4" as pgadmin
+  folder "Map & Semantic Assets\nfarm_map.yaml/.pgm\nzones.yaml\ncrop_instances.yaml\npatrol_waypoints.yaml" as map_assets
+  folder "AI Model Assets\nartifacts/models/tomato_disease/v1\nbest.pt\nlabel_contract.json" as model_assets
+  folder "Runtime Media & Snapshots\nartifacts/runtime/backend\nartifacts/runtime/robot/thin_inference" as runtime_assets
+}
+
+hw -[hidden]-> platform
+platform -[hidden]-> software
+software -[hidden]-> data_layer
+
+operator --> browser : operate UI
+browser --> frontend
+
+frontend --> frontend_http
+frontend --> frontend_ws
+frontend ..> client_runtime : runs on
+frontend_http --> backend_api : HTTP / JSON
+frontend_ws --> backend_ws : WebSocket\n/ws/live
+
+backend_api ..> backend_runtime : runs on
+backend_ws ..> backend_runtime : runs on
+backend_services ..> backend_runtime : runs on
+backend_api --> backend_services
+backend_api --> backend_bridge
+backend_ws --> backend_bridge : live snapshot read
+
+backend_api --> postgres : SQL / TCP 5432
+backend_services --> postgres : ORM read / write
+pgadmin --> postgres : admin / TCP 5432
+docker_runtime ..> postgres : containerized
+docker_runtime ..> mosquitto : containerized
+docker_runtime ..> pgadmin : containerized
+
+backend_bridge <--> ros2_runtime : rclpy direct transport\npub / sub
+backend_bridge <--> runtime_dir : JSON file fallback\ncommand / mission / status / pose / path
+backend_services --> runtime_assets : media read / write
+
+bringup ..> ros2_runtime : launch graph
+description_pkg ..> ros2_runtime : publish TF / sensor topics
+navigation_pkg ..> ros2_runtime : nav topics / actions
+control_pkg ..> ros2_runtime : mission arbitration
+perception_pkg ..> ros2_runtime : image / odom subscribe
+iot_pkg ..> ros2_runtime : env / device state / command result
+navigation_pkg ..> nav_runtime : uses planner / controller
+control_pkg ..> nav_runtime : mission-driven navigation
+description_pkg ..> sim_runtime : world + bridge
+bringup --> description_pkg : launch
+bringup --> navigation_pkg : launch
+bringup --> control_pkg : launch
+bringup --> perception_pkg : optional launch
+bringup --> iot_pkg : optional launch
+
+interfaces_pkg ..> ros2_runtime : typed contracts
+backend_bridge ..> interfaces_pkg : RobotCommand\nMissionStatus\nEnvironmentData\nIoTCommand
+navigation_pkg ..> interfaces_pkg
+control_pkg ..> interfaces_pkg
+perception_pkg ..> interfaces_pkg
+iot_pkg ..> interfaces_pkg
+
+sim_runtime --> robot_hw : simulated robot model
+sim_runtime --> crop_env : simulated farm world
+description_pkg --> robot_hw : URDF / spawn definition
+navigation_pkg --> robot_hw : cmd_vel / harvest action
+robot_hw --> navigation_pkg : odom / lidar / imu
+robot_hw --> perception_pkg : camera image / odom
+perception_pkg --> backend_api : HTTP POST\n/api/v1/inference/confirm
+perception_pkg --> runtime_assets : snapshot + metadata
+map_assets --> navigation_pkg : map / zones / waypoints
+map_assets --> perception_pkg : crop_instances catalog
+model_assets --> perception_pkg : YOLO model
+model_assets --> backend_services : label contract / inference metadata
+
+backend_services --> iot_pkg : ROS actuation dispatch
+iot_pkg --> mosquitto : MQTT pub / sub\nTCP 1883
+mosquitto --> iot_pkg : agribot/commands/manual
+iot_pkg --> iot_hw : device control / state sync
+env_sensor_hw --> iot_pkg : environment_data
+watering_hw --> crop_env : irrigation
+nutrient_hw --> crop_env : nutrient supply
+sprinkler_hw --> crop_env : spray treatment
+crop_env --> perception_pkg : crop health / fruit targets
+
+note right of postgres
+  Main tables
+  - zones
+  - robots
+  - plants
+  - fruits
+  - missions
+  - crop_observations
+  - environment_samples
+  - iot_devices
+  - actuation_commands
+  - actuation_logs
+  - alerts
+  - ai_judgments
+  - harvest_events
+end note
+
+note right of interfaces_pkg
+  Key contracts
+  - RobotCommand.msg
+  - MissionStatus.msg
+  - EnvironmentData.msg
+  - IoTCommand.msg
+  - HarvestTomato.action
+end note
+
+legend right
+  == Layers ==
+  Hardware: operator device, robot body, IoT actuators, crop environment
+  Middleware: runtime, ROS 2, Gazebo, Nav2, shared file bridge, Docker
+  Software: frontend, FastAPI backend, ROS packages
+  Data: PostgreSQL, MQTT broker, models, maps, runtime artifacts
+
+  == Protocols ==
+  Frontend <-> Backend: HTTP/JSON, WebSocket
+  Backend <-> PostgreSQL: SQL over TCP 5432
+  Backend <-> ROS: rclpy direct ROS 2 transport (primary)
+  Backend <-> ROS fallback: JSON files in AGRIBOT_RUNTIME_DIR
+  ROS internal: DDS topics, services, actions
+  ROS <-> Gazebo: ros_gz_bridge, ros_gz_image
+  ROS <-> MQTT Broker: MQTT over TCP 1883
+  Perception -> Backend confirm: HTTP POST /api/v1/inference/confirm
+endlegend
+
+@enduml

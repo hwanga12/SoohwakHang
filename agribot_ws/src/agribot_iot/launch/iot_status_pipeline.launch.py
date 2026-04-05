@@ -52,22 +52,6 @@ def generate_launch_description():
             'params_file': os.path.join(config_dir, 'watering_controller.yaml'),
         },
     )
-    curtain_controller = _include_launch(
-        package_share,
-        'curtain_controller.launch.py',
-        {
-            **common_args,
-            'params_file': os.path.join(config_dir, 'curtain_controller.yaml'),
-        },
-    )
-    fan_controller = _include_launch(
-        package_share,
-        'fan_controller.launch.py',
-        {
-            **common_args,
-            'params_file': os.path.join(config_dir, 'fan_controller.yaml'),
-        },
-    )
     nutrient_controller = _include_launch(
         package_share,
         'nutrient_controller.launch.py',
@@ -117,8 +101,6 @@ def generate_launch_description():
         ),
         environment_sensor,
         watering_controller,
-        curtain_controller,
-        fan_controller,
         nutrient_controller,
         sprinkler_controller,
         manual_actuation_guard,

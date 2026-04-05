@@ -52,7 +52,7 @@ def test_iot_status_pipeline_launch_includes_all_iot_publishers() -> None:
     ]
 
     assert len(declare_args) == 2
-    assert len(includes) == 8
+    assert len(includes) == 6
     assert len(env_sets) >= 3
     assert any(_env_name(entity) == 'ROS_DOMAIN_ID' for entity in env_sets)
     assert any(_env_name(entity) == 'ROS_AUTOMATIC_DISCOVERY_RANGE' for entity in env_sets)

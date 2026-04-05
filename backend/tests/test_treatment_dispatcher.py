@@ -89,4 +89,4 @@ def test_dispatcher_reports_successful_manual_ros_publish(monkeypatch) -> None:
     assert result.status == 'dispatched'
     assert result.command_id == 'manual-001'
     assert result.device_id == 'sprinkler_1'
-    assert result.topic == '/iot/commands/dispatch'
+    assert result.topic == '/iot/commands/manual'

@@ -1,0 +1,49 @@
+profiles:
+  command:
+    history: keep_last
+    depth: 20
+    reliability: reliable
+    durability: volatile
+  status:
+    history: keep_last
+    depth: 20
+    reliability: reliable
+    durability: volatile
+  state:
+    history: keep_last
+    depth: 20
+    reliability: reliable
+    durability: volatile
+  sensor:
+    history: keep_last
+    depth: 10
+    reliability: best_effort
+    durability: volatile
+
+topics:
+  /robot/commands/manual:
+    profile: command
+  /robot/commands/status:
+    profile: status
+  /robot/control_state/typed:
+    profile: state
+  /mission/requests:
+    profile: command
+  /mission/bridge_status:
+    profile: status
+  /iot/commands/manual:
+    profile: command
+  /iot/commands/auto:
+    profile: command
+  /iot/commands/dispatch:
+    profile: command
+  /iot/command_result:
+    profile: status
+  /iot/device_state:
+    profile: state
+  /environment_data:
+    profile: sensor
+  /robot/status:
+    profile: state
+  /mission/status:
+    profile: state

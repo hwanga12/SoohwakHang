@@ -28,7 +28,6 @@ setup(
     entry_points={
         'console_scripts': [
             'actuation_request_node = agribot_control.actuation_request_node:main',
-            'climate_decision_node = agribot_control.climate_decision_node:main',
             'manual_actuation_guard_node = agribot_control.manual_actuation_guard_node:main',
             'mission_manager = agribot_control.mission_manager:main',
             'watering_decision_node = agribot_control.watering_decision_node:main',

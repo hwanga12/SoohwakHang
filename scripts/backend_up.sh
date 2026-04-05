@@ -44,9 +44,19 @@ fi
 cd "${BACKEND_DIR}"
 export AGRIBOT_RUNTIME_DIR
 export AGRIBOT_BACKEND_RUNTIME_DIR
+export AGRIBOT_BACKEND_USE_ROS_BRIDGE="${AGRIBOT_BACKEND_USE_ROS_BRIDGE:-1}"
+export AGRIBOT_PROTOCOL_QOS_FILE="${AGRIBOT_PROTOCOL_QOS_FILE:-${AGRIBOT_WS}/src/agribot_bringup/config/protocol_qos.yaml}"
 export AGRIBOT_TREATMENT_DISPATCH_MIN_SUBSCRIBERS="${AGRIBOT_TREATMENT_DISPATCH_MIN_SUBSCRIBERS:-1}"
+if [[ -f "${AGRIBOT_WS}/install/setup.bash" ]]; then
+    source_ros_setup_files
+    echo "Direct ROS bridge enabled with workspace: ${AGRIBOT_WS}"
+else
+    echo "ROS workspace install/setup.bash not found; backend will fall back to file/subprocess bridges."
+fi
 echo "Using AGRIBOT_RUNTIME_DIR=${AGRIBOT_RUNTIME_DIR}"
 echo "Using AGRIBOT_BACKEND_RUNTIME_DIR=${AGRIBOT_BACKEND_RUNTIME_DIR}"
+echo "Using AGRIBOT_BACKEND_USE_ROS_BRIDGE=${AGRIBOT_BACKEND_USE_ROS_BRIDGE}"
+echo "Using AGRIBOT_PROTOCOL_QOS_FILE=${AGRIBOT_PROTOCOL_QOS_FILE}"
 echo "Using AGRIBOT_TREATMENT_DISPATCH_MIN_SUBSCRIBERS=${AGRIBOT_TREATMENT_DISPATCH_MIN_SUBSCRIBERS}"
 # 마지막에는 현재 셸을 실제 서비스 프로세스로 교체해 종료 신호가 곧바로 전달되게 한다.
 exec "${PYTHON_BIN}" -m uvicorn main:app --host "${BACKEND_HOST}" --port "${BACKEND_PORT}"
