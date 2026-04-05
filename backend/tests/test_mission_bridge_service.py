@@ -11,6 +11,8 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+import mission_bridge_service as mission_bridge_service_module  # noqa: E402
+import robot_runtime_state_service as runtime_state_service_module  # noqa: E402
 from mission_bridge_service import (  # noqa: E402
     MissionBridgeConflictError,
     publish_harvest_target_mission,
@@ -21,6 +23,7 @@ from robot_runtime_state_service import (  # noqa: E402
     mission_request_file_path,
     mission_status_file_path,
     mission_status_record_file_path,
+    read_latest_mission_status_payload,
 )
 
 
@@ -35,6 +38,35 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
     # JSON 데이터를 파일이나 저장소에 기록한다.
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+class _FakeBridge:
+    # 테스트가 직접 제어할 수 있는 최소 브리지 스텁이다.
+    def __init__(
+        self,
+        *,
+        latest_payload: dict[str, object] | None = None,
+        mission_payload_by_id: dict[str, dict[str, object]] | None = None,
+        publish_result: bool = False,
+    ) -> None:
+        self._latest_payload = dict(latest_payload) if isinstance(latest_payload, dict) else None
+        self._mission_payload_by_id = {
+            mission_id: dict(payload)
+            for mission_id, payload in (mission_payload_by_id or {}).items()
+        }
+        self._publish_result = publish_result
+        self.published_payloads: list[dict[str, object]] = []
+
+    def get_latest_mission_bridge_status(self) -> dict[str, object] | None:
+        return dict(self._latest_payload) if self._latest_payload is not None else None
+
+    def get_mission_bridge_status(self, mission_id: str) -> dict[str, object] | None:
+        payload = self._mission_payload_by_id.get(str(mission_id).strip())
+        return dict(payload) if payload is not None else None
+
+    def publish_mission_request(self, payload: dict[str, object]) -> bool:
+        self.published_payloads.append(dict(payload))
+        return self._publish_result
 
 
 def test_publish_patrol_start_mission_writes_runtime_request_contract() -> None:
@@ -109,6 +141,78 @@ def test_publish_operator_mission_rejects_when_latest_mission_is_running() -> No
             requested_by="frontend-operator",
             patrol_mode="diagnosis",
         )
+
+
+def test_read_latest_mission_status_payload_ignores_stale_bridge_active_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # latest mission 상태 조회는 runtime artifact가 없는 stale 브리지 active 상태를 무시해야 한다.
+    fake_bridge = _FakeBridge(
+        latest_payload={
+            "mission_id": "mission-stale-001",
+            "command_id": "mission-stale-001",
+            "request_type": "harvest_target",
+            "robot_id": "AGR-02",
+            "status": "running",
+            "message": "stale running mission",
+            "updated_at": "2026-04-05T13:44:00+00:00",
+        }
+    )
+    monkeypatch.setattr(
+        runtime_state_service_module,
+        "get_ros_protocol_bridge",
+        lambda: fake_bridge,
+    )
+
+    payload = read_latest_mission_status_payload()
+
+    assert payload["available"] is False
+    assert payload["status"] == "idle"
+    assert payload["mission_id"] is None
+
+
+def test_publish_harvest_target_mission_ignores_stale_bridge_active_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # stale 브리지 active 상태만 남았을 때는 새 harvest 요청을 막지 않아야 한다.
+    fake_bridge = _FakeBridge(
+        latest_payload={
+            "mission_id": "mission-stale-002",
+            "command_id": "mission-stale-002",
+            "request_type": "harvest_target",
+            "robot_id": "AGR-02",
+            "status": "pending",
+            "message": "stale pending mission",
+            "updated_at": "2026-04-05T13:44:00+00:00",
+        },
+        publish_result=False,
+    )
+    monkeypatch.setattr(
+        runtime_state_service_module,
+        "get_ros_protocol_bridge",
+        lambda: fake_bridge,
+    )
+    monkeypatch.setattr(
+        mission_bridge_service_module,
+        "get_ros_protocol_bridge",
+        lambda: fake_bridge,
+    )
+
+    response = publish_harvest_target_mission(
+        robot_id="AGR-02",
+        plant_id="farm01_plant_02",
+        fruit_id="farm01_plant_02_tomato_01",
+        requested_by="frontend-operator",
+        mission_id="mission-harvest-stale-bridge-001",
+    )
+
+    request_payload = json.loads(mission_request_file_path().read_text(encoding="utf-8"))
+
+    assert response["accepted"] is True
+    assert response["transport"] == "runtime_file"
+    assert request_payload["mission_id"] == "mission-harvest-stale-bridge-001"
+    assert request_payload["fruit_id"] == "farm01_plant_02_tomato_01"
+    assert fake_bridge.published_payloads[0]["mission_id"] == "mission-harvest-stale-bridge-001"
 
 
 def test_read_mission_status_payload_prefers_mission_record_file() -> None:

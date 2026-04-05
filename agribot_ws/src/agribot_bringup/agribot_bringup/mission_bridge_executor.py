@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import time
 from typing import Any
 
 from agribot_interfaces.msg import (
@@ -52,6 +53,9 @@ class ActiveMissionContext:
     received_at: str
     started_at: str | None = None
     observed_runtime_progress: bool = False
+    received_monotonic: float = 0.0
+    last_harvest_publish_monotonic: float | None = None
+    harvest_publish_attempt_count: int = 0
 
 
 def _iso_now() -> str:
@@ -83,12 +87,22 @@ class MissionBridgeExecutor(Node):
         self.declare_parameter('harvest_request_topic', '/harvest/request')
         self.declare_parameter('harvest_status_topic', '/harvest_route/status')
         self.declare_parameter('patrol_service_wait_sec', 1.5)
+        self.declare_parameter('harvest_request_retry_period_sec', 1.0)
+        self.declare_parameter('harvest_request_pending_timeout_sec', 20.0)
 
         self._runtime_dir = runtime_dir_from_env()
         self._request_path = mission_request_path(self._runtime_dir)
         self._status_path = mission_status_path(self._runtime_dir)
         self._default_robot_id = str(self.get_parameter('robot_id').value)
         self._patrol_service_wait_sec = float(self.get_parameter('patrol_service_wait_sec').value)
+        self._harvest_request_retry_period_sec = max(
+            0.1,
+            float(self.get_parameter('harvest_request_retry_period_sec').value),
+        )
+        self._harvest_request_pending_timeout_sec = max(
+            0.0,
+            float(self.get_parameter('harvest_request_pending_timeout_sec').value),
+        )
         self._request_topic = str(self.get_parameter('request_topic').value)
         self._bridge_status_topic = str(self.get_parameter('bridge_status_topic').value)
         history_size = max(8, int(self.get_parameter('processed_request_history_size').value))
@@ -321,6 +335,7 @@ class MissionBridgeExecutor(Node):
 
     def _poll_request_file(self) -> None:
         # poll request file 정보를 계산해 반환한다.
+        self._retry_active_harvest_request_if_needed()
         if not self._request_path.exists():
             return
 
@@ -430,6 +445,7 @@ class MissionBridgeExecutor(Node):
         context = ActiveMissionContext(
             request=request,
             received_at=_iso_now(),
+            received_monotonic=self._monotonic_now(),
         )
         self._active_context = context
         self._write_status(
@@ -483,6 +499,7 @@ class MissionBridgeExecutor(Node):
         context = ActiveMissionContext(
             request=request,
             received_at=_iso_now(),
+            received_monotonic=self._monotonic_now(),
         )
         self._active_context = context
         self._write_status(
@@ -493,6 +510,14 @@ class MissionBridgeExecutor(Node):
                 result='published',
             )
         )
+        self._publish_harvest_request(context)
+
+    def _monotonic_now(self) -> float:
+        # wall monotonic now 정보를 계산해 반환한다.
+        return time.monotonic()
+
+    def _build_harvest_request_payload(self, request: MissionRequest) -> dict[str, Any]:
+        # harvest request payload를 다른 계층에서 바로 사용할 수 있는 형태로 구성한다.
         harvest_request_payload = {
             'mission_id': request.mission_id,
             'plant_id': request.plant_id,
@@ -505,9 +530,63 @@ class MissionBridgeExecutor(Node):
             harvest_request_payload['inspect_waypoint_id'] = request.inspect_waypoint_id
         if request.inspect_waypoint_ids:
             harvest_request_payload['inspect_waypoint_ids'] = list(request.inspect_waypoint_ids)
+        return harvest_request_payload
+
+    def _publish_harvest_request(self, context: ActiveMissionContext) -> None:
+        # harvest 요청 payload를 토픽으로 발행한다.
         self._harvest_request_publisher.publish(
-            String(data=json.dumps(harvest_request_payload, ensure_ascii=False))
+            String(
+                data=json.dumps(
+                    self._build_harvest_request_payload(context.request),
+                    ensure_ascii=False,
+                )
+            )
         )
+        context.last_harvest_publish_monotonic = self._monotonic_now()
+        context.harvest_publish_attempt_count += 1
+
+    def _retry_active_harvest_request_if_needed(self) -> None:
+        # 진행 중인 harvest 요청이 아직 runtime 응답을 받지 못했으면 재전송한다.
+        context = self._active_context
+        if context is None or context.request.request_type != 'harvest_target':
+            return
+        if context.observed_runtime_progress:
+            return
+
+        now_monotonic = self._monotonic_now()
+        pending_elapsed_sec = max(0.0, now_monotonic - context.received_monotonic)
+        if (
+            self._harvest_request_pending_timeout_sec > 0.0
+            and pending_elapsed_sec >= self._harvest_request_pending_timeout_sec
+        ):
+            self._finish_active_request(
+                'failed',
+                (
+                    'harvest_route/status 응답을 기다리다 시간 초과되었습니다. '
+                    'harvest_route_node 와 Nav2 기동 상태를 확인하세요.'
+                ),
+                error='harvest_status_timeout',
+            )
+            return
+
+        if context.last_harvest_publish_monotonic is not None and (
+            now_monotonic - context.last_harvest_publish_monotonic
+            < self._harvest_request_retry_period_sec
+        ):
+            return
+
+        subscriber_count = self._harvest_request_publisher.get_subscription_count()
+        if subscriber_count == 0:
+            self.get_logger().warning(
+                'harvest/request subscriber 가 아직 없어 harvest target 을 재전송합니다. '
+                f'mission_id={context.request.mission_id}'
+            )
+        else:
+            self.get_logger().info(
+                'harvest_route/status 응답이 없어 harvest target 을 재전송합니다. '
+                f'mission_id={context.request.mission_id}, subscribers={subscriber_count}'
+            )
+        self._publish_harvest_request(context)
 
     def _handle_patrol_status(self, msg: String) -> None:
         # handle patrol 상태 정보를 계산해 반환한다.

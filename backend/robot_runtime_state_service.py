@@ -43,6 +43,10 @@ KNOWN_MISSION_STATUSES = {
     "failed",
     "canceled",
 }
+ACTIVE_MISSION_STATUSES = {
+    "pending",
+    "running",
+}
 KNOWN_CONTROL_MODES = {
     "normal",
     "paused",
@@ -517,6 +521,89 @@ def _attach_control_state(
     return result
 
 
+def _mission_payload_identifiers(payload: dict[str, Any] | None) -> tuple[str, ...]:
+    # mission payload에서 비교 가능한 식별자 목록을 정규화한다.
+    if not isinstance(payload, dict):
+        return ()
+
+    identifiers: list[str] = []
+    for field_name in ("mission_id", "command_id"):
+        identifier = _normalize_optional_string(payload.get(field_name))
+        if identifier and identifier not in identifiers:
+            identifiers.append(identifier)
+    return tuple(identifiers)
+
+
+def _mission_payloads_match(
+    first_payload: dict[str, Any] | None,
+    second_payload: dict[str, Any] | None,
+) -> bool:
+    # 두 mission payload가 같은 mission을 가리키는지 확인한다.
+    first_identifiers = set(_mission_payload_identifiers(first_payload))
+    second_identifiers = set(_mission_payload_identifiers(second_payload))
+    return bool(first_identifiers and second_identifiers and first_identifiers & second_identifiers)
+
+
+def _read_runtime_json_if_exists(path: Path) -> dict[str, Any] | None:
+    # 런타임 JSON 파일이 있으면 읽고, 없거나 읽을 수 없으면 None을 돌려준다.
+    if not path.exists():
+        return None
+
+    try:
+        return read_json_object(path)
+    except (OSError, json.JSONDecodeError, RobotRuntimeStateError):
+        return None
+
+
+def _bridge_payload_has_runtime_record(payload: dict[str, Any] | None) -> bool:
+    # 브리지 payload를 뒷받침하는 runtime record 파일이 남아 있는지 확인한다.
+    for identifier in _mission_payload_identifiers(payload):
+        if mission_status_record_file_path(identifier).exists():
+            return True
+    return False
+
+
+def _resolve_latest_bridge_mission_status_payload() -> dict[str, Any] | None:
+    # 최신 브리지 mission status가 현재 runtime과 일치할 때만 반환한다.
+    bridge_payload = get_ros_protocol_bridge().get_latest_mission_bridge_status()
+    if bridge_payload is None:
+        return None
+
+    latest_runtime_payload = _read_runtime_json_if_exists(mission_status_file_path())
+    if latest_runtime_payload is not None:
+        if _mission_payloads_match(bridge_payload, latest_runtime_payload):
+            return bridge_payload
+        return None
+
+    bridge_status = str(bridge_payload.get("status", DEFAULT_MISSION_STATUS)).strip().lower()
+    if bridge_status in ACTIVE_MISSION_STATUSES and not _bridge_payload_has_runtime_record(bridge_payload):
+        return None
+
+    if _bridge_payload_has_runtime_record(bridge_payload):
+        return bridge_payload
+
+    if bridge_status == DEFAULT_MISSION_STATUS:
+        return bridge_payload
+
+    return None
+
+
+def _resolve_cached_mission_status_payload(mission_id: str) -> dict[str, Any] | None:
+    # 특정 mission_id용 브리지 캐시가 runtime record와 일치할 때만 반환한다.
+    bridge_payload = get_ros_protocol_bridge().get_mission_bridge_status(mission_id)
+    if bridge_payload is None:
+        return None
+
+    latest_runtime_payload = _read_runtime_json_if_exists(mission_status_file_path())
+    if latest_runtime_payload is not None and _mission_payloads_match(bridge_payload, latest_runtime_payload):
+        return bridge_payload
+
+    if _bridge_payload_has_runtime_record(bridge_payload):
+        return bridge_payload
+
+    return None
+
+
 def read_latest_command_status_payload() -> dict[str, Any]:
     # latest 명령 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
     control_state = read_control_state_payload()
@@ -555,7 +642,7 @@ def read_latest_command_status_payload() -> dict[str, Any]:
 
 def read_latest_mission_status_payload() -> dict[str, Any]:
     # latest 미션 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
-    bridge_payload = get_ros_protocol_bridge().get_latest_mission_bridge_status()
+    bridge_payload = _resolve_latest_bridge_mission_status_payload()
     if bridge_payload is not None:
         return build_mission_status_payload(bridge_payload, available=True)
 
@@ -575,7 +662,7 @@ def read_latest_mission_status_payload() -> dict[str, Any]:
 
 def read_mission_status_payload(mission_id: str) -> dict[str, Any]:
     # 미션 상태 payload를 읽거나 조회해 호출부가 바로 사용할 수 있게 돌려준다.
-    bridge_payload = get_ros_protocol_bridge().get_mission_bridge_status(mission_id)
+    bridge_payload = _resolve_cached_mission_status_payload(mission_id)
     if bridge_payload is not None:
         return build_mission_status_payload(bridge_payload, available=True)
 

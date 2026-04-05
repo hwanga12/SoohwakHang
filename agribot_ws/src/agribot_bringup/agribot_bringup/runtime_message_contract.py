@@ -19,6 +19,17 @@ def _normalize_string(value: Any) -> str:
     return str(value).strip() if value is not None else ''
 
 
+def _normalize_string_list(value: Any) -> list[str]:
+    # Normalize optional list-like payload fields into a list of non-empty strings.
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [
+        normalized
+        for item in value
+        if (normalized := _normalize_string(item))
+    ]
+
+
 def _payload_has_value(payload: dict[str, Any] | None) -> bool:
     # Return whether the payload contains at least one meaningful field.
     if not isinstance(payload, dict):
@@ -367,11 +378,7 @@ def mission_request_message_from_payload(
     )
     message.robot_id = _normalize_string(payload.get('robot_id'))
     message.requested_by = _normalize_string(payload.get('requested_by'))
-    message.zone_ids = [
-        _normalize_string(item)
-        for item in payload.get('zone_ids', [])
-        if _normalize_string(item)
-    ]
+    message.zone_ids = _normalize_string_list(payload.get('zone_ids'))
     loop_count = payload.get('loop_count', nested_payload.get('loop_count', 0))
     message.loop_count = max(0, int(loop_count or 0))
     message.patrol_mode = (
@@ -384,15 +391,10 @@ def mission_request_message_from_payload(
     message.inspect_waypoint_id = _normalize_string(
         payload.get('inspect_waypoint_id') or nested_payload.get('inspect_waypoint_id')
     )
-    message.inspect_waypoint_ids = [
-        _normalize_string(item)
-        for item in (
-            payload.get('inspect_waypoint_ids')
-            or nested_payload.get('inspect_waypoint_ids')
-            or []
-        )
-        if _normalize_string(item)
-    ]
+    message.inspect_waypoint_ids = _normalize_string_list(
+        payload.get('inspect_waypoint_ids')
+        or nested_payload.get('inspect_waypoint_ids')
+    )
     return message
 
 
@@ -452,11 +454,7 @@ def mission_bridge_status_message_from_payload(
     message.message = _normalize_string(payload.get('message'))
     message.error = _normalize_string(payload.get('error'))
     message.result = _normalize_string(payload.get('result'))
-    message.zone_ids = [
-        _normalize_string(item)
-        for item in payload.get('zone_ids', [])
-        if _normalize_string(item)
-    ]
+    message.zone_ids = _normalize_string_list(payload.get('zone_ids'))
     message.has_loop_count = payload.get('loop_count') is not None
     message.loop_count = max(0, int(payload.get('loop_count', 0) or 0))
     message.patrol_mode = _normalize_string(payload.get('patrol_mode'))
@@ -464,11 +462,7 @@ def mission_bridge_status_message_from_payload(
     message.fruit_id = _normalize_string(payload.get('fruit_id'))
     message.tomato_id = _normalize_string(payload.get('tomato_id'))
     message.inspect_waypoint_id = _normalize_string(payload.get('inspect_waypoint_id'))
-    message.inspect_waypoint_ids = [
-        _normalize_string(item)
-        for item in payload.get('inspect_waypoint_ids', [])
-        if _normalize_string(item)
-    ]
+    message.inspect_waypoint_ids = _normalize_string_list(payload.get('inspect_waypoint_ids'))
     message.received_at = _normalize_string(payload.get('received_at'))
     message.started_at = _normalize_string(payload.get('started_at'))
     message.completed_at = _normalize_string(payload.get('completed_at'))

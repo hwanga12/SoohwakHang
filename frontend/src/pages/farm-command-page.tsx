@@ -374,6 +374,35 @@ function extractPlantIdFromFruitId(fruitId?: string | null) {
   return match?.[0] ?? null
 }
 
+function canonicalFruitIdForPlant(plantId: string) {
+  const normalizedPlantId = plantId.trim()
+  if (!normalizedPlantId) {
+    return ''
+  }
+
+  return normalizedPlantId.includes('_tomato_')
+    ? normalizedPlantId
+    : `${normalizedPlantId}_tomato_01`
+}
+
+function resolvePlantTargetId(
+  plantId: string,
+  targetId?: string | null,
+  plantLookup?: Map<string, PlantRow>,
+) {
+  const normalizedTargetId = (targetId ?? '').trim()
+  if (normalizedTargetId) {
+    return normalizedTargetId
+  }
+
+  const lookupTargetId = (plantLookup?.get(plantId)?.targetId ?? '').trim()
+  if (lookupTargetId) {
+    return lookupTargetId
+  }
+
+  return canonicalFruitIdForPlant(plantId)
+}
+
 function buildPlantHarvestRuntime(
   plant: PlantModalDetail,
   harvest: HarvestPageData,
@@ -1311,7 +1340,11 @@ export function FarmCommandPage() {
               : runtimeHarvestTarget || harvestTarget
                 ? 'target'
                 : 'normal'
-        const nextLinkedId = plant?.targetId ?? asset.linkedId
+        const nextLinkedId = resolvePlantTargetId(
+          asset.id,
+          plant?.targetId ?? asset.linkedId,
+          plantLookup,
+        )
         const nextLabel = plant?.name ?? asset.label
         const nextShortLabel = plant?.name.replace('토마토 ', '') ?? asset.shortLabel
         const nextDescription =
@@ -1406,7 +1439,7 @@ export function FarmCommandPage() {
 
       return {
         id: harvestPlant.id,
-        targetId: harvestPlant.targetId,
+        targetId: resolvePlantTargetId(harvestPlant.id, harvestPlant.targetId, plantLookup),
         name: harvestPlant.name,
         zoneLabel: harvestPlant.zoneLabel,
         positionLabel: harvestPlant.positionLabel,
@@ -1425,7 +1458,7 @@ export function FarmCommandPage() {
     if (plant) {
       return {
         id: plant.id,
-        targetId: plant.targetId,
+        targetId: resolvePlantTargetId(plant.id, plant.targetId, plantLookup),
         name: plant.name,
         zoneLabel: plant.zoneLabel,
         positionLabel: plant.positionLabel,
@@ -1441,7 +1474,7 @@ export function FarmCommandPage() {
 
     return {
       id: asset.id,
-      targetId: asset.linkedId ?? `${asset.id}_fruit_01`,
+      targetId: resolvePlantTargetId(asset.id, asset.linkedId, plantLookup),
       name: asset.label,
       zoneLabel: `zone ${asset.zoneId}`,
       positionLabel: `x ${asset.position.x.toFixed(1)} / y ${asset.position.y.toFixed(1)}`,
@@ -2066,8 +2099,11 @@ export function FarmCommandPage() {
     const targetPlant = selectedAsset?.kind === 'plant'
       ? selectedPlantDetail
       : attentionPlant
+    const resolvedTargetId = targetPlant
+      ? resolvePlantTargetId(targetPlant.id, targetPlant.targetId, plantLookup)
+      : ''
 
-    if (!targetPlant) {
+    if (!targetPlant || !resolvedTargetId) {
       return
     }
 
@@ -2095,7 +2131,7 @@ export function FarmCommandPage() {
 
     const diagnoseStartInput = {
       plantId: targetPlant.id,
-      fruitId: targetPlant.targetId,
+      fruitId: resolvedTargetId,
       plantName: targetPlant.name,
       plan: inspectionPlan,
     } satisfies QueuedDiagnoseStart
@@ -2124,8 +2160,17 @@ export function FarmCommandPage() {
 
   const handleHarvest = () => {
     const targetPlant = selectedPlantDetail
+    const resolvedTargetId = targetPlant
+      ? resolvePlantTargetId(targetPlant.id, targetPlant.targetId, plantLookup)
+      : ''
 
-    if (!targetPlant || missionControlBlocked || patrolMutation.isPending || harvestMutation.isPending) {
+    if (
+      !targetPlant
+      || !resolvedTargetId
+      || missionControlBlocked
+      || patrolMutation.isPending
+      || harvestMutation.isPending
+    ) {
       return
     }
 
@@ -2138,7 +2183,7 @@ export function FarmCommandPage() {
     harvestMutation.reset()
     harvestMutation.mutate({
       plantId: targetPlant.id,
-      fruitId: targetPlant.targetId,
+      fruitId: resolvedTargetId,
       plantName: targetPlant.name,
       inspectWaypointId: selectedPlantNavigationPlan?.inspectWaypointId ?? null,
       inspectWaypointIds: selectedPlantNavigationPlan?.inspectWaypointIds ?? [],
