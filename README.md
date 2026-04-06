@@ -1,217 +1,228 @@
-# AgriBot
+# 🌱 수확행
 
-수확해조(AgriBot)는 ROS 2 Jazzy와 Gazebo Harmonic 기반의 스마트팜 자율주행 시뮬레이션 프로젝트입니다.  
-로봇 시뮬레이션, FastAPI 백엔드, React 관제 프론트엔드, PostgreSQL, MQTT 브로커를 함께 사용해 병해 진단, AI 판단 이력, 수확 시나리오, IoT 제어 흐름을 통합합니다.
+![main](./img/main.png "메인")
 
-## 핵심 기능
+![gazebo](./img/top.gif "가제보 진단하기")
 
-- 밭 순찰, 관측 지점 이동, 수동 이동, 귀가
-- 병해 진단 데모 및 AI 판단 이력 저장
-- 숙도 및 수확 의사결정(`HARVEST_DECISION`) 조회
-- 개별 수확 / 전체 수확 패트롤 시나리오
-- PostgreSQL 기반 식물, 과실, 미션, 수확, AI 판단 데이터 관리
-- Direct ROS topic bridge 기반 backend-robot 상태/제어 연동
-- runtime file bridge fallback 기반 pose/path/runtime artifact 연동
+**스마트 농장 무인 관제 및 AI 진단 로봇 시뮬레이션 시스템**
 
-## 기술 스택
+---
 
-| 구분 | 구성 |
-| --- | --- |
-| OS / Runtime | Ubuntu 24.04, Python 3.12, Node.js |
-| Robot / Sim | ROS 2 Jazzy, Gazebo Harmonic, Nav2, SLAM Toolbox |
-| Backend | FastAPI, SQLAlchemy, psycopg2, Uvicorn |
-| Frontend | React 18, Vite 6, TypeScript |
-| Data / Infra | PostgreSQL 16, pgAdmin4, Eclipse Mosquitto |
-| AI | Ultralytics YOLO 기반 병해 진단 |
+## 1. 프로젝트 개요
 
-## 저장소 구조
+- **기간**: 2026.02.09 – 2026.04.03 (6인)
+- **유형**: Web · AI · ROS2 · IoT 풀체인 통합 시뮬레이션
+- **목표**: 스마트팜의 완전 무인화를 위한 로봇–서버–IoT 오케스트레이션 구현
 
-```text
-S14P21A602/
-├── agribot_ws/   # ROS 2 workspace
-├── backend/      # FastAPI, DB 모델/라우터/서비스, seed, docker-compose
-├── frontend/     # React + Vite 관제 UI
-├── scripts/      # 실행/점검/런타임 보조 스크립트
-├── docs/         # 설계/실행/검증 문서
-├── exec/         # 포팅 매뉴얼, 최신 DB dump
-└── artifacts/    # 모델, 런타임 산출물, 데모 입력 리소스
-```
+### 핵심 키워드
 
-## 사전 요구사항
+- 하이브리드 통신 아키텍처 (HTTP / ROS Topic / MQTT / JSON)
+- 엣지–클라우드 2단 AI 진단 파이프라인 (YOLOv8)
+- ROS2 & Gazebo 기반 자율주행
+- 명령 유실 방지 및 상태 동기화 설계
 
-- ROS 2 Jazzy
-- Gazebo Harmonic 및 `ros-gz`
-- Navigation2, SLAM Toolbox
-- Docker / Docker Compose
-- Python 3.12 + `venv`
-- Node.js / npm
+---
 
-예시 설치:
+## 2. 역할
 
-```bash
-sudo apt update
-sudo apt install -y \
-  ros-jazzy-desktop \
-  ros-jazzy-ros-gz \
-  ros-jazzy-navigation2 \
-  ros-jazzy-nav2-bringup \
-  ros-jazzy-slam-toolbox
-```
+### 황가연 Fullstack, ROS  (기여도 30%)
 
-## 최초 1회 준비
+- Web(React/FastAPI) ↔ ROS2 이기종 통신 브리지 설계
+- Nav2 자율주행 파라미터 튜닝 및 TF 트러블슈팅
+- AI 확정 추론 + Rule Engine 기반 IoT 자동 제어
 
-### Frontend
+---
 
-```bash
-cd frontend
-npm install
-npm run build
-```
+## 3. 기획 의도
 
-### Backend
+기존 스마트팜은 좁은 통로 구조로 인해 대형 장비 운용이 어려움
+이에 따라 본 프로젝트는 **작고 민첩한 로봇이 '진단'을 담당하고, 물리적 조치는 IoT가 수행하는 구조**를 설계
 
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-../scripts/install_backend_runtime.sh
-```
+> 로봇 = 두뇌 (진단)
+> IoT = 손발 (실행)
 
-### ROS workspace
+**무인 스마트 농장 운영 시스템**
 
-```bash
-cd agribot_ws
-source /opt/ros/jazzy/setup.bash
-colcon build --symlink-install
-source install/setup.bash
-```
+---
 
-## 실행 순서
+## 4. 서비스 시나리오 (Full-Chain)
 
-루트에서 아래 순서대로 실행합니다.
+1. **자율주행**
 
-### 1. 공통 환경 및 런타임 초기화
+   - 로봇이 지정된 작물 위치로 이동
+2. **엣지 AI (1차 추론)**
 
-```bash
-cd /home/ssafy/Desktop/pjt/S14P21A602
-source <(./scripts/operator_runtime_health.sh --print-env)
-./scripts/operator_runtime_health.sh --reset-runtime
-```
+   - 작물 탐지 및 의심 영역 Crop 후 서버 전송
+3. **클라우드 AI (2차 추론)**
 
-### 2. Backend
+   - 병해 및 숙도 최종 판별
+   - DB 저장
+4. **자동 처방 (Rule Engine)**
 
-```bash
-./scripts/backend_up.sh
-```
+   - 병해 발생 시 IoT 스프링클러 자동 작동
+5. **외부 관제**
 
-기본 주소:
+   - MQTT 기반 실시간 상태 모니터링
 
-- API: `http://127.0.0.1:8000`
-- Swagger: `http://127.0.0.1:8000/docs`
+---
 
-### 3. Frontend
+## 5. 주요 기능
 
-```bash
-./scripts/frontend_up.sh
-```
+### 웹 기반 관제 (React + FastAPI)
 
-기본 주소:
+- 2D 맵 기반 로봇 위치 시각화
+- 클릭 기반 목적지 전송 (Waypoint)
+- 비동기 Polling 기반 상태 추적
 
-- UI: `http://127.0.0.1:5173`
+---
 
-### 4. ROS 시뮬레이션
+### 자율주행 (ROS2 Nav2)
 
-헤드리스/원격 환경에서는 아래 명령을 권장합니다.
+- IMU + LiDAR 센서 융합
+- 작업 통로 기반 충돌 회피 로직
+- 실환경 반영 경로 계획
 
-```bash
-./scripts/agribot_launch.sh agribot_bringup simulation.launch.py use_iot:=true use_rviz:=false
-```
+---
 
-### 5. Mission Manager
+### AI 진단 시스템 (YOLOv8)
 
-```bash
-./scripts/mission_manager_up.sh
-```
+#### 병해 탐지
 
-### 6. Harvest Action Server
+- YOLOv8 Nano (5.4MB)
+- 5종 질병 탐지
+- mAP50: 0.96
 
-```bash
-./scripts/harvest_action_server_up.sh
-```
+#### 숙도 분류
 
-### 7. 상태 점검
+- YOLOv8 Classification 모델
+- Class imbalance 해결
 
-```bash
-./scripts/operator_runtime_health.sh
-```
+---
 
-## 데모 흐름
+### IoT 자동 제어
 
-2026-03-30 기준 아래 흐름을 실제로 검증했습니다.
+- Rule Engine 기반 의사결정
+- ROS Topic 직접 발행 (지연 최소화)
+- MQTT 기반 외부 시스템 연동
 
-- 프론트 메인 화면 접속
-- `진단하기` 실행 후 수동 이동 상태 추적
-- `수확하기` 실행 후 수확 완료 및 basket count 반영
-- 대시보드 / 로봇 상태 / 수확 통계 / AI 판단 API 정상 응답
+---
 
-주요 확인 API:
+## 6. 기술 스택
 
-```bash
-curl -s http://127.0.0.1:8000/api/v1/dashboard/summary | jq
-curl -s http://127.0.0.1:8000/api/v1/robot/status | jq
-curl -s http://127.0.0.1:8000/api/v1/robot/commands/latest | jq
-curl -s http://127.0.0.1:8000/api/v1/harvests/stats | jq
-curl -s "http://127.0.0.1:8000/api/v1/inference/judgments/latest?fruit_id=farm01_plant_02_tomato_01&judgment_type=HARVEST_DECISION" | jq
-```
+| 영역          | 기술                                    |
+| ------------- | --------------------------------------- |
+| Backend       | Python, FastAPI, SQLAlchemy, PostgreSQL |
+| Frontend      | React, TypeScript, Vite, Zustand        |
+| Robotics      | ROS2 (Jazzy), Gazebo                    |
+| AI            | YOLOv8, PyTorch                         |
+| Communication | REST API, ROS Topic, MQTT, JSON         |
 
-## DB 및 데모 데이터
+---
 
-- Docker 실행 정의: `backend/docker-compose.yml`
-- 기본 DB: `agribot_db`
-- 계정: `agribot / password`
-- pgAdmin: `http://127.0.0.1:5050`
-- 데모 데이터 재적재: `backend/seed_demo_data.py`
-- 최신 dump: `exec/db/agribot_db_dump_20260330.sql`
+## 7. 기능 화면
 
-데모 데이터 재생성:
+## System Architecture
 
-```bash
-cd backend
-.venv/bin/python seed_demo_data.py
-```
+![system-architecture](./img/System_Architecture.png)
 
-## 테스트
+## FRONT
 
-### Backend
+![gazebo](./img/gazebo.png "gazebo")
 
-```bash
-cd backend
-.venv/bin/pytest
-```
+![front](./img/front.png "front")
 
-### ROS packages
+## ERD
 
-```bash
-cd agribot_ws
-source /opt/ros/jazzy/setup.bash
-colcon test --packages-select agribot_bringup agribot_navigation
-colcon test-result --verbose
-```
+![ERD](./img/ERD.png)
 
-## 문서
+---
 
-- 포팅 매뉴얼: `exec/포팅_매뉴얼.md`
-- 실행/문서 인덱스: `docs/README.md`
-- launch 관련 메모: `docs/README_LAUNCH.md`
-- 운영자 검증 체크리스트: `docs/운영자_미션_E2E_검증_체크리스트.md`
-- 프로토콜 연결 감사: `TIL/docs/프로토콜_연결_감사_및_개선안.md`
+## 8. 핵심 트러블슈팅
 
-## 주의 사항
+### 1. Polling 구조의 한계 → MQTT 리팩토링
 
-- Backend는 workspace가 build되어 있으면 direct ROS bridge를 우선 사용하고, 그렇지 않으면 legacy runtime file bridge로 fallback 합니다.
-- Backend와 ROS 노드는 fallback 경로를 위해 같은 `AGRIBOT_RUNTIME_DIR`를 사용해야 합니다.
-- Frontend는 정적 파일 운영 배포 구성이 아니라 Vite dev server 기준입니다.
-- Backend는 Nginx/Apache 없이 Uvicorn으로 실행합니다.
-- 시뮬레이터 GUI/EGL 경고가 있어도 headless 환경에서는 core ROS 노드와 file bridge가 정상 기동할 수 있습니다.
+**문제**
+
+- JSON 파일 기반 Polling → 1~2초 지연 발생
+
+**해결**
+
+- MQTT Pub/Sub 구조로 전환
+- QoS 기반 신뢰성 확보
+
+**결과**
+
+- 지연 → ms 단위 감소
+- 확장성 확보
+
+---
+
+### 2. 도메인 갭 문제 (시뮬레이터 vs 실제 이미지)
+
+**문제**
+
+- Gazebo 3D 모델 → 실제 병해 인식 불가
+
+**해결**
+
+- 실제 이미지 직접 주입 (Thin Client 전략)
+
+**결과**
+
+- Full-Chain 파이프라인 검증 성공
+
+---
+
+### 3. TF 트리 붕괴
+
+**문제**
+
+- 위치 튐 / 자율주행 실패
+
+**해결**
+
+- TF 복구 (odom ↔ base_link)
+- 시뮬레이션 시간 통일
+
+---
+
+### 4. 비효율 경로 문제
+
+**문제**
+
+- 직진 주행 → 충돌 / 우회 과다
+
+**해결**
+
+- 2단계 경로 계획 도입
+
+#### 2-Step Path Planning
+
+1. 통로 중앙 진입
+2. 작물 앞 정밀 접근
+
+- 도착 허용 반경 (55cm) 적용
+
+---
+
+## 8. 프로젝트 성과
+
+### 하이브리드 통신 아키텍처 완성
+
+- JSON / MQTT / ROS Topic 역할 분리
+- 시스템 안정성 및 확장성 확보
+
+### 실무형 자율주행 구현
+
+- 물리적 환경 제약 반영
+- 자연스러운 경로 생성
+
+### Full-Chain 검증 성공
+
+- 주행 → AI → DB → IoT 자동 제어 완성
+
+---
+
+## 9. 한 줄 요약
+
+> **"로봇이 판단하고, IoT가 실행하는 완전 무인 스마트팜 오케스트레이션"**
