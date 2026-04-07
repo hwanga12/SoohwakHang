@@ -83,3 +83,6 @@ artifacts/runtime/**/*.jpg
 artifacts/runtime/**/*.jpeg
 artifacts/runtime/**/*.png
 artifacts/runtime/**/*.json
+
+# ─── Environments ───
+.env
