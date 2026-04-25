@@ -30,6 +30,7 @@
 - Web(React/FastAPI) ↔ ROS2 이기종 통신 브리지 설계
 - Nav2 자율주행 파라미터 튜닝 및 TF 트러블슈팅
 - AI 확정 추론 + Rule Engine 기반 IoT 자동 제어
+- FastAPI 기반 백엔드 구축
 
 ---
 
